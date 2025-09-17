@@ -13,7 +13,7 @@ use ratatui::{
 mod app;
 mod ui;
 use crate::{
-    app::{App, CurrentScreen, ResourceType},
+    app::{App, CurrentScreen},
     ui::ui,
 };
 fn main() -> Result<(), Box<dyn Error>> {
@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // create app and run it
     let mut app = App::new();
-    let res = run_app(&mut terminal, &mut app);
+    let _res = run_app(&mut terminal, &mut app);
 
     disable_raw_mode()?;
     execute!(
@@ -34,7 +34,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         DisableMouseCapture
     )?;
     terminal.show_cursor()?;
-    // ANCHOR_END: ending_boilerplate
 
     Ok(())
 }
@@ -51,7 +50,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
             match app.current_screen {
                 CurrentScreen::Main => match key.code {
                     KeyCode::Char('q') => {
-                        app.current_screen = CurrentScreen::Exiting;
+                        // app.current_screen = CurrentScreen::Exiting;
+                        return Ok(());
                     }
                     _ => {}
                 },

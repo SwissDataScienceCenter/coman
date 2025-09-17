@@ -1,5 +1,9 @@
 use ratatui::prelude::*;
-use ratatui::widgets::{List, ListState, Scrollbar, ScrollbarOrientation, ScrollbarState};
+use ratatui::style::palette::material::BLUE;
+use ratatui::style::palette::tailwind::{self, SLATE};
+use ratatui::widgets::{
+    List, ListItem, ListState, Padding, Scrollbar, ScrollbarOrientation, ScrollbarState, Tabs,
+};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
@@ -10,8 +14,7 @@ use ratatui::{
 
 use crate::app::{App, CurrentScreen, ResourceType};
 
-// ANCHOR: method_sig
-pub fn ui(frame: &mut Frame, app: &App) {
+pub fn ui(frame: &mut Frame, app: &mut App) {
     let outer_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -21,10 +24,20 @@ pub fn ui(frame: &mut Frame, app: &App) {
         ])
         .split(frame.area());
 
+    // layout
     let inner_layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(vec![Constraint::Percentage(25), Constraint::Percentage(75)])
         .split(outer_layout[1]);
+    let tab_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(vec![Constraint::Length(1), Constraint::Min(1)])
+        .split(inner_layout[1]);
+
+    let workload_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(inner_layout[0]);
     let title_block = Block::default()
         .borders(Borders::ALL)
         .style(Style::default());
@@ -36,14 +49,44 @@ pub fn ui(frame: &mut Frame, app: &App) {
     .block(title_block);
     frame.render_widget(title, outer_layout[0]);
 
-    let mut workloads = vec!["my training job", "climate model"];
-    let list = List::new(workloads)
-        .style(Style::new().white())
-        .highlight_style(Style::new().green())
-        .highlight_symbol("> ");
-    let mut workload_state = ListState::default();
-    frame.render_stateful_widget(list, inner_layout[0], &mut workload_state);
+    // workload lists
+    let training_workloads: Vec<ListItem<'_>> =
+        app.training_list.items.iter().map(ListItem::from).collect();
 
+    let training_block = Block::new()
+        .title(Line::raw("Training").centered())
+        .borders(Borders::TOP)
+        .border_set(symbols::border::EMPTY)
+        .border_style(Style::new().fg(SLATE.c100).bg(BLUE.c800))
+        .bg(SLATE.c950);
+
+    let list = List::new(training_workloads)
+        .block(training_block)
+        .highlight_style(Style::new().bg(Color::DarkGray))
+        .highlight_symbol("> ");
+    app.training_list.state.select_first();
+    frame.render_stateful_widget(list, workload_layout[0], &mut app.training_list.state);
+    let inference_workloads: Vec<ListItem<'_>> = app
+        .inference_list
+        .items
+        .iter()
+        .map(ListItem::from)
+        .collect();
+
+    let inference_block = Block::new()
+        .title(Line::raw("Inference").centered())
+        .borders(Borders::TOP)
+        .border_set(symbols::border::EMPTY)
+        .border_style(Style::new().fg(SLATE.c100).bg(BLUE.c800))
+        .bg(SLATE.c950);
+
+    let list = List::new(inference_workloads)
+        .block(inference_block)
+        .highlight_style(Style::new().bg(Color::DarkGray))
+        .highlight_symbol("> ");
+    frame.render_stateful_widget(list, workload_layout[1], &mut app.inference_list.state);
+
+    // footer
     let current_navigation_text = vec![
         // The first half of the text
         match app.current_screen {
@@ -64,11 +107,18 @@ pub fn ui(frame: &mut Frame, app: &App) {
         Span::styled(" | ", Style::default().fg(Color::White)),
         // The final section of the text, with hints on what the user is editing
         Span::styled(
-            "↑←↓→: navigate, x: menu, q: quit",
+            "↑←↓→: navigate, F1: RunAI, F2: CSCS, x: menu, q: quit",
             Style::default().fg(Color::LightBlue),
         ),
     ];
 
+    // detail view
+    let tabs = Tabs::new(vec!["Logs", "Config", "Status"])
+        .select(0)
+        .highlight_style((Color::default(), tailwind::BLUE.c700))
+        .padding(" ", "")
+        .divider(" ");
+    frame.render_widget(tabs, tab_layout[0]);
     let mut logs = vec![
         "2025-09-16 13:36:46.758 UTC [27] LOG:  checkpoint starting: time",
         "2025-09-16 13:36:47.902 UTC [27] LOG:  checkpoint complete: wrote 12 buffers (0.1%); 0 WAL file(s) added, 0 removed, 0 recycled; write=1.103 s, sync=0.008 s, total=1.144 s; sync files=9, longest=0.003 s, average=0.001 s; distance=51 kB, estimate=51 kB; lsn=0/37FD138, redo lsn=0/37FD100",
@@ -93,17 +143,21 @@ pub fn ui(frame: &mut Frame, app: &App) {
     let log_list = List::new(logs)
         .style(Style::default().fg(Color::White))
         // .scroll((app.content_scroll, 0))
-        .block(Block::default().borders(Borders::LEFT));
+        .block(
+            Block::bordered()
+                .border_set(symbols::border::PROPORTIONAL_TALL)
+                .padding(Padding::horizontal(1))
+                .border_style(tailwind::BLUE.c700),
+        );
 
     let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
         .begin_symbol(Some("↑"))
         .end_symbol(Some("↓"));
     let mut scrollbar_state = ScrollbarState::new(log_list.len()).position(log_state.offset());
-    let area = frame.area();
-    frame.render_stateful_widget(log_list, inner_layout[1], &mut log_state);
+    frame.render_stateful_widget(log_list, tab_layout[1], &mut log_state);
     frame.render_stateful_widget(
         scrollbar,
-        area.inner(Margin {
+        tab_layout[1].inner(Margin {
             horizontal: 0,
             vertical: 1,
         }),
