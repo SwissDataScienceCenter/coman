@@ -1,4 +1,8 @@
-use std::{error::Error, io};
+use std::{
+    error::Error,
+    io,
+    panic::{set_hook, take_hook},
+};
 
 use ratatui::{
     Terminal,
@@ -17,46 +21,50 @@ use crate::{
     ui::ui,
 };
 fn main() -> Result<(), Box<dyn Error>> {
+    // create app and run it
+    cli_log::init_cli_log!();
+    init_panic_hook();
+    let mut terminal = init_tui()?;
+    let mut app = App::new();
+    let _res = run_app(&mut terminal, &mut app);
+    restore_tui()?;
+
+    Ok(())
+}
+fn init_panic_hook() {
+    let original_hook = take_hook();
+    set_hook(Box::new(move |panic_info| {
+        let _ = restore_tui();
+        original_hook(panic_info);
+    }));
+}
+
+fn init_tui() -> io::Result<Terminal<impl Backend>> {
     enable_raw_mode()?;
     let mut stderr = io::stderr();
     execute!(stderr, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stderr);
-    let mut terminal = Terminal::new(backend)?;
-
-    // create app and run it
-    let mut app = App::new();
-    let _res = run_app(&mut terminal, &mut app);
-
+    Terminal::new(backend)
+}
+fn restore_tui() -> io::Result<()> {
     disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
-
+    execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture)?;
     Ok(())
 }
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<()> {
     loop {
         terminal.draw(|f| ui(f, app))?;
-
-        if let Event::Key(key) = event::read()? {
+        let event = event::read()?;
+        if let Event::Key(key) = event {
             if key.kind == event::KeyEventKind::Release {
                 // Skip events that are not KeyEventKind::Press
                 continue;
             }
-            match app.current_screen {
-                CurrentScreen::Main => match key.code {
-                    KeyCode::Char('q') => {
-                        // app.current_screen = CurrentScreen::Exiting;
-                        return Ok(());
-                    }
-                    _ => {}
-                },
-                CurrentScreen::Exiting => return Ok(()),
+            if key.kind == event::KeyEventKind::Press && key.code == KeyCode::Char('q') {
+                return Ok(());
             }
         }
+        app.handle_event(event);
     }
 }

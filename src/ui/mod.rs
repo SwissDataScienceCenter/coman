@@ -14,6 +14,9 @@ use ratatui::{
 
 use crate::app::{App, CurrentScreen, ResourceType};
 
+pub(crate) mod ui_common;
+pub(crate) mod ui_runai;
+
 pub fn ui(frame: &mut Frame, app: &mut App) {
     let outer_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -48,43 +51,8 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
     ))
     .block(title_block);
     frame.render_widget(title, outer_layout[0]);
-
-    // workload lists
-    let training_workloads: Vec<ListItem<'_>> =
-        app.training_list.items.iter().map(ListItem::from).collect();
-
-    let training_block = Block::new()
-        .title(Line::raw("Training").centered())
-        .borders(Borders::TOP)
-        .border_set(symbols::border::EMPTY)
-        .border_style(Style::new().fg(SLATE.c100).bg(BLUE.c800))
-        .bg(SLATE.c950);
-
-    let list = List::new(training_workloads)
-        .block(training_block)
-        .highlight_style(Style::new().bg(Color::DarkGray))
-        .highlight_symbol("> ");
-    app.training_list.state.select_first();
-    frame.render_stateful_widget(list, workload_layout[0], &mut app.training_list.state);
-    let inference_workloads: Vec<ListItem<'_>> = app
-        .inference_list
-        .items
-        .iter()
-        .map(ListItem::from)
-        .collect();
-
-    let inference_block = Block::new()
-        .title(Line::raw("Inference").centered())
-        .borders(Borders::TOP)
-        .border_set(symbols::border::EMPTY)
-        .border_style(Style::new().fg(SLATE.c100).bg(BLUE.c800))
-        .bg(SLATE.c950);
-
-    let list = List::new(inference_workloads)
-        .block(inference_block)
-        .highlight_style(Style::new().bg(Color::DarkGray))
-        .highlight_symbol("> ");
-    frame.render_stateful_widget(list, workload_layout[1], &mut app.inference_list.state);
+    frame.render_widget(&mut app.training_list, workload_layout[0]);
+    frame.render_widget(&mut app.inference_list, workload_layout[1]);
 
     // footer
     let current_navigation_text = vec![
