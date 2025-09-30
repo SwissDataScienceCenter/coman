@@ -1,5 +1,5 @@
-# Compute Manager TUI
+# coman
 
-A simple TUI (Terminal UI) to manage RunAI and CSCS compute loads.
+[![CI](https://github.com/SwissDataScienceCenter/coman/workflows/CI/badge.svg)](https://github.com/SwissDataScienceCenter/coman/actions)
 
-![Screenshot of coman](/assets/screenshot.jpg)
+Compute Manager for managing HPC compute

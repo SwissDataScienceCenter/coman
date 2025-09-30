@@ -1,47 +1,224 @@
-use ratatui::crossterm::event::Event;
-use ratatui::prelude::*;
-use ratatui::widgets::{ListItem, ListState};
+use color_eyre::Result;
+use crossterm::event::KeyEvent;
+use ratatui::prelude::Rect;
+use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
+use tracing::{debug, info};
 
-use crate::ui::ui_runai::{WorkloadList, WorkloadStatus};
+use crate::{
+    action::Action,
+    components::{
+        Component, footer::Footer, workload_list::WorkloadList, workload_menu::WorkloadListMenu,
+    },
+    config::Config,
+    tui::{Event, Tui},
+    util,
+};
 
-pub enum ResourceType {
-    RunAI,
-    CSCS,
+pub struct App {
+    config: Config,
+    tick_rate: f64,
+    frame_rate: f64,
+    components: Vec<Box<dyn Component>>,
+    should_quit: bool,
+    should_suspend: bool,
+    mode: Mode,
+    sub_mode: SubMode,
+    last_tick_key_events: Vec<KeyEvent>,
+    action_tx: mpsc::UnboundedSender<Action>,
+    action_rx: mpsc::UnboundedReceiver<Action>,
 }
-
-pub enum CurrentScreen {
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SubMode {
+    #[default]
     Main,
-    Exiting,
+    Menu,
 }
 
-pub struct App<'a> {
-    pub current_screen: CurrentScreen,
-    pub resource_type: ResourceType,
-    pub inference_list: WorkloadList<'a>,
-    pub training_list: WorkloadList<'a>,
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Mode {
+    #[default]
+    Main,
 }
 
-impl<'a> App<'a> {
-    pub fn new() -> App<'a> {
-        let training_list = WorkloadList::new("Training").items(vec![
-            (WorkloadStatus::Running, "Climate Model training"),
-            (WorkloadStatus::Failed, "Markov test"),
-            (WorkloadStatus::Stopped, "LLM finetuning job 1"),
-        ]);
-        let inference_list = WorkloadList::new("Inference").items(vec![
-            (WorkloadStatus::Failed, "LLM Hosting"),
-            (WorkloadStatus::Stopped, "Climate Model Showcase"),
-            (WorkloadStatus::Running, "PDF Extraction"),
-        ]);
-        App {
-            current_screen: CurrentScreen::Main,
-            resource_type: ResourceType::RunAI,
-            training_list,
-            inference_list,
-        }
+impl App {
+    pub fn new(tick_rate: f64, frame_rate: f64) -> Result<Self> {
+        let (action_tx, action_rx) = mpsc::unbounded_channel();
+        Ok(Self {
+            tick_rate,
+            frame_rate,
+            components: vec![
+                Box::new(WorkloadList::new()),
+                Box::new(Footer::new()),
+                Box::new(WorkloadListMenu::new()),
+            ],
+            should_quit: false,
+            should_suspend: false,
+            config: Config::new()?,
+            mode: Mode::Main,
+            sub_mode: SubMode::Main,
+            last_tick_key_events: Vec::new(),
+            action_tx,
+            action_rx,
+        })
     }
-    pub fn handle_event(&mut self, event: Event) {
-        self.training_list.handle_event(event.clone());
-        self.inference_list.handle_event(event.clone());
+
+    pub async fn run(&mut self) -> Result<()> {
+        let mut tui = Tui::new()?
+            .mouse(true) // uncomment this line to enable mouse support
+            .tick_rate(self.tick_rate)
+            .frame_rate(self.frame_rate);
+        tui.enter()?;
+
+        for component in self.components.iter_mut() {
+            component.register_action_handler(self.action_tx.clone())?;
+        }
+        for component in self.components.iter_mut() {
+            component.register_config_handler(self.config.clone())?;
+        }
+        for component in self.components.iter_mut() {
+            component.init(tui.size()?)?;
+        }
+
+        let action_tx = self.action_tx.clone();
+        loop {
+            self.handle_events(&mut tui).await?;
+            self.handle_actions(&mut tui)?;
+            if self.should_suspend {
+                tui.suspend()?;
+                action_tx.send(Action::Resume)?;
+                action_tx.send(Action::ClearScreen)?;
+                // tui.mouse(true);
+                tui.enter()?;
+            } else if self.should_quit {
+                tui.stop()?;
+                break;
+            }
+        }
+        tui.exit()?;
+        Ok(())
+    }
+
+    async fn handle_events(&mut self, tui: &mut Tui) -> Result<()> {
+        let Some(event) = tui.next_event().await else {
+            return Ok(());
+        };
+        let action_tx = self.action_tx.clone();
+        match event {
+            Event::Quit => action_tx.send(Action::Quit)?,
+            Event::Tick => action_tx.send(Action::Tick)?,
+            Event::Render => action_tx.send(Action::Render)?,
+            Event::RemoteRefresh => action_tx.send(Action::RemoteRefresh)?,
+            Event::Resize(x, y) => action_tx.send(Action::Resize(x, y))?,
+            Event::Key(key) => self.handle_key_event(key)?,
+            _ => {}
+        }
+        for component in self.components.iter_mut() {
+            if let Some(action) = component.handle_events(Some(event.clone()))? {
+                action_tx.send(action)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_key_event(&mut self, key: KeyEvent) -> Result<()> {
+        let action_tx = self.action_tx.clone();
+        let Some(keymap) = self.config.keybindings.get(&self.mode) else {
+            return Ok(());
+        };
+        match keymap.get(&vec![key]) {
+            Some(action) => {
+                info!("Got action: {action:?}");
+                action_tx.send(action.clone())?;
+            }
+            _ => {
+                // If the key was not handled as a single key action,
+                // then consider it for multi-key combinations.
+                self.last_tick_key_events.push(key);
+
+                // Check for multi-key combinations
+                if let Some(action) = keymap.get(&self.last_tick_key_events) {
+                    info!("Got action: {action:?}");
+                    action_tx.send(action.clone())?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_actions(&mut self, tui: &mut Tui) -> Result<()> {
+        while let Ok(action) = self.action_rx.try_recv() {
+            if action != Action::Tick && action != Action::Render {
+                debug!("{action:?}");
+            }
+            match action {
+                Action::Tick => {
+                    self.last_tick_key_events.drain(..);
+                }
+                Action::Quit => self.should_quit = true,
+                Action::Suspend => self.should_suspend = true,
+                Action::Resume => self.should_suspend = false,
+                Action::ClearScreen => tui.terminal.clear()?,
+                Action::Resize(w, h) => self.handle_resize(tui, w, h)?,
+                Action::Render => self.render(tui)?,
+                Action::Mode(mode) => self.mode = mode,
+                Action::SubMode(sub_mode) => self.sub_mode = sub_mode,
+                Action::Menu => match self.sub_mode {
+                    SubMode::Main => {
+                        self.action_tx.send(Action::SubMode(SubMode::Menu))?;
+                    }
+                    SubMode::Menu => {
+                        self.action_tx.send(Action::SubMode(SubMode::Main))?;
+                    }
+                },
+                Action::Escape => match self.sub_mode {
+                    SubMode::Menu => {
+                        self.action_tx.send(Action::SubMode(SubMode::Main))?;
+                    }
+                    _ => {}
+                },
+                Action::CSCSLogin => {
+                    let action_tx = self.action_tx.clone();
+                    tokio::spawn(async move {
+                        util::cscs_login(action_tx).await.unwrap();
+                    });
+                }
+                Action::CSCSToken(ref access_token, ref refresh_token) => {
+                    let access_entry = keyring::Entry::new("coman", "cscs_access_token")?;
+                    access_entry.set_password(access_token.as_str())?;
+                    if let Some(r) = refresh_token.clone() {
+                        let refresh_entry = keyring::Entry::new("coman", "cscs_refresh_token")?;
+                        refresh_entry.set_password(r.as_str())?;
+                    }
+                    self.action_tx.send(Action::RemoteRefresh)?;
+                }
+                _ => {}
+            }
+            for component in self.components.iter_mut() {
+                if let Some(action) = component.update(action.clone())? {
+                    self.action_tx.send(action)?
+                };
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_resize(&mut self, tui: &mut Tui, w: u16, h: u16) -> Result<()> {
+        tui.resize(Rect::new(0, 0, w, h))?;
+        self.render(tui)?;
+        Ok(())
+    }
+
+    fn render(&mut self, tui: &mut Tui) -> Result<()> {
+        tui.draw(|frame| {
+            for component in self.components.iter_mut() {
+                if let Err(err) = component.draw(frame, frame.area()) {
+                    let _ = self
+                        .action_tx
+                        .send(Action::Error(format!("Failed to draw: {:?}", err)));
+                }
+            }
+        })?;
+        Ok(())
     }
 }

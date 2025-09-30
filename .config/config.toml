@@ -1,0 +1,13 @@
+[keybindings]
+[keybindings.Main]
+"q"="Quit"
+"Ctrl-d"="Quit"
+"Ctrl-c"="Quit"
+"Ctrl-z"="Suspend"
+"x"="Menu"
+"Esc"="Escape"
+"Enter"="Enter"
+"Up"="Up"
+"j"="Up"
+"Down"="Down"
+"k"="Down"
