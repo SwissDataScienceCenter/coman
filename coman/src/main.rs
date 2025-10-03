@@ -5,6 +5,7 @@ use color_eyre::Result;
 use crate::app::App;
 
 mod action;
+mod api_client;
 mod app;
 mod cli;
 mod components;
