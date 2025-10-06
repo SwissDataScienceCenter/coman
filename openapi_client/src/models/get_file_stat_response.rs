@@ -20,7 +20,7 @@ pub struct GetFileStatResponse {
 impl GetFileStatResponse {
     pub fn new(output: Option<models::FileStat>) -> GetFileStatResponse {
         GetFileStatResponse {
-            output: if let Some(x) = output {Some(Box::new(x))} else {None},
+            output: output.map(Box::new),
         }
     }
 }

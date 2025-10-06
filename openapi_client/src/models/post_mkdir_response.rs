@@ -20,7 +20,7 @@ pub struct PostMkdirResponse {
 impl PostMkdirResponse {
     pub fn new(output: Option<models::File>) -> PostMkdirResponse {
         PostMkdirResponse {
-            output: if let Some(x) = output {Some(Box::new(x))} else {None},
+            output: output.map(Box::new),
         }
     }
 }

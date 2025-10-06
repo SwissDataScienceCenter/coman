@@ -26,6 +26,8 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::error;
 
+use crate::trace_dbg;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Event {
     Init,
@@ -68,7 +70,7 @@ impl Tui {
             frame_rate: 60.0,
             tick_rate: 4.0,
             remote_refresh_rate: 5.0,
-            mouse: false,
+            mouse: true,
             paste: false,
         })
     }

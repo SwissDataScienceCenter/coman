@@ -1,7 +1,23 @@
+use color_eyre::Report;
 use serde::{Deserialize, Serialize};
 use strum::Display;
 
 use crate::app::{Mode, SubMode};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ErrorDetail {
+    pub message: String,
+    pub full: String,
+}
+
+impl ErrorDetail {
+    pub fn new(message: &'static str, err: Report) -> Self {
+        Self {
+            message: message.to_string(),
+            full: format!("{:#?}", err.wrap_err(message)),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Display, Serialize, Deserialize)]
 pub enum Action {
@@ -12,7 +28,7 @@ pub enum Action {
     Resume,
     Quit,
     ClearScreen,
-    Error(String),
+    Error(ErrorDetail),
     Help,
     Menu,
     MenuUp,
@@ -26,4 +42,5 @@ pub enum Action {
     RemoteRefresh,
     CSCSLogin,
     CSCSToken(String, Option<String>),
+    ClosePopup,
 }

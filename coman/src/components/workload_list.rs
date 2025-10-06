@@ -14,6 +14,7 @@ pub struct WorkloadList<'a> {
     list_items: Vec<ListItem<'a>>,
 }
 
+#[allow(dead_code)]
 impl<'a> WorkloadList<'a> {
     pub fn new() -> Self {
         Self {
@@ -63,6 +64,7 @@ impl<'a> Component for WorkloadList<'a> {
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+        self.last_area = area;
         frame.render_widget(Paragraph::new("hello world"), area);
         Ok(())
     }

@@ -8,7 +8,9 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{action::Action, config::Config, tui::Event};
 
+pub mod button;
 pub mod footer;
+pub mod popup;
 pub mod workload_list;
 pub mod workload_menu;
 

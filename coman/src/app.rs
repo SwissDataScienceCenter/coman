@@ -1,4 +1,4 @@
-use color_eyre::Result;
+use color_eyre::{Result, owo_colors::OwoColorize};
 use crossterm::event::KeyEvent;
 use ratatui::prelude::Rect;
 use serde::{Deserialize, Serialize};
@@ -6,11 +6,13 @@ use tokio::sync::mpsc;
 use tracing::{debug, info};
 
 use crate::{
-    action::Action,
+    action::{Action, ErrorDetail},
     components::{
-        Component, footer::Footer, workload_list::WorkloadList, workload_menu::WorkloadListMenu,
+        Component, footer::Footer, popup::Popup, workload_list::WorkloadList,
+        workload_menu::WorkloadListMenu,
     },
     config::Config,
+    trace_dbg,
     tui::{Event, Tui},
     util,
 };
@@ -51,6 +53,7 @@ impl App {
                 Box::new(WorkloadList::new()),
                 Box::new(Footer::new()),
                 Box::new(WorkloadListMenu::new()),
+                Box::new(Popup::new()),
             ],
             should_quit: false,
             should_suspend: false,
@@ -65,7 +68,7 @@ impl App {
 
     pub async fn run(&mut self) -> Result<()> {
         let mut tui = Tui::new()?
-            .mouse(true) // uncomment this line to enable mouse support
+            .mouse(true)
             .tick_rate(self.tick_rate)
             .frame_rate(self.frame_rate);
         tui.enter()?;
@@ -88,7 +91,6 @@ impl App {
                 tui.suspend()?;
                 action_tx.send(Action::Resume)?;
                 action_tx.send(Action::ClearScreen)?;
-                // tui.mouse(true);
                 tui.enter()?;
             } else if self.should_quit {
                 tui.stop()?;
@@ -148,10 +150,7 @@ impl App {
 
     fn handle_actions(&mut self, tui: &mut Tui) -> Result<()> {
         while let Ok(action) = self.action_rx.try_recv() {
-            if action != Action::Tick && action != Action::Render {
-                debug!("{action:?}");
-            }
-            match action {
+            match action.clone() {
                 Action::Tick => {
                     self.last_tick_key_events.drain(..);
                 }
@@ -171,16 +170,22 @@ impl App {
                         self.action_tx.send(Action::SubMode(SubMode::Main))?;
                     }
                 },
-                Action::Escape => match self.sub_mode {
-                    SubMode::Menu => {
+                Action::Escape => {
+                    if self.sub_mode == SubMode::Menu {
                         self.action_tx.send(Action::SubMode(SubMode::Main))?;
                     }
-                    _ => {}
-                },
+                }
                 Action::CSCSLogin => {
                     let action_tx = self.action_tx.clone();
                     tokio::spawn(async move {
-                        util::cscs_login(action_tx).await.unwrap();
+                        if let Err(e) = util::cscs_login(action_tx.clone()).await {
+                            action_tx
+                                .send(Action::Error(crate::action::ErrorDetail::new(
+                                    "Couldn't log in to CSCS",
+                                    e,
+                                )))
+                                .unwrap();
+                        }
                     });
                 }
                 Action::CSCSToken(ref access_token, ref refresh_token) => {
@@ -191,6 +196,9 @@ impl App {
                         refresh_entry.set_password(r.as_str())?;
                     }
                     self.action_tx.send(Action::RemoteRefresh)?;
+                }
+                Action::Error(err) => {
+                    tracing::event!(target: module_path!(),  tracing::Level::ERROR, err.full);
                 }
                 _ => {}
             }
@@ -215,7 +223,7 @@ impl App {
                 if let Err(err) = component.draw(frame, frame.area()) {
                     let _ = self
                         .action_tx
-                        .send(Action::Error(format!("Failed to draw: {:?}", err)));
+                        .send(Action::Error(ErrorDetail::new("Failed to draw", err)));
                 }
             }
         })?;

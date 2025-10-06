@@ -20,7 +20,7 @@ pub struct PutFileChownResponse {
 impl PutFileChownResponse {
     pub fn new(output: Option<models::File>) -> PutFileChownResponse {
         PutFileChownResponse {
-            output: if let Some(x) = output {Some(Box::new(x))} else {None},
+            output: output.map(Box::new),
         }
     }
 }

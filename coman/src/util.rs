@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use color_eyre::Result;
 use openidconnect::{
-    AdditionalProviderMetadata, ClientId, ClientSecret, DeviceAuthorizationUrl, IssuerUrl,
+    AdditionalProviderMetadata, ClientId, DeviceAuthorizationUrl, IssuerUrl,
     OAuth2TokenResponse, ProviderMetadata, Scope,
     core::{
         CoreAuthDisplay, CoreClaimName, CoreClaimType, CoreClient, CoreClientAuthMethod,

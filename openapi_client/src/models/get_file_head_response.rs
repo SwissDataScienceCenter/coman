@@ -20,7 +20,7 @@ pub struct GetFileHeadResponse {
 impl GetFileHeadResponse {
     pub fn new(output: Option<models::FileContent>) -> GetFileHeadResponse {
         GetFileHeadResponse {
-            output: if let Some(x) = output {Some(Box::new(x))} else {None},
+            output: output.map(Box::new),
         }
     }
 }

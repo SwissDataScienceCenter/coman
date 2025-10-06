@@ -20,7 +20,7 @@ pub struct PostFileSymlinkResponse {
 impl PostFileSymlinkResponse {
     pub fn new(output: Option<models::File>) -> PostFileSymlinkResponse {
         PostFileSymlinkResponse {
-            output: if let Some(x) = output {Some(Box::new(x))} else {None},
+            output: output.map(Box::new),
         }
     }
 }

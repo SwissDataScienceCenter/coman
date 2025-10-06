@@ -20,7 +20,7 @@ pub struct GetFileChecksumResponse {
 impl GetFileChecksumResponse {
     pub fn new(output: Option<models::FileChecksum>) -> GetFileChecksumResponse {
         GetFileChecksumResponse {
-            output: if let Some(x) = output {Some(Box::new(x))} else {None},
+            output: output.map(Box::new),
         }
     }
 }

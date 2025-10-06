@@ -1,4 +1,3 @@
-use color_eyre::Result;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
@@ -7,7 +6,6 @@ use crate::{
     components::Component,
     config::Config,
 };
-use crossterm::event::{KeyCode, KeyEventKind};
 use ratatui::{prelude::*, widgets::*};
 
 #[derive(Clone)]
@@ -44,6 +42,7 @@ pub struct WorkloadListMenu<'a> {
     items: Vec<MenuItem<'a>>,
 }
 
+#[allow(dead_code)]
 impl<'a> WorkloadListMenu<'a> {
     pub fn new() -> Self {
         Self {
@@ -132,6 +131,7 @@ impl<'a> Component for WorkloadListMenu<'a> {
                     self.command_tx
                         .as_mut()
                         .map(|tx| tx.send(self.items[index].action.clone()));
+                    self.select_none();
                     return Ok(Some(Action::Menu));
                 }
             }

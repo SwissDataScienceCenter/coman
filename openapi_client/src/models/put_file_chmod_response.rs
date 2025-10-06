@@ -20,7 +20,7 @@ pub struct PutFileChmodResponse {
 impl PutFileChmodResponse {
     pub fn new(output: Option<models::File>) -> PutFileChmodResponse {
         PutFileChmodResponse {
-            output: if let Some(x) = output {Some(Box::new(x))} else {None},
+            output: output.map(Box::new),
         }
     }
 }
