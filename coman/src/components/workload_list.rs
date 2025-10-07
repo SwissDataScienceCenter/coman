@@ -12,13 +12,16 @@ pub struct WorkloadList<'a> {
     state: ListState,
     last_area: Rect,
     list_items: Vec<ListItem<'a>>,
+    id: String,
+    focus: bool,
 }
 
 #[allow(dead_code)]
 impl<'a> WorkloadList<'a> {
-    pub fn new() -> Self {
+    pub fn new(id: String) -> Self {
         Self {
             last_area: Rect::ZERO,
+            id,
             ..Self::default()
         }
     }
@@ -40,6 +43,9 @@ impl<'a> WorkloadList<'a> {
 }
 
 impl<'a> Component for WorkloadList<'a> {
+    fn id(&self) -> String {
+        self.id.clone()
+    }
     fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
         self.command_tx = Some(tx);
         Ok(())
@@ -57,6 +63,13 @@ impl<'a> Component for WorkloadList<'a> {
             }
             Action::Render => {
                 // add any logic here that should run on every render
+            }
+            Action::FocusChanged(component_id, _) => {
+                if component_id == self.id {
+                    self.focus = true;
+                } else {
+                    self.focus = false;
+                }
             }
             _ => {}
         }

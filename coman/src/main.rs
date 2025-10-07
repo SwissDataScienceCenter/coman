@@ -11,6 +11,7 @@ mod cli;
 mod components;
 mod config;
 mod errors;
+mod focus_manager;
 mod logging;
 mod tui;
 mod util;

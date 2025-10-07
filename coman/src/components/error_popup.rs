@@ -1,36 +1,40 @@
 use color_eyre::eyre::eyre;
-use itertools::Itertools;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
     action::Action,
-    app::Mode,
     components::{Component, button::Button},
     config::Config,
-    trace_dbg,
+    focus_manager::Focus,
 };
 use ratatui::{prelude::*, widgets::*};
 
 #[derive(Default)]
-pub struct Popup {
+pub struct ErrorPopup {
     command_tx: Option<UnboundedSender<Action>>,
     config: Config,
     title: Option<String>,
     content: Option<String>,
     button: Button,
     show: bool,
+    id: String,
+    focus: Focus,
 }
 
-impl Popup {
-    pub fn new() -> Self {
+impl ErrorPopup {
+    pub fn new(id: String) -> Self {
         Self {
             button: Button::new("Ok".to_string()).on_click(Action::ClosePopup),
+            id,
             ..Default::default()
         }
     }
 }
 
-impl Component for Popup {
+impl Component for ErrorPopup {
+    fn id(&self) -> String {
+        self.id.clone()
+    }
     fn register_action_handler(
         &mut self,
         tx: UnboundedSender<Action>,
@@ -80,11 +84,28 @@ impl Component for Popup {
                 // add any logic here that should run on every render
             }
             Action::ClosePopup | Action::Enter | Action::Escape => {
-                self.show = false;
+                if self.focus != Focus::Inactive {
+                    self.show = false;
+                    return Ok(Some(Action::ReleaseFocus(self.id.clone())));
+                }
             }
             Action::Error(e) => {
                 self.show = true;
                 self.content = Some(e.message);
+                return Ok(Some(Action::RequestFocus(
+                    self.id.clone(),
+                    Focus::Exclusive,
+                )));
+            }
+            Action::FocusChanged(component_id, focus) => {
+                if component_id == self.id {
+                    self.focus = focus;
+                } else {
+                    match focus {
+                        Focus::Exclusive | Focus::Active => self.focus = Focus::Inactive,
+                        _ => {}
+                    }
+                }
             }
             _ => {}
         }

@@ -8,10 +8,11 @@ use tracing::{debug, info};
 use crate::{
     action::{Action, ErrorDetail},
     components::{
-        Component, footer::Footer, popup::Popup, workload_list::WorkloadList,
+        Component, error_popup::ErrorPopup, footer::Footer, workload_list::WorkloadList,
         workload_menu::WorkloadListMenu,
     },
     config::Config,
+    focus_manager::{Focus, FocusManager},
     trace_dbg,
     tui::{Event, Tui},
     util,
@@ -22,6 +23,7 @@ pub struct App {
     tick_rate: f64,
     frame_rate: f64,
     components: Vec<Box<dyn Component>>,
+    focus_manager: FocusManager,
     should_quit: bool,
     should_suspend: bool,
     mode: Mode,
@@ -46,15 +48,21 @@ pub enum Mode {
 impl App {
     pub fn new(tick_rate: f64, frame_rate: f64) -> Result<Self> {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
+        let workload_list_id = "WorkloadList".to_string();
+        let workload_list = WorkloadList::new(workload_list_id.clone());
+        let footer_id = "Footer".to_string();
+        let footer = Footer::new(footer_id.clone());
+        let focus_manager = FocusManager::new(workload_list_id);
+        action_tx.send(Action::RequestFocus(footer_id.clone(), Focus::Permanent))?;
         Ok(Self {
             tick_rate,
             frame_rate,
             components: vec![
-                Box::new(WorkloadList::new()),
-                Box::new(Footer::new()),
-                Box::new(WorkloadListMenu::new()),
-                Box::new(Popup::new()),
+                Box::new(workload_list),
+                Box::new(footer),
+                Box::new(ErrorPopup::new("ErrorPopup".to_string())),
             ],
+            focus_manager: focus_manager,
             should_quit: false,
             should_suspend: false,
             config: Config::new()?,
@@ -115,6 +123,7 @@ impl App {
             Event::Key(key) => self.handle_key_event(key)?,
             _ => {}
         }
+
         for component in self.components.iter_mut() {
             if let Some(action) = component.handle_events(Some(event.clone()))? {
                 action_tx.send(action)?;
@@ -202,10 +211,19 @@ impl App {
                 }
                 _ => {}
             }
+            if action != Action::Render && action != Action::Tick {
+                trace_dbg!(action.clone());
+            }
+            if let Some(follow_action) = self.focus_manager.update(action.clone())? {
+                self.action_tx.send(follow_action)?;
+            }
+
             for component in self.components.iter_mut() {
-                if let Some(action) = component.update(action.clone())? {
-                    self.action_tx.send(action)?
-                };
+                if self.focus_manager.should_receive_event(component.id()) {
+                    if let Some(action) = component.update(action.clone())? {
+                        self.action_tx.send(action)?
+                    };
+                }
             }
         }
         Ok(())

@@ -9,8 +9,8 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::{action::Action, config::Config, tui::Event};
 
 pub mod button;
+pub mod error_popup;
 pub mod footer;
-pub mod popup;
 pub mod workload_list;
 pub mod workload_menu;
 
@@ -19,6 +19,14 @@ pub mod workload_menu;
 /// Implementors of this trait can be registered with the main application loop and will be able to
 /// receive events, update state, and be rendered on the screen.
 pub trait Component {
+    /// Return the id of the component.
+    ///
+    /// This is used for things like focus management.
+    ///
+    /// # Returns
+    ///
+    /// * `String` - The (unique) id of the component.
+    fn id(&self) -> String;
     /// Register an action handler that can send actions for processing if necessary.
     ///
     /// # Arguments

@@ -5,6 +5,7 @@ use crate::{
     app::{Mode, SubMode},
     components::Component,
     config::Config,
+    focus_manager::Focus,
 };
 use ratatui::{prelude::*, widgets::*};
 
@@ -40,17 +41,20 @@ pub struct WorkloadListMenu<'a> {
     state: ListState,
     last_area: Rect,
     items: Vec<MenuItem<'a>>,
+    id: String,
+    focus: Focus,
 }
 
 #[allow(dead_code)]
 impl<'a> WorkloadListMenu<'a> {
-    pub fn new() -> Self {
+    pub fn new(id: String) -> Self {
         Self {
             last_area: Rect::ZERO,
             items: vec![
                 MenuItem::new("Login to CSCS", Action::CSCSLogin),
                 MenuItem::new("todo", Action::Escape),
             ],
+            id,
             ..Self::default()
         }
     }
@@ -58,6 +62,12 @@ impl<'a> WorkloadListMenu<'a> {
         match self.sub_mode {
             SubMode::Main => false,
             SubMode::Menu => true,
+        }
+    }
+    fn is_focused(&self) -> bool {
+        match self.focus {
+            Focus::Active | Focus::Permanent | Focus::Exclusive => true,
+            _ => false,
         }
     }
     pub fn select_none(&mut self) {
@@ -78,6 +88,9 @@ impl<'a> WorkloadListMenu<'a> {
 }
 
 impl<'a> Component for WorkloadListMenu<'a> {
+    fn id(&self) -> String {
+        self.id.clone()
+    }
     fn register_action_handler(
         &mut self,
         tx: UnboundedSender<Action>,
@@ -114,25 +127,50 @@ impl<'a> Component for WorkloadListMenu<'a> {
                 self.sub_mode = sub_mode;
                 if self.sub_mode == SubMode::Menu {
                     self.select_first();
+                    return Ok(Some(Action::RequestFocus(self.id.clone(), Focus::Active)));
                 }
             }
             Action::Up => {
-                if self.show() {
+                if self.show() && self.is_focused() {
                     self.select_previous();
                 }
             }
             Action::Down => {
-                if self.show() {
+                if self.show() && self.is_focused() {
                     self.select_next();
                 }
             }
             Action::Enter => {
+                if !self.is_focused() {
+                    return Ok(None);
+                }
                 if let Some(index) = self.state.selected() {
+                    self.command_tx.as_mut().map(|tx| tx.send(Action::Menu));
                     self.command_tx
+                        .clone()
                         .as_mut()
-                        .map(|tx| tx.send(self.items[index].action.clone()));
+                        .map(|tx| tx.send(Action::ReleaseFocus(self.id())));
                     self.select_none();
-                    return Ok(Some(Action::Menu));
+                    return Ok(Some(self.items[index].action.clone()));
+                }
+            }
+            Action::FocusChanged(component_id, focus) => {
+                if component_id == self.id {
+                    self.focus = focus;
+                } else {
+                    match (focus, self.focus.clone()) {
+                        (Focus::Active, Focus::Active) => self.focus = Focus::Inactive,
+                        (Focus::Active, Focus::PermanentInactive) => self.focus = Focus::Permanent, // focus changes to active means any exclusive focus has ended
+                        (Focus::Active, Focus::Exclusive) => {
+                            self.focus = Focus::Inactive;
+                        }
+                        (Focus::Exclusive, Focus::Active) => self.focus = Focus::Inactive,
+                        (Focus::Exclusive, Focus::Permanent) => {
+                            self.focus = Focus::PermanentInactive
+                        }
+                        (Focus::Exclusive, Focus::Exclusive) => self.focus = Focus::Inactive,
+                        _ => {}
+                    }
                 }
             }
             _ => {}

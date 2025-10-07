@@ -2,7 +2,10 @@ use color_eyre::Report;
 use serde::{Deserialize, Serialize};
 use strum::Display;
 
-use crate::app::{Mode, SubMode};
+use crate::{
+    app::{Mode, SubMode},
+    focus_manager::Focus,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ErrorDetail {
@@ -43,4 +46,7 @@ pub enum Action {
     CSCSLogin,
     CSCSToken(String, Option<String>),
     ClosePopup,
+    RequestFocus(String, Focus),
+    ReleaseFocus(String),
+    FocusChanged(String, Focus),
 }

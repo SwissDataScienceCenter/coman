@@ -2,28 +2,47 @@ use color_eyre::eyre::eyre;
 use itertools::Itertools;
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::{action::Action, app::Mode, components::Component, config::Config};
+use crate::{
+    action::Action,
+    app::Mode,
+    components::{Component, workload_menu::WorkloadListMenu},
+    config::Config,
+    focus_manager::Focus,
+};
 use ratatui::{prelude::*, widgets::*};
 
-#[derive(Default)]
 pub struct Footer {
     command_tx: Option<UnboundedSender<Action>>,
     config: Config,
     mode: Mode,
+    id: String,
+    menu: Box<dyn Component>,
+    focus: Focus,
 }
 
 impl Footer {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(id: String) -> Self {
+        Self {
+            id,
+            menu: Box::new(WorkloadListMenu::new("WorkloadListMenu".to_string())),
+            command_tx: None,
+            config: Config::default(),
+            mode: Mode::Main,
+            focus: Focus::Inactive,
+        }
     }
 }
 
 impl Component for Footer {
+    fn id(&self) -> String {
+        self.id.clone()
+    }
     fn register_action_handler(
         &mut self,
         tx: UnboundedSender<Action>,
     ) -> color_eyre::eyre::Result<()> {
-        self.command_tx = Some(tx);
+        self.command_tx = Some(tx.clone());
+        self.menu.register_action_handler(tx)?;
         Ok(())
     }
 
@@ -61,19 +80,33 @@ impl Component for Footer {
     }
 
     fn update(&mut self, action: Action) -> color_eyre::eyre::Result<Option<Action>> {
-        match action {
-            Action::Tick => {
-                // add any logic here that should run on every tick
-            }
-            Action::Render => {
-                // add any logic here that should run on every render
+        match action.clone() {
+            Action::FocusChanged(component_id, focus) => {
+                if component_id == self.id {
+                    self.focus = focus;
+                } else {
+                    match (focus, self.focus.clone()) {
+                        (Focus::Active, Focus::Active) => self.focus = Focus::Inactive,
+                        (Focus::Active, Focus::PermanentInactive) => self.focus = Focus::Permanent, // focus changes to active means any exclusive focus has ended
+                        (Focus::Active, Focus::Exclusive) => {
+                            self.focus = Focus::Inactive;
+                        }
+                        (Focus::Exclusive, Focus::Active) => self.focus = Focus::Inactive,
+                        (Focus::Exclusive, Focus::Permanent) => {
+                            self.focus = Focus::PermanentInactive
+                        }
+                        (Focus::Exclusive, Focus::Exclusive) => self.focus = Focus::Inactive,
+                        _ => {}
+                    }
+                }
             }
             Action::Mode(mode) => {
                 self.mode = mode;
             }
             _ => {}
-        }
-        Ok(None)
+        };
+        // forward events to menu
+        self.menu.update(action)
     }
     fn draw(
         &mut self,
@@ -124,6 +157,7 @@ impl Component for Footer {
             }
         };
         frame.render_widget(footer, layout[1]);
+        self.menu.draw(frame, area)?;
         Ok(())
     }
 }
