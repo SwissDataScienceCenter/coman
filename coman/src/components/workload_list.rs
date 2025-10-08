@@ -3,7 +3,7 @@ use ratatui::{prelude::*, widgets::*};
 use tokio::sync::mpsc::UnboundedSender;
 
 use super::Component;
-use crate::{action::Action, config::Config};
+use crate::{action::Action, config::Config, focus_manager::Focus};
 
 #[derive(Default)]
 pub struct WorkloadList<'a> {
@@ -13,7 +13,7 @@ pub struct WorkloadList<'a> {
     last_area: Rect,
     list_items: Vec<ListItem<'a>>,
     id: String,
-    focus: bool,
+    focus: Focus,
 }
 
 #[allow(dead_code)]
@@ -64,11 +64,9 @@ impl<'a> Component for WorkloadList<'a> {
             Action::Render => {
                 // add any logic here that should run on every render
             }
-            Action::FocusChanged(component_id, _) => {
+            Action::FocusChanged(component_id, focus) => {
                 if component_id == self.id {
-                    self.focus = true;
-                } else {
-                    self.focus = false;
+                    self.focus = focus;
                 }
             }
             _ => {}

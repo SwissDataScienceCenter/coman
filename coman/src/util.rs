@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use color_eyre::Result;
 use openidconnect::{
-    AdditionalProviderMetadata, ClientId, DeviceAuthorizationUrl, IssuerUrl,
-    OAuth2TokenResponse, ProviderMetadata, Scope,
+    AdditionalProviderMetadata, ClientId, DeviceAuthorizationUrl, IssuerUrl, OAuth2TokenResponse,
+    ProviderMetadata, Scope,
     core::{
         CoreAuthDisplay, CoreClaimName, CoreClaimType, CoreClient, CoreClientAuthMethod,
         CoreDeviceAuthorizationResponse, CoreGrantType, CoreJsonWebKey,
@@ -41,7 +41,7 @@ type DeviceProviderMetadata = ProviderMetadata<
     CoreSubjectIdentifierType,
 >;
 
-pub(crate) async fn cscs_login(action_tx: mpsc::UnboundedSender<Action>) -> Result<()> {
+pub(crate) async fn cscs_login() -> Result<(String, Option<String>)> {
     let http_client = reqwest::ClientBuilder::new()
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -90,6 +90,7 @@ pub(crate) async fn cscs_login(action_tx: mpsc::UnboundedSender<Action>) -> Resu
         .await?;
     let access_token = token.access_token().secret().to_owned();
     let refresh_token = token.refresh_token().map(|t| t.secret().to_owned());
-    action_tx.send(Action::CSCSToken(access_token, refresh_token))?;
-    Ok(())
+    Ok((access_token, refresh_token))
 }
+
+pub(crate) async fn cscs_list_systems() {}

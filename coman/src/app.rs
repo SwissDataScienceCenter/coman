@@ -187,13 +187,16 @@ impl App {
                 Action::CSCSLogin => {
                     let action_tx = self.action_tx.clone();
                     tokio::spawn(async move {
-                        if let Err(e) = util::cscs_login(action_tx.clone()).await {
-                            action_tx
+                        match util::cscs_login().await {
+                            Ok((access_token, refresh_token)) => action_tx
+                                .send(Action::CSCSToken(access_token, refresh_token))
+                                .unwrap(),
+                            Err(e) => action_tx
                                 .send(Action::Error(crate::action::ErrorDetail::new(
                                     "Couldn't log in to CSCS",
                                     e,
                                 )))
-                                .unwrap();
+                                .unwrap(),
                         }
                     });
                 }
