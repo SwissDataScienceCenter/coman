@@ -53,6 +53,12 @@ toml = "0.9.7"
 tracing = "0.1.40"
 tracing-error = "0.2.0"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "serde"] }
+tui-realm-stdlib = "3.0.0"
+tuirealm = { version = "3.1.0", features = [
+  "derive",
+  "crossterm",
+  "async-ports",
+] }
 
 [build-dependencies]
 anyhow = "1.0.90"
