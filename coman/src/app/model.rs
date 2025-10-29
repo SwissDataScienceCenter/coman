@@ -1,10 +1,19 @@
 use tuirealm::{
     Application, Update,
     ratatui::layout::{Constraint, Direction, Layout},
+    ratatui::widgets::Clear,
     terminal::{TerminalAdapter, TerminalBridge},
 };
 
-use crate::app::{ids::Id, messages::Msg, user_events::UserEvent};
+use crate::{
+    app::{
+        ids::Id,
+        messages::{MenuMsg, Msg},
+        user_events::UserEvent,
+    },
+    components::workload_menu::WorkloadMenu,
+    util::ui::draw_area_in_absolute,
+};
 
 pub struct Model<T>
 where
@@ -42,17 +51,44 @@ where
                         .margin(1)
                         .constraints(
                             [
-                                Constraint::Length(3), // Label
-                                Constraint::Length(3), // Other
+                                Constraint::Min(10), //WorkloadList
+                                Constraint::Max(1),  //Toolbar
                             ]
                             .as_ref(),
                         )
                         .split(f.area());
-                    self.app.view(&Id::HelloWorldLabel, f, chunks[0]);
-                    self.app.view(&Id::Other, f, chunks[1]);
+                    self.app.view(&Id::WorkloadList, f, chunks[0]);
+                    self.app.view(&Id::Toolbar, f, chunks[1]);
+
+                    if self.app.mounted(&Id::Menu) {
+                        let popup = draw_area_in_absolute(f.area(), 30, 20);
+                        f.render_widget(Clear, popup);
+                        self.app.view(&Id::Menu, f, popup);
+                    }
                 })
                 .is_ok()
         );
+    }
+    fn handle_menu_msg(&mut self, msg: MenuMsg) -> Option<Msg> {
+        match msg {
+            MenuMsg::Opened => {
+                assert!(
+                    self.app
+                        .mount(Id::Menu, Box::new(WorkloadMenu::default()), vec![])
+                        .is_ok()
+                );
+                assert!(self.app.active(&Id::Menu).is_ok());
+                None
+            }
+            MenuMsg::Closed => {
+                assert!(self.app.umount(&Id::Menu).is_ok());
+                None
+            }
+            MenuMsg::CSCSLogin => {
+                assert!(self.app.umount(&Id::Menu).is_ok());
+                Some(Msg::CSCSLogin)
+            }
+        }
     }
 }
 
@@ -72,7 +108,7 @@ where
                     self.quit = true; // Terminate
                     None
                 }
-                Msg::MenuOpened => None,
+                Msg::Menu(menu_msg) => self.handle_menu_msg(menu_msg),
                 Msg::CSCSLogin => None,
                 Msg::CSCSToken(_, _) => None,
 

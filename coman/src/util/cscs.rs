@@ -13,9 +13,6 @@ use openidconnect::{
     reqwest,
 };
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
-
-use crate::action::Action;
 
 const CSCS_URL: &str = "https://auth.cscs.ch/auth/realms/firecrest-clients";
 const CSCS_CLIENT_ID: &str = "67905e6e-8edf-4190-ae47-110f61c833ed";

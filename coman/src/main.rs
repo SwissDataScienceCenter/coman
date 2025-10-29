@@ -10,7 +10,7 @@ use tuirealm::{
 
 use crate::{
     app::{ids::Id, messages::Msg, model::Model, user_events::UserEvent},
-    components::{command_handler::CommandHandler, hello_world_label::HelloWorldLabel},
+    components::{global_listener::GlobalListener, toolbar::Toolbar, workload_list::WorkloadList},
 };
 
 mod app;
@@ -18,6 +18,7 @@ mod components;
 mod config;
 mod errors;
 mod logging;
+mod util;
 
 #[macro_use]
 extern crate tuirealm;
@@ -36,28 +37,37 @@ async fn main() -> Result<()> {
     let mut app: Application<Id, Msg, UserEvent> = Application::init(event_listener);
 
     // subscribe component to clause
+    app.mount(Id::Toolbar, Box::new(Toolbar::new()), vec![])?;
+    app.mount(Id::WorkloadList, Box::new(WorkloadList::default()), vec![])?;
     app.mount(
-        Id::HelloWorldLabel,
-        Box::new(HelloWorldLabel::new()),
-        // vec![Sub::new(
-        //     SubEventClause::User(UserEvent::WroteFile(Duration::ZERO)),
-        //     SubClause::Always,
-        // )],
-        vec![],
-    )?;
-    app.mount(
-        Id::CommandHandler,
-        Box::new(CommandHandler::default()),
-        vec![Sub::new(
-            SubEventClause::Keyboard(KeyEvent {
-                code: Key::Char('q'),
-                modifiers: KeyModifiers::NONE,
-            }),
-            SubClause::Always,
-        )],
+        Id::GlobalListener,
+        Box::new(GlobalListener::default()),
+        vec![
+            Sub::new(
+                SubEventClause::Keyboard(KeyEvent {
+                    code: Key::Char('q'),
+                    modifiers: KeyModifiers::NONE,
+                }),
+                SubClause::Always,
+            ),
+            Sub::new(
+                SubEventClause::Keyboard(KeyEvent {
+                    code: Key::Char('c'),
+                    modifiers: KeyModifiers::CONTROL,
+                }),
+                SubClause::Always,
+            ),
+            Sub::new(
+                SubEventClause::Keyboard(KeyEvent {
+                    code: Key::Char('x'),
+                    modifiers: KeyModifiers::NONE,
+                }),
+                SubClause::Not(Box::new(SubClause::IsMounted(Id::Menu))),
+            ),
+        ],
     )?;
 
-    app.active(&Id::HelloWorldLabel).expect("failed to active");
+    app.active(&Id::WorkloadList).expect("failed to active");
 
     let mut model = Model::new(app, CrosstermTerminalAdapter::new()?);
     // Main loop

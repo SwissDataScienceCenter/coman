@@ -4,19 +4,20 @@ use tuirealm::Component;
 use crate::app::{messages::Msg, user_events::UserEvent};
 
 #[derive(MockComponent)]
-pub struct HelloWorldLabel {
+pub struct Toolbar {
     component: Label,
 }
 
-impl HelloWorldLabel {
+impl Toolbar {
     pub fn new() -> Self {
         Self {
-            component: Label::default().text("Hello World"),
+            component: Label::default()
+                .text("q: quit, tab/shift+tab: change focus, x: menu, ?: help"),
         }
     }
 }
 
-impl Component<Msg, UserEvent> for HelloWorldLabel {
+impl Component<Msg, UserEvent> for Toolbar {
     fn on(&mut self, _ev: tuirealm::Event<UserEvent>) -> Option<Msg> {
         None
     }

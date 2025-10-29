@@ -1,6 +1,8 @@
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub enum Id {
-    HelloWorldLabel,
-    CommandHandler,
+    Toolbar,
+    WorkloadList,
+    GlobalListener,
+    Menu,
     Other,
 }
