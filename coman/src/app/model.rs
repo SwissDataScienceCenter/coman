@@ -8,10 +8,10 @@ use tuirealm::{
 use crate::{
     app::{
         ids::Id,
-        messages::{MenuMsg, Msg},
+        messages::{ErrorPopupMsg, MenuMsg, Msg},
         user_events::UserEvent,
     },
-    components::workload_menu::WorkloadMenu,
+    components::{error_popup::ErrorPopup, workload_menu::WorkloadMenu},
     util::ui::draw_area_in_absolute,
 };
 
@@ -69,6 +69,23 @@ where
                 .is_ok()
         );
     }
+    fn handle_error_popup_msg(&mut self, msg: ErrorPopupMsg) -> Option<Msg> {
+        match msg {
+            ErrorPopupMsg::Opened(error_msg) => {
+                assert!(
+                    self.app
+                        .mount(Id::ErrorPopup, Box::new(ErrorPopup::default()), vec![])
+                        .is_ok()
+                );
+                assert!(self.app.active(&Id::ErrorPopup).is_ok());
+                None
+            }
+            ErrorPopupMsg::Closed => {
+                assert!(self.app.umount(&Id::ErrorPopup).is_ok());
+                None
+            }
+        }
+    }
     fn handle_menu_msg(&mut self, msg: MenuMsg) -> Option<Msg> {
         match msg {
             MenuMsg::Opened => {
@@ -108,7 +125,9 @@ where
                     self.quit = true; // Terminate
                     None
                 }
+                Msg::Error(error_msg) => Some(Msg::ErrorPopup(ErrorPopupMsg::Opened(error_msg))),
                 Msg::Menu(menu_msg) => self.handle_menu_msg(menu_msg),
+                Msg::ErrorPopup(popup_msg) => self.handle_error_popup_msg(popup_msg),
                 Msg::CSCSLogin => None,
                 Msg::CSCSToken(_, _) => None,
 

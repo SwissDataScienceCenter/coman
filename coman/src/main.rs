@@ -85,7 +85,10 @@ fn run_tui() -> Result<()> {
                     code: Key::Char('x'),
                     modifiers: KeyModifiers::NONE,
                 }),
-                SubClause::Not(Box::new(SubClause::IsMounted(Id::Menu))),
+                SubClause::Not(Box::new(SubClause::AndMany(vec![
+                    SubClause::IsMounted(Id::Menu),
+                    SubClause::IsMounted(Id::ErrorPopup),
+                ]))),
             ),
         ],
     )?;
