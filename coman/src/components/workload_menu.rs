@@ -39,7 +39,7 @@ impl Default for WorkloadMenu {
                         .add_row()
                         .build(),
                 )
-                .selected_line(1),
+                .selected_line(0),
         }
     }
 }

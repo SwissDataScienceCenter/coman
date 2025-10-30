@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use color_eyre::Result;
+use color_eyre::{Result, eyre::Context};
 use openidconnect::{
     AdditionalProviderMetadata, ClientId, DeviceAuthorizationUrl, IssuerUrl, OAuth2TokenResponse,
     ProviderMetadata, Scope,
@@ -13,6 +13,11 @@ use openidconnect::{
     reqwest,
 };
 use serde::{Deserialize, Serialize};
+
+use crate::util::keyring::{Secret, store_secret};
+
+pub const ACCESS_TOKEN_SECRET_NAME: &str = "cscs_access_token";
+pub const REFRESH_TOKEN_SECRET_NAME: &str = "cscs_refresh_token";
 
 const CSCS_URL: &str = "https://auth.cscs.ch/auth/realms/firecrest-clients";
 const CSCS_CLIENT_ID: &str = "67905e6e-8edf-4190-ae47-110f61c833ed";
@@ -38,7 +43,7 @@ type DeviceProviderMetadata = ProviderMetadata<
     CoreSubjectIdentifierType,
 >;
 
-pub(crate) async fn cscs_login() -> Result<(String, Option<String>)> {
+pub(crate) async fn cscs_login() -> Result<(Secret, Option<Secret>)> {
     let http_client = reqwest::ClientBuilder::new()
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -87,7 +92,24 @@ pub(crate) async fn cscs_login() -> Result<(String, Option<String>)> {
         .await?;
     let access_token = token.access_token().secret().to_owned();
     let refresh_token = token.refresh_token().map(|t| t.secret().to_owned());
-    Ok((access_token, refresh_token))
+    Ok((
+        Secret::new(access_token),
+        refresh_token.map(|s| Secret::new(s)),
+    ))
+}
+
+pub(crate) async fn cli_cscs_login() -> Result<()> {
+    match cscs_login().await {
+        Ok(result) => {
+            store_secret(ACCESS_TOKEN_SECRET_NAME, result.0).await?;
+            if let Some(refresh_token) = result.1 {
+                store_secret(REFRESH_TOKEN_SECRET_NAME, refresh_token).await?;
+            }
+            println!("Successfully logged in");
+        }
+        Err(e) => Err(e).wrap_err("couldn't get acccess token")?,
+    };
+    Ok(())
 }
 
 pub(crate) async fn cscs_list_systems() {}

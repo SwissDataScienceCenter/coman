@@ -1,6 +1,8 @@
 use std::time::Duration;
 
-use color_eyre::Result;
+use clap::Parser;
+use color_eyre::{Result, eyre::Context};
+use keyring::set_global_service_name;
 use tokio::runtime::Handle;
 use tuirealm::{
     Application, EventListenerCfg, PollStrategy, Sub, SubClause, SubEventClause, Update,
@@ -10,10 +12,13 @@ use tuirealm::{
 
 use crate::{
     app::{ids::Id, messages::Msg, model::Model, user_events::UserEvent},
+    cli::{Cli, version},
     components::{global_listener::GlobalListener, toolbar::Toolbar, workload_list::WorkloadList},
+    util::cscs::cli_cscs_login,
 };
 
 mod app;
+mod cli;
 mod components;
 mod config;
 mod errors;
@@ -25,6 +30,24 @@ extern crate tuirealm;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    set_global_service_name(env!("CARGO_PKG_NAME"));
+    let args = Cli::parse();
+    match args.command {
+        Some(command) => match command {
+            cli::CliCommands::Version => println!("{}", version()),
+            cli::CliCommands::CSCS {
+                command: cscs_command,
+            } => match cscs_command {
+                cli::CSCSCommands::Login => cli_cscs_login().await?,
+            },
+        },
+        None => run_tui()?,
+    }
+
+    Ok(())
+}
+
+fn run_tui() -> Result<()> {
     crate::errors::init()?;
     crate::logging::init()?;
     let handle = Handle::current();
