@@ -613,6 +613,7 @@ dependencies = [
  "crossterm 0.29.0",
  "derive_deref",
  "directories",
+ "eyre",
  "futures",
  "human-panic",
  "itertools 0.14.0",

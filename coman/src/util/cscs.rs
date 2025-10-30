@@ -1,6 +1,5 @@
-use std::time::Duration;
-
-use color_eyre::{Result, eyre::Context};
+use color_eyre::{Result, Section, eyre::Context};
+use eyre::Report;
 use openidconnect::{
     AdditionalProviderMetadata, ClientId, DeviceAuthorizationUrl, IssuerUrl, OAuth2TokenResponse,
     ProviderMetadata, Scope,
@@ -13,8 +12,18 @@ use openidconnect::{
     reqwest,
 };
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
+use tokio::sync::mpsc;
+use tuirealm::{
+    Event,
+    listener::{ListenerResult, PollAsync},
+};
 
-use crate::util::keyring::{Secret, store_secret};
+use crate::{
+    app::user_events::{CscsEvent, UserEvent},
+    trace_dbg,
+    util::keyring::{Secret, store_secret},
+};
 
 pub const ACCESS_TOKEN_SECRET_NAME: &str = "cscs_access_token";
 pub const REFRESH_TOKEN_SECRET_NAME: &str = "cscs_refresh_token";
@@ -42,8 +51,7 @@ type DeviceProviderMetadata = ProviderMetadata<
     CoreResponseType,
     CoreSubjectIdentifierType,
 >;
-
-pub(crate) async fn cscs_login() -> Result<(Secret, Option<Secret>)> {
+pub(crate) async fn start_cscs_login() -> Result<(CoreDeviceAuthorizationResponse, String)> {
     let http_client = reqwest::ClientBuilder::new()
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -71,6 +79,45 @@ pub(crate) async fn cscs_login() -> Result<(Secret, Option<Secret>)> {
         .verification_uri_complete()
         .map(|u| u.secret().to_owned())
         .expect("couldn't construct the full verification url");
+    Ok((details, verify_url))
+}
+
+pub(crate) async fn finish_cscs_login(
+    device_details: CoreDeviceAuthorizationResponse,
+) -> Result<(Secret, Option<Secret>)> {
+    let http_client = reqwest::ClientBuilder::new()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("Client should build");
+    let provider_metadata =
+        DeviceProviderMetadata::discover_async(IssuerUrl::new(CSCS_URL.to_string())?, &http_client)
+            .await?;
+    let device_url = provider_metadata
+        .additional_metadata()
+        .device_authorization_endpoint
+        .clone();
+    let client = CoreClient::from_provider_metadata(
+        provider_metadata.clone(),
+        ClientId::new(CSCS_CLIENT_ID.to_string()),
+        None,
+    )
+    .set_device_authorization_url(device_url.clone())
+    .set_auth_type(openidconnect::AuthType::RequestBody);
+    let token = client
+        .exchange_device_access_token(&device_details)?
+        .request_async(
+            &http_client,
+            tokio::time::sleep,
+            Some(Duration::from_secs(TIMEOUT)),
+        )
+        .await?;
+    let access_token = token.access_token().secret().to_owned();
+    let refresh_token = token.refresh_token().map(|t| t.secret().to_owned());
+    Ok((Secret::new(access_token), refresh_token.map(Secret::new)))
+}
+
+pub(crate) async fn cscs_login() -> Result<(Secret, Option<Secret>)> {
+    let (details, verify_url) = start_cscs_login().await?;
 
     println!(
         "Please visit {} and authorize this application.",
@@ -82,20 +129,7 @@ pub(crate) async fn cscs_login() -> Result<(Secret, Option<Secret>)> {
             std::io::Result::Ok(())
         })
         .unwrap();
-    let token = client
-        .exchange_device_access_token(&details)?
-        .request_async(
-            &http_client,
-            tokio::time::sleep,
-            Some(Duration::from_secs(TIMEOUT)),
-        )
-        .await?;
-    let access_token = token.access_token().secret().to_owned();
-    let refresh_token = token.refresh_token().map(|t| t.secret().to_owned());
-    Ok((
-        Secret::new(access_token),
-        refresh_token.map(|s| Secret::new(s)),
-    ))
+    finish_cscs_login(details).await
 }
 
 pub(crate) async fn cli_cscs_login() -> Result<()> {
@@ -110,6 +144,78 @@ pub(crate) async fn cli_cscs_login() -> Result<()> {
         Err(e) => Err(e).wrap_err("couldn't get acccess token")?,
     };
     Ok(())
+}
+
+pub(crate) struct AsyncDeviceFlowPort {
+    receiver: mpsc::Receiver<(CoreDeviceAuthorizationResponse, String)>,
+    current_response: Option<CoreDeviceAuthorizationResponse>,
+}
+
+impl AsyncDeviceFlowPort {
+    pub fn new(receiver: mpsc::Receiver<(CoreDeviceAuthorizationResponse, String)>) -> Self {
+        Self {
+            receiver,
+            current_response: None,
+        }
+    }
+}
+
+///tui-realm bases a lot of logic around Events, which are things that originate from the environment through Ports
+/// we implement a custom port for waiting for devicecodeflow responses so we don't need to block the UI while waiting
+/// for a login
+/// this is a state machine that creates two events, first one that the flow has started with the verification URL the
+/// user should navigate to, then one once the flow is finished with the token
+#[tuirealm::async_trait]
+impl PollAsync<UserEvent> for AsyncDeviceFlowPort {
+    async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
+        if let Some(details) = self.current_response.clone() {
+            trace_dbg!("finishing login");
+            match finish_cscs_login(details).await {
+                Ok(result) => {
+                    if let Err(e) = store_secret(ACCESS_TOKEN_SECRET_NAME, result.0).await {
+                        return Ok(Some(Event::User(UserEvent::Error(format!(
+                            "{:?}",
+                            Err::<(), Report>(e).wrap_err("couldn't save access token")
+                        )))));
+                    }
+                    if let Some(refresh_token) = result.1
+                        && let Err(e) = store_secret(REFRESH_TOKEN_SECRET_NAME, refresh_token).await
+                    {
+                        return Ok(Some(Event::User(UserEvent::Error(format!(
+                            "{:?}",
+                            Err::<(), Report>(e).wrap_err("couldn't save refresh token")
+                        )))));
+                    }
+                    self.current_response = None;
+                    Ok(Some(Event::User(UserEvent::Cscs(CscsEvent::LoggedIn))))
+                }
+                Err(e) => {
+                    self.current_response = None;
+                    Ok(Some(Event::User(UserEvent::Error(format!(
+                        "{:?}",
+                        Err::<(), Report>(e)
+                            .wrap_err("couldn't get access token")
+                            .suggestion("please try again")
+                    )))))
+                }
+            }
+        } else if let Some((details, url)) = self.receiver.recv().await {
+            trace_dbg!("redirecting to url");
+            self.current_response = Some(details);
+            open::that(url.clone())
+                .or_else(|_| {
+                    println!("Couldn't open browser, please navigate to {}", url.clone());
+                    std::io::Result::Ok(())
+                })
+                .unwrap();
+            Ok(Some(Event::User(UserEvent::Info(format!(
+                "Please visit {} and authorize this application.",
+                url
+            )))))
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 pub(crate) async fn cscs_list_systems() {}

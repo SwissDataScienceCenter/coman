@@ -1,13 +1,12 @@
 use tui_realm_stdlib::Phantom;
 use tuirealm::{
-    Component, Event, MockComponent, Props, State,
-    command::CmdResult,
+    Component, Event, MockComponent,
     event::{Key, KeyEvent, KeyModifiers},
 };
 
 use crate::app::{
     messages::{MenuMsg, Msg},
-    user_events::UserEvent,
+    user_events::{CscsEvent, UserEvent},
 };
 
 #[derive(Default, MockComponent)]
@@ -30,6 +29,11 @@ impl Component<Msg, UserEvent> for GlobalListener {
                 code: Key::Char('x'),
                 ..
             }) => Some(Msg::Menu(MenuMsg::Opened)),
+            Event::User(UserEvent::Error(msg)) => Some(Msg::Error(msg)),
+            Event::User(UserEvent::Info(msg)) => Some(Msg::Info(msg)),
+            Event::User(UserEvent::Cscs(CscsEvent::LoggedIn)) => {
+                Some(Msg::Info("Successfully logged in".to_string()))
+            }
             _ => None,
         }
     }

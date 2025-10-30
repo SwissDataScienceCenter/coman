@@ -6,37 +6,37 @@ use tuirealm::{
 };
 
 use crate::app::{
-    messages::{ErrorPopupMsg, Msg},
+    messages::{InfoPopupMsg, Msg},
     user_events::UserEvent,
 };
 
 #[derive(MockComponent)]
-pub struct ErrorPopup {
+pub struct InfoPopup {
     component: Paragraph,
 }
 
-impl ErrorPopup {
+impl InfoPopup {
     pub fn new<S: Into<String>>(msg: S) -> Self {
         Self {
             component: Paragraph::default()
                 .borders(
                     Borders::default()
                         .modifiers(BorderType::Thick)
-                        .color(Color::Red),
+                        .color(Color::Green),
                 )
-                .title("Error", Alignment::Left)
+                .title("Info", Alignment::Left)
                 .text(vec![TextSpan::from(msg)]),
         }
     }
 }
 
-impl Component<Msg, UserEvent> for ErrorPopup {
+impl Component<Msg, UserEvent> for InfoPopup {
     fn on(&mut self, ev: tuirealm::Event<UserEvent>) -> Option<Msg> {
         match ev {
             Event::Keyboard(KeyEvent { code: Key::Esc, .. })
             | Event::Keyboard(KeyEvent {
                 code: Key::Enter, ..
-            }) => Some(Msg::ErrorPopup(ErrorPopupMsg::Closed)),
+            }) => Some(Msg::InfoPopup(InfoPopupMsg::Closed)),
             _ => None,
         }
     }

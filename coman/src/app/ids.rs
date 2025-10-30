@@ -4,6 +4,6 @@ pub enum Id {
     WorkloadList,
     GlobalListener,
     Menu,
+    InfoPopup,
     ErrorPopup,
-    Other,
 }

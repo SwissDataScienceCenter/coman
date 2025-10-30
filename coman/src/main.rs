@@ -1,7 +1,8 @@
 use std::time::Duration;
+use tokio::sync::mpsc;
 
 use clap::Parser;
-use color_eyre::{Result, eyre::Context};
+use color_eyre::Result;
 use keyring::set_global_service_name;
 use tokio::runtime::Handle;
 use tuirealm::{
@@ -11,10 +12,15 @@ use tuirealm::{
 };
 
 use crate::{
-    app::{ids::Id, messages::Msg, model::Model, user_events::UserEvent},
+    app::{
+        ids::Id,
+        messages::Msg,
+        model::Model,
+        user_events::{CscsEvent, UserEvent},
+    },
     cli::{Cli, version},
     components::{global_listener::GlobalListener, toolbar::Toolbar, workload_list::WorkloadList},
-    util::cscs::cli_cscs_login,
+    util::cscs::{AsyncDeviceFlowPort, cli_cscs_login},
 };
 
 mod app;
@@ -35,10 +41,10 @@ async fn main() -> Result<()> {
     match args.command {
         Some(command) => match command {
             cli::CliCommands::Version => println!("{}", version()),
-            cli::CliCommands::CSCS {
+            cli::CliCommands::Cscs {
                 command: cscs_command,
             } => match cscs_command {
-                cli::CSCSCommands::Login => cli_cscs_login().await?,
+                cli::CscsCommands::Login => cli_cscs_login().await?,
             },
         },
         None => run_tui()?,
@@ -52,10 +58,15 @@ fn run_tui() -> Result<()> {
     crate::logging::init()?;
     let handle = Handle::current();
 
+    let (cscs_device_tx, cscs_device_rx) = mpsc::channel(100);
     let event_listener = EventListenerCfg::default()
         .with_handle(handle)
-        .async_crossterm_input_listener(Duration::default(), 3);
-    // .add_async_port(Box::new(AsyncPort::new()), Duration::from_millis(1000), 1);
+        .async_crossterm_input_listener(Duration::default(), 3)
+        .add_async_port(
+            Box::new(AsyncDeviceFlowPort::new(cscs_device_rx)),
+            Duration::from_millis(500),
+            3,
+        );
 
     let mut app: Application<Id, Msg, UserEvent> = Application::init(event_listener);
 
@@ -81,6 +92,18 @@ fn run_tui() -> Result<()> {
                 SubClause::Always,
             ),
             Sub::new(
+                SubEventClause::Discriminant(UserEvent::Info("".to_string())),
+                SubClause::Always,
+            ),
+            Sub::new(
+                SubEventClause::Discriminant(UserEvent::Error("".to_string())),
+                SubClause::Always,
+            ),
+            Sub::new(
+                SubEventClause::User(UserEvent::Cscs(CscsEvent::LoggedIn)),
+                SubClause::Always,
+            ),
+            Sub::new(
                 SubEventClause::Keyboard(KeyEvent {
                     code: Key::Char('x'),
                     modifiers: KeyModifiers::NONE,
@@ -95,7 +118,7 @@ fn run_tui() -> Result<()> {
 
     app.active(&Id::WorkloadList).expect("failed to active");
 
-    let mut model = Model::new(app, CrosstermTerminalAdapter::new()?);
+    let mut model = Model::new(app, CrosstermTerminalAdapter::new()?, cscs_device_tx);
     // Main loop
     // NOTE: loop until quit; quit is set in update if AppClose is received from counter
     while !model.quit {

@@ -5,14 +5,14 @@ use crate::config::{get_config_dir, get_data_dir};
 #[derive(Subcommand, Debug)]
 pub enum CliCommands {
     Version,
-    CSCS {
+    Cscs {
         #[command(subcommand)]
-        command: CSCSCommands,
+        command: CscsCommands,
     },
 }
 
 #[derive(Subcommand, Debug)]
-pub enum CSCSCommands {
+pub enum CscsCommands {
     Login,
 }
 
