@@ -18,10 +18,17 @@ pub struct AppConfig {
     pub config_dir: PathBuf,
 }
 
+#[derive(Clone, Debug, Deserialize, Default)]
+pub struct CscsConfig {
+    #[serde(default)]
+    pub system: String,
+}
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Config {
     #[serde(default, flatten)]
     pub config: AppConfig,
+    #[serde(default)]
+    pub cscs: CscsConfig,
 }
 
 lazy_static! {
@@ -41,6 +48,7 @@ impl Config {
         let data_dir = get_data_dir();
         let config_dir = get_config_dir();
         let mut builder = config::Config::builder()
+            .add_source(config::File::from_str(CONFIG, config::FileFormat::Toml))
             .set_default("data_dir", data_dir.to_str().unwrap())?
             .set_default("config_dir", config_dir.to_str().unwrap())?;
 
@@ -51,22 +59,14 @@ impl Config {
             ("config.toml", config::FileFormat::Toml),
             ("config.ini", config::FileFormat::Ini),
         ];
-        let mut found_config = false;
         for (file, format) in &config_files {
             let source = config::File::from(config_dir.join(file))
                 .format(*format)
                 .required(false);
             builder = builder.add_source(source);
-            if config_dir.join(file).exists() {
-                found_config = true
-            }
-        }
-        if !found_config {
-            error!("No configuration file found. Application may not behave as expected");
         }
 
         let cfg: Self = builder.build()?.try_deserialize()?;
-
         Ok(cfg)
     }
 }
@@ -92,5 +92,5 @@ pub fn get_config_dir() -> PathBuf {
 }
 
 fn project_directory() -> Option<ProjectDirs> {
-    ProjectDirs::from("com", "kdheepak", env!("CARGO_PKG_NAME"))
+    ProjectDirs::from("ch", "sdsc", env!("CARGO_PKG_NAME"))
 }

@@ -1,11 +1,13 @@
-use std::env;
+use std::{env, io::stdout};
 
 use color_eyre::Result;
+use crossterm::event::DisableMouseCapture;
 use tokio::sync::mpsc;
 use tracing::error;
 use tuirealm::{
-    Event,
+    Event, EventListenerCfg,
     listener::{ListenerResult, PollAsync},
+    terminal::{CrosstermTerminalAdapter, TerminalBridge},
 };
 
 use crate::app::user_events::UserEvent;
@@ -22,6 +24,7 @@ pub fn init() -> Result<()> {
         .into_hooks();
     eyre_hook.install()?;
     std::panic::set_hook(Box::new(move |panic_info| {
+        crossterm::execute!(stdout(), DisableMouseCapture).unwrap_or_default();
         #[cfg(not(debug_assertions))]
         {
             use human_panic::{handle_dump, metadata, print_msg};
@@ -33,7 +36,7 @@ pub fn init() -> Result<()> {
             eprintln!("{}", panic_hook.panic_report(panic_info)); // prints color-eyre stack trace to stderr
         }
         let msg = format!("{}", panic_hook.panic_report(panic_info));
-        error!("Error: {}", strip_ansi_escapes::strip_str(msg));
+        error!("Error(hook): {}", strip_ansi_escapes::strip_str(msg));
 
         #[cfg(debug_assertions)]
         {

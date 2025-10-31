@@ -8,7 +8,7 @@ use tokio::runtime::Handle;
 use tuirealm::{
     Application, EventListenerCfg, PollStrategy, Sub, SubClause, SubEventClause, Update,
     event::{Key, KeyEvent, KeyModifiers},
-    terminal::CrosstermTerminalAdapter,
+    terminal::{CrosstermTerminalAdapter, TerminalBridge},
 };
 
 use crate::{
@@ -20,14 +20,15 @@ use crate::{
     },
     cli::{Cli, version},
     components::{global_listener::GlobalListener, toolbar::Toolbar, workload_list::WorkloadList},
+    cscs::handlers::{AsyncDeviceFlowPort, AsyncFetchWorkloadsPort, cli_cscs_login},
     errors::AsyncErrorPort,
-    util::cscs::{AsyncDeviceFlowPort, cli_cscs_login},
 };
 
 mod app;
 mod cli;
 mod components;
 mod config;
+mod cscs;
 mod errors;
 mod logging;
 mod util;
@@ -57,6 +58,9 @@ async fn main() -> Result<()> {
 fn run_tui() -> Result<()> {
     crate::errors::init()?;
     crate::logging::init()?;
+    //we initialize the terminal early so the panic handler that restores the terminal is correctly set up
+    let adapter = CrosstermTerminalAdapter::new()?;
+    let bridge = TerminalBridge::init(adapter).expect("Cannot initialize terminal");
     let handle = Handle::current();
 
     let (cscs_device_tx, cscs_device_rx) = mpsc::channel(100);
@@ -72,6 +76,11 @@ fn run_tui() -> Result<()> {
         .add_async_port(
             Box::new(AsyncErrorPort::new(error_rx)),
             Duration::default(),
+            1,
+        )
+        .add_async_port(
+            Box::new(AsyncFetchWorkloadsPort::new()),
+            Duration::from_secs(2),
             1,
         );
 
@@ -125,12 +134,7 @@ fn run_tui() -> Result<()> {
 
     app.active(&Id::WorkloadList).expect("failed to active");
 
-    let mut model = Model::new(
-        app,
-        CrosstermTerminalAdapter::new()?,
-        cscs_device_tx,
-        error_tx,
-    );
+    let mut model = Model::new(app, bridge, cscs_device_tx, error_tx);
     // Main loop
     // NOTE: loop until quit; quit is set in update if AppClose is received from counter
     while !model.quit {

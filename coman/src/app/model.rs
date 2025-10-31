@@ -13,8 +13,9 @@ use crate::{
         user_events::UserEvent,
     },
     components::{error_popup::ErrorPopup, info_popup::InfoPopup, workload_menu::WorkloadMenu},
+    cscs::handlers::start_cscs_device_login,
     trace_dbg,
-    util::{cscs::start_cscs_login, ui::draw_area_in_absolute},
+    util::ui::draw_area_in_absolute,
 };
 use tokio::sync::mpsc;
 
@@ -43,7 +44,7 @@ where
 {
     pub fn new(
         app: Application<Id, Msg, UserEvent>,
-        adapter: T,
+        bridge: TerminalBridge<T>,
         cscs_device_flow_tx: mpsc::Sender<(CoreDeviceAuthorizationResponse, String)>,
         error_tx: mpsc::Sender<String>,
     ) -> Self {
@@ -51,7 +52,7 @@ where
             app,
             quit: false,
             redraw: true,
-            terminal: TerminalBridge::init(adapter).expect("Cannot initialize terminal"),
+            terminal: bridge,
             cscs_device_flow_tx,
             error_tx,
         }
@@ -180,7 +181,7 @@ where
                     let device_flow_tx = self.cscs_device_flow_tx.clone();
                     let error_tx = self.error_tx.clone();
                     tokio::spawn(async move {
-                        match start_cscs_login().await {
+                        match start_cscs_device_login().await {
                             Ok(result) => device_flow_tx.send(result).await.unwrap(),
                             Err(e) => error_tx.send(format!("{:?}", e)).await.unwrap(),
                         }

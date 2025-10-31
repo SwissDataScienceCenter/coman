@@ -1,5 +1,6 @@
 use color_eyre::{Result, Section, eyre::Context};
 use eyre::Report;
+use openapi_client::apis::compute_api::get_jobs_compute_system_name_jobs_get;
 use openidconnect::{
     AdditionalProviderMetadata, ClientId, DeviceAuthorizationUrl, IssuerUrl, OAuth2TokenResponse,
     ProviderMetadata, Scope,
@@ -21,8 +22,10 @@ use tuirealm::{
 
 use crate::{
     app::user_events::{CscsEvent, UserEvent},
+    config::Config,
+    cscs::api_client::{ApiClient, CscsApi},
     trace_dbg,
-    util::keyring::{Secret, store_secret},
+    util::keyring::{Secret, get_secret, store_secret},
 };
 
 pub const ACCESS_TOKEN_SECRET_NAME: &str = "cscs_access_token";
@@ -51,7 +54,7 @@ type DeviceProviderMetadata = ProviderMetadata<
     CoreResponseType,
     CoreSubjectIdentifierType,
 >;
-pub(crate) async fn start_cscs_login() -> Result<(CoreDeviceAuthorizationResponse, String)> {
+pub(crate) async fn start_cscs_device_login() -> Result<(CoreDeviceAuthorizationResponse, String)> {
     let http_client = reqwest::ClientBuilder::new()
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -73,6 +76,8 @@ pub(crate) async fn start_cscs_login() -> Result<(CoreDeviceAuthorizationRespons
     let details: CoreDeviceAuthorizationResponse = client
         .exchange_device_code()
         .add_scope(Scope::new("profile".to_string()))
+        .add_scope(Scope::new("firecrest".to_string()))
+        .add_scope(Scope::new("firecrest-v2".to_string()))
         .request_async(&http_client)
         .await?;
     let verify_url = details
@@ -82,7 +87,7 @@ pub(crate) async fn start_cscs_login() -> Result<(CoreDeviceAuthorizationRespons
     Ok((details, verify_url))
 }
 
-pub(crate) async fn finish_cscs_login(
+pub(crate) async fn finish_cscs_device_login(
     device_details: CoreDeviceAuthorizationResponse,
 ) -> Result<(Secret, Option<Secret>)> {
     let http_client = reqwest::ClientBuilder::new()
@@ -117,7 +122,7 @@ pub(crate) async fn finish_cscs_login(
 }
 
 pub(crate) async fn cscs_login() -> Result<(Secret, Option<Secret>)> {
-    let (details, verify_url) = start_cscs_login().await?;
+    let (details, verify_url) = start_cscs_device_login().await?;
 
     println!(
         "Please visit {} and authorize this application.",
@@ -129,7 +134,7 @@ pub(crate) async fn cscs_login() -> Result<(Secret, Option<Secret>)> {
             std::io::Result::Ok(())
         })
         .unwrap();
-    finish_cscs_login(details).await
+    finish_cscs_device_login(details).await
 }
 
 pub(crate) async fn cli_cscs_login() -> Result<()> {
@@ -170,7 +175,7 @@ impl PollAsync<UserEvent> for AsyncDeviceFlowPort {
     async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
         if let Some(details) = self.current_response.clone() {
             trace_dbg!("finishing login");
-            match finish_cscs_login(details).await {
+            match finish_cscs_device_login(details).await {
                 Ok(result) => {
                     if let Err(e) = store_secret(ACCESS_TOKEN_SECRET_NAME, result.0).await {
                         return Ok(Some(Event::User(UserEvent::Error(format!(
@@ -217,5 +222,42 @@ impl PollAsync<UserEvent> for AsyncDeviceFlowPort {
         }
     }
 }
+pub(crate) struct AsyncFetchWorkloadsPort {}
 
-pub(crate) async fn cscs_list_systems() {}
+impl AsyncFetchWorkloadsPort {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+#[tuirealm::async_trait]
+impl PollAsync<UserEvent> for AsyncFetchWorkloadsPort {
+    async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
+        match get_secret(ACCESS_TOKEN_SECRET_NAME).await {
+            Ok(result) => match result {
+                Some(access_token) => {
+                    trace_dbg!(access_token.0.clone());
+                    let api_client = CscsApi::new(access_token, None).unwrap();
+                    let config = Config::new().unwrap();
+                    let systems = api_client.list_systems().await;
+                    let formatted = format!("{:?}", systems);
+                    trace_dbg!(formatted);
+                    match api_client.list_jobs(config.cscs.system, Some(true)).await {
+                        Ok(jobs) => {
+                            let jobs = trace_dbg!(jobs);
+                            Ok(Some(Event::User(UserEvent::Cscs(
+                                CscsEvent::GotWorkloadData(jobs),
+                            ))))
+                        }
+                        Err(e) => {
+                            trace_dbg!(e);
+                            Ok(Some(Event::None))
+                        }
+                    }
+                }
+                None => Ok(Some(Event::None)),
+            },
+            Err(e) => Ok(Some(Event::User(UserEvent::Error(format!("{:?}", e))))),
+        }
+    }
+}
