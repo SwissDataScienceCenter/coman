@@ -33,6 +33,8 @@ where
 
     /// Tokio channel sender for starting device code flow in Port
     pub cscs_device_flow_tx: mpsc::Sender<(CoreDeviceAuthorizationResponse, String)>,
+    ///Used to allow sending errors from tokio::spawn async jobs
+    pub error_tx: mpsc::Sender<String>,
 }
 
 impl<T> Model<T>
@@ -43,6 +45,7 @@ where
         app: Application<Id, Msg, UserEvent>,
         adapter: T,
         cscs_device_flow_tx: mpsc::Sender<(CoreDeviceAuthorizationResponse, String)>,
+        error_tx: mpsc::Sender<String>,
     ) -> Self {
         Self {
             app,
@@ -50,6 +53,7 @@ where
             redraw: true,
             terminal: TerminalBridge::init(adapter).expect("Cannot initialize terminal"),
             cscs_device_flow_tx,
+            error_tx,
         }
     }
 
@@ -174,10 +178,11 @@ where
                 Msg::InfoPopup(popup_msg) => self.handle_info_popup_msg(popup_msg),
                 Msg::Cscs(CscsMsg::Login) => {
                     let device_flow_tx = self.cscs_device_flow_tx.clone();
+                    let error_tx = self.error_tx.clone();
                     tokio::spawn(async move {
                         match start_cscs_login().await {
                             Ok(result) => device_flow_tx.send(result).await.unwrap(),
-                            Err(e) => todo!(),
+                            Err(e) => error_tx.send(format!("{:?}", e)).await.unwrap(),
                         }
                     });
                     None

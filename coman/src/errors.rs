@@ -1,7 +1,14 @@
 use std::env;
 
 use color_eyre::Result;
+use tokio::sync::mpsc;
 use tracing::error;
+use tuirealm::{
+    Event,
+    listener::{ListenerResult, PollAsync},
+};
+
+use crate::app::user_events::UserEvent;
 
 pub fn init() -> Result<()> {
     let (panic_hook, eyre_hook) = color_eyre::config::HookBuilder::default()
@@ -69,4 +76,26 @@ macro_rules! trace_dbg {
         ($ex:expr) => {
                 trace_dbg!(level: tracing::Level::DEBUG, $ex)
         };
+}
+
+// Used to allow forwarding errors to the normal event system from async background jobs
+pub(crate) struct AsyncErrorPort {
+    receiver: mpsc::Receiver<String>,
+}
+
+impl AsyncErrorPort {
+    pub fn new(receiver: mpsc::Receiver<String>) -> Self {
+        Self { receiver }
+    }
+}
+
+#[tuirealm::async_trait]
+impl PollAsync<UserEvent> for AsyncErrorPort {
+    async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
+        if let Some(error_msg) = self.receiver.recv().await {
+            Ok(Some(Event::User(UserEvent::Error(error_msg))))
+        } else {
+            Ok(None)
+        }
+    }
 }
