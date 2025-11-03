@@ -14,6 +14,16 @@ pub enum CliCommands {
 #[derive(Subcommand, Debug)]
 pub enum CscsCommands {
     Login,
+    #[clap(alias("j"))]
+    Job {
+        #[command(subcommand)]
+        command: CscsJobCommands,
+    },
+}
+#[derive(Subcommand, Debug)]
+pub enum CscsJobCommands {
+    #[clap(alias("ls"))]
+    List,
 }
 
 #[derive(Parser, Debug)]

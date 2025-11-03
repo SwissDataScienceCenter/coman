@@ -20,7 +20,9 @@ use crate::{
     },
     cli::{Cli, version},
     components::{global_listener::GlobalListener, toolbar::Toolbar, workload_list::WorkloadList},
-    cscs::handlers::{AsyncDeviceFlowPort, AsyncFetchWorkloadsPort, cli_cscs_login},
+    cscs::handlers::{
+        AsyncDeviceFlowPort, AsyncFetchWorkloadsPort, cli_cscs_job_list, cli_cscs_login,
+    },
     errors::AsyncErrorPort,
 };
 
@@ -47,6 +49,9 @@ async fn main() -> Result<()> {
                 command: cscs_command,
             } => match cscs_command {
                 cli::CscsCommands::Login => cli_cscs_login().await?,
+                cli::CscsCommands::Job { command } => match command {
+                    cli::CscsJobCommands::List => cli_cscs_job_list().await?,
+                },
             },
         },
         None => run_tui()?,

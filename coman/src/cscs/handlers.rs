@@ -1,6 +1,8 @@
-use color_eyre::{Result, Section, eyre::Context};
+use color_eyre::{
+    Result, Section,
+    eyre::{Context, eyre},
+};
 use eyre::Report;
-use openapi_client::apis::compute_api::get_jobs_compute_system_name_jobs_get;
 use openidconnect::{
     AdditionalProviderMetadata, ClientId, DeviceAuthorizationUrl, IssuerUrl, OAuth2TokenResponse,
     ProviderMetadata, Scope,
@@ -23,7 +25,7 @@ use tuirealm::{
 use crate::{
     app::user_events::{CscsEvent, UserEvent},
     config::Config,
-    cscs::api_client::{ApiClient, CscsApi},
+    cscs::api_client::{ApiClient, CscsApi, Job},
     trace_dbg,
     util::keyring::{Secret, get_secret, store_secret},
 };
@@ -150,6 +152,17 @@ pub(crate) async fn cli_cscs_login() -> Result<()> {
     };
     Ok(())
 }
+pub(crate) async fn cli_cscs_job_list() -> Result<()> {
+    match cscs_job_list().await {
+        Ok(jobs) => {
+            let mut table = tabled::Table::new(jobs);
+            table.with(tabled::settings::Style::modern());
+            println!("{}", table);
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
+}
 
 pub(crate) struct AsyncDeviceFlowPort {
     receiver: mpsc::Receiver<(CoreDeviceAuthorizationResponse, String)>,
@@ -230,34 +243,35 @@ impl AsyncFetchWorkloadsPort {
     }
 }
 
+async fn cscs_job_list() -> Result<Vec<Job>> {
+    match get_secret(ACCESS_TOKEN_SECRET_NAME).await {
+        Ok(Some(access_token)) => {
+            let api_client = CscsApi::new(access_token.0).unwrap();
+            let config = Config::new().unwrap();
+            let systems = api_client.list_systems().await;
+            let formatted = format!("{:?}", systems);
+            trace_dbg!(formatted);
+            api_client.list_jobs(config.cscs.system, Some(true)).await
+        }
+        Ok(None) => Err(eyre!("not logged in")),
+        Err(e) => Err(e),
+    }
+}
+
 #[tuirealm::async_trait]
 impl PollAsync<UserEvent> for AsyncFetchWorkloadsPort {
     async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
-        match get_secret(ACCESS_TOKEN_SECRET_NAME).await {
-            Ok(result) => match result {
-                Some(access_token) => {
-                    trace_dbg!(access_token.0.clone());
-                    let api_client = CscsApi::new(access_token, None).unwrap();
-                    let config = Config::new().unwrap();
-                    let systems = api_client.list_systems().await;
-                    let formatted = format!("{:?}", systems);
-                    trace_dbg!(formatted);
-                    match api_client.list_jobs(config.cscs.system, Some(true)).await {
-                        Ok(jobs) => {
-                            let jobs = trace_dbg!(jobs);
-                            Ok(Some(Event::User(UserEvent::Cscs(
-                                CscsEvent::GotWorkloadData(jobs),
-                            ))))
-                        }
-                        Err(e) => {
-                            trace_dbg!(e);
-                            Ok(Some(Event::None))
-                        }
-                    }
-                }
-                None => Ok(Some(Event::None)),
-            },
-            Err(e) => Ok(Some(Event::User(UserEvent::Error(format!("{:?}", e))))),
+        match cscs_job_list().await {
+            Ok(jobs) => {
+                let jobs = trace_dbg!(jobs);
+                Ok(Some(Event::User(UserEvent::Cscs(
+                    CscsEvent::GotWorkloadData(jobs),
+                ))))
+            }
+            Err(e) => {
+                trace_dbg!(e);
+                Ok(Some(Event::None))
+            }
         }
     }
 }

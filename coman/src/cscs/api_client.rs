@@ -1,19 +1,17 @@
 use color_eyre::eyre::{Context, Result};
-use openapi_client::{
-    apis::{
-        compute_api::{
-            get_jobs_compute_system_name_jobs_get, post_job_submit_compute_system_name_jobs_post,
-        },
-        configuration::Configuration,
-        status_api::get_systems_status_systems_get,
-    },
-    models::{
-        FileSystem as CSCSFileSystem, HpcCluster, JobDescriptionModel, JobModel,
-        PostJobSubmitRequest,
-    },
+use firecrest_client::{
+    client::FirecrestClient,
+    compute_api::get_compute_system_jobs,
+    status_api::get_status_systems,
+    types::{FileSystem as CSCSFileSystem, HpcclusterOutput, JobModelOutput},
 };
+use std::fmt::Display;
+use strum::Display;
 
-use crate::util::keyring::Secret;
+use crate::{
+    cscs::handlers::ACCESS_TOKEN_SECRET_NAME,
+    util::keyring::{Secret, get_secret},
+};
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord)]
 struct FileSystem {
     data_type: String,
@@ -23,28 +21,28 @@ struct FileSystem {
 impl From<CSCSFileSystem> for FileSystem {
     fn from(value: CSCSFileSystem) -> Self {
         Self {
-            data_type: value.data_type.to_string(),
+            data_type: serde_json::to_string(&value.data_type).expect("got invalid data type"),
             default_work_dir: value.default_work_dir.unwrap_or(false),
             path: value.path,
         }
     }
 }
 
-#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord)]
+#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, Display)]
 enum JobStatus {
     Running,
     Finished,
     Failed,
 }
-#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord)]
+#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, tabled::Tabled)]
 pub struct Job {
     id: usize,
     name: String,
     status: JobStatus,
     user: String,
 }
-impl From<JobModel> for Job {
-    fn from(value: JobModel) -> Self {
+impl From<JobModelOutput> for Job {
+    fn from(value: JobModelOutput) -> Self {
         Self {
             id: value.job_id as usize,
             name: value.name,
@@ -58,8 +56,8 @@ pub struct System {
     name: String,
     file_systems: Vec<FileSystem>,
 }
-impl From<HpcCluster> for System {
-    fn from(value: HpcCluster) -> Self {
+impl From<HpcclusterOutput> for System {
+    fn from(value: HpcclusterOutput) -> Self {
         Self {
             name: value.name,
             file_systems: value
@@ -77,46 +75,34 @@ pub(crate) trait ApiClient {
 }
 
 pub struct CscsApi {
-    config: Configuration,
-    refresh_token: Option<Secret>,
+    client: FirecrestClient,
 }
 
 impl CscsApi {
-    pub fn new(access_token: Secret, refresh_token: Option<Secret>) -> Result<Self> {
-        let config = Configuration {
-            oauth_access_token: Some(access_token.0),
-            base_path: "https://api.cscs.ch/hpc/firecrest/v2".to_owned(),
-            ..Default::default()
-        };
-        Ok(Self {
-            config,
-            refresh_token,
-        })
+    pub fn new(token: String) -> Result<Self> {
+        let client = FirecrestClient::default()
+            .base_path("https://api.cscs.ch/hpc/firecrest/v2/".to_owned())?
+            .token(token);
+        Ok(Self { client })
     }
 }
 
 impl ApiClient for CscsApi {
     async fn start_job(&self) -> Result<()> {
-        let req = PostJobSubmitRequest::new(JobDescriptionModel::new("/".to_string()));
-        let _ = post_job_submit_compute_system_name_jobs_post(&self.config, "system_name", req)
-            .await
-            .wrap_err("couldn't post job")?;
         Ok(())
     }
     async fn list_systems(&self) -> Result<Vec<System>> {
-        let result = get_systems_status_systems_get(&self.config)
+        let result = get_status_systems(&self.client)
             .await
             .wrap_err("couldn't list CSCS systems")?;
         Ok(result.systems.into_iter().map(|s| s.into()).collect())
     }
     async fn list_jobs(&self, system_name: String, all_users: Option<bool>) -> Result<Vec<Job>> {
-        let result =
-            get_jobs_compute_system_name_jobs_get(&self.config, system_name.as_str(), all_users)
-                .await
-                .wrap_err("couldn't fetch cscs jobs")?;
+        let result = get_compute_system_jobs(&self.client, system_name.as_str(), None)
+            .await
+            .wrap_err("couldn't fetch cscs jobs")?;
         Ok(result
             .jobs
-            .flatten()
             .map(|jobs| jobs.into_iter().map(|j| j.into()).collect())
             .unwrap_or(vec![]))
     }
