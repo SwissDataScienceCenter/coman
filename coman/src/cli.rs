@@ -29,6 +29,8 @@ pub enum CscsCommands {
 pub enum CscsJobCommands {
     #[clap(alias("ls"))]
     List,
+    #[clap(alias("s"))]
+    Submit,
 }
 #[derive(Subcommand, Debug)]
 pub enum CscsSystemCommands {

@@ -76,8 +76,11 @@ impl FirecrestClient {
             Ok(content)
         } else {
             let content = resp.text().await?;
-            Err(FirecrestError::ResponseError { status, content })
-                .wrap_err(format!("Request failed for {}", url))
+            Err(FirecrestError::ResponseError {
+                status,
+                content: content.clone(),
+            })
+            .wrap_err(format!("Request failed for {}: \n{}", url, content))
         }
     }
     pub async fn get(&self, path: &str, params: Option<Vec<(&str, &str)>>) -> Result<String> {
@@ -94,6 +97,6 @@ impl FirecrestClient {
         params: Option<Vec<(&str, &str)>>,
     ) -> Result<String> {
         self.request(path, reqwest::Method::POST, Some(body), params)
-            .await //todo: add body!
+            .await
     }
 }

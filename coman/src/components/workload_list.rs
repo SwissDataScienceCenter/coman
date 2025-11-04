@@ -1,12 +1,15 @@
 use tui_realm_stdlib::List;
 use tuirealm::{
-    Component, Event, MockComponent,
+    AttrValue, Attribute, Component, Event, MockComponent,
     command::{Cmd, CmdResult, Direction, Position},
     event::{Key, KeyEvent},
-    props::{Alignment, BorderType, Borders, Color},
+    props::{Alignment, BorderType, Borders, Color, TableBuilder, TextSpan},
 };
 
-use crate::app::{messages::Msg, user_events::UserEvent};
+use crate::app::{
+    messages::Msg,
+    user_events::{CscsEvent, UserEvent},
+};
 
 #[derive(MockComponent)]
 pub(crate) struct WorkloadList {
@@ -53,6 +56,22 @@ impl Component<Msg, UserEvent> for WorkloadList {
             }) => self.perform(Cmd::GoTo(Position::Begin)),
             Event::Keyboard(KeyEvent { code: Key::End, .. }) => {
                 self.perform(Cmd::GoTo(Position::End))
+            }
+            Event::User(UserEvent::Cscs(CscsEvent::GotWorkloadData(data))) => {
+                let mut table = TableBuilder::default();
+                for (idx, job) in data.iter().enumerate() {
+                    if idx > 0 {
+                        table.add_row();
+                    }
+                    table
+                        .add_col(TextSpan::from(job.name.clone()).bold())
+                        .add_col(TextSpan::from(" "))
+                        .add_col(TextSpan::from(job.status.to_string()))
+                        .add_col(TextSpan::from(" "))
+                        .add_col(TextSpan::from(job.id.to_string()));
+                }
+                self.attr(Attribute::Content, AttrValue::Table(table.build()));
+                self.perform(Cmd::Change)
             }
             _ => CmdResult::None,
         };

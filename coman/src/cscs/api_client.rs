@@ -1,7 +1,7 @@
 use color_eyre::eyre::{Context, Result};
 use firecrest_client::{
     client::FirecrestClient,
-    compute_api::get_compute_system_jobs,
+    compute_api::{get_compute_system_jobs, post_compute_system_job},
     status_api::get_status_systems,
     types::{
         FileSystem as CSCSFileSystem, HealthCheckType, HpcclusterOutput, JobModelOutput,
@@ -14,6 +14,7 @@ use tabled::Table;
 
 use crate::{
     cscs::handlers::ACCESS_TOKEN_SECRET_NAME,
+    trace_dbg,
     util::keyring::{Secret, get_secret},
 };
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, tabled::Tabled)]
@@ -33,24 +34,31 @@ impl From<CSCSFileSystem> for FileSystem {
 }
 
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, Display)]
-enum JobStatus {
+pub enum JobStatus {
     Running,
     Finished,
+    Cancelled,
     Failed,
 }
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, tabled::Tabled)]
 pub struct Job {
-    id: usize,
-    name: String,
-    status: JobStatus,
-    user: String,
+    pub id: usize,
+    pub name: String,
+    pub status: JobStatus,
+    pub user: String,
 }
 impl From<JobModelOutput> for Job {
     fn from(value: JobModelOutput) -> Self {
         Self {
             id: value.job_id as usize,
             name: value.name,
-            status: JobStatus::Running,
+            status: match value.status.state.as_str() {
+                "RUNNING" => JobStatus::Running,
+                "FAILED" => JobStatus::Failed,
+                "COMPLETED" => JobStatus::Finished,
+                "CANCELLED" => JobStatus::Cancelled,
+                other => panic!("got job status: {}", other),
+            },
             user: value.user.unwrap_or("".to_string()),
         }
     }
@@ -141,7 +149,10 @@ impl CscsApi {
             .token(token);
         Ok(Self { client })
     }
-    pub async fn start_job(&self) -> Result<()> {
+    pub async fn start_job(&self, system_name: String) -> Result<()> {
+        let result = post_compute_system_job(&self.client, &system_name,"test","#!/bin/bash\n\n#SBATCH --job-name=test\n#SBATCH --ntasks=1\n#SBATCH --time=10:00\n\n sleep 360",None).await?;
+        let _ = trace_dbg!(result);
+
         Ok(())
     }
     pub async fn list_systems(&self) -> Result<Vec<System>> {
@@ -155,7 +166,7 @@ impl CscsApi {
         system_name: String,
         all_users: Option<bool>,
     ) -> Result<Vec<Job>> {
-        let result = get_compute_system_jobs(&self.client, system_name.as_str(), all_users)
+        let result = get_compute_system_jobs(&self.client, &system_name, all_users)
             .await
             .wrap_err("couldn't fetch cscs jobs")?;
         Ok(result

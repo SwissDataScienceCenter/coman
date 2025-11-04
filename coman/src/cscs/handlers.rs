@@ -164,6 +164,10 @@ pub(crate) async fn cli_cscs_job_list() -> Result<()> {
     }
 }
 
+pub(crate) async fn cli_cscs_job_start() -> Result<()> {
+    cscs_start_job().await
+}
+
 pub(crate) async fn cli_cscs_system_list() -> Result<()> {
     match cscs_system_list().await {
         Ok(systems) => {
@@ -272,6 +276,19 @@ async fn cscs_job_list() -> Result<Vec<Job>> {
             let api_client = CscsApi::new(access_token.0).unwrap();
             let config = Config::new().unwrap();
             api_client.list_jobs(config.cscs.system, Some(true)).await
+        }
+        Ok(None) => Err(eyre!("not logged in")),
+        Err(e) => Err(e),
+    }
+}
+
+async fn cscs_start_job() -> Result<()> {
+    match get_secret(ACCESS_TOKEN_SECRET_NAME).await {
+        Ok(Some(access_token)) => {
+            let api_client = CscsApi::new(access_token.0).unwrap();
+            let config = Config::new().unwrap();
+            api_client.start_job(config.cscs.system).await?;
+            Ok(())
         }
         Ok(None) => Err(eyre!("not logged in")),
         Err(e) => Err(e),
