@@ -22,6 +22,7 @@ use crate::{
     components::{global_listener::GlobalListener, toolbar::Toolbar, workload_list::WorkloadList},
     cscs::handlers::{
         AsyncDeviceFlowPort, AsyncFetchWorkloadsPort, cli_cscs_job_list, cli_cscs_login,
+        cli_cscs_system_list,
     },
     errors::AsyncErrorPort,
 };
@@ -51,6 +52,9 @@ async fn main() -> Result<()> {
                 cli::CscsCommands::Login => cli_cscs_login().await?,
                 cli::CscsCommands::Job { command } => match command {
                     cli::CscsJobCommands::List => cli_cscs_job_list().await?,
+                },
+                cli::CscsCommands::System { command } => match command {
+                    cli::CscsSystemCommands::List => cli_cscs_system_list().await?,
                 },
             },
         },

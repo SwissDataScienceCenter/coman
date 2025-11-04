@@ -3,16 +3,20 @@ use firecrest_client::{
     client::FirecrestClient,
     compute_api::get_compute_system_jobs,
     status_api::get_status_systems,
-    types::{FileSystem as CSCSFileSystem, HpcclusterOutput, JobModelOutput},
+    types::{
+        FileSystem as CSCSFileSystem, HealthCheckType, HpcclusterOutput, JobModelOutput,
+        SchedulerServiceHealth,
+    },
 };
 use std::fmt::Display;
 use strum::Display;
+use tabled::Table;
 
 use crate::{
     cscs::handlers::ACCESS_TOKEN_SECRET_NAME,
     util::keyring::{Secret, get_secret},
 };
-#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord)]
+#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, tabled::Tabled)]
 struct FileSystem {
     data_type: String,
     default_work_dir: bool,
@@ -51,10 +55,56 @@ impl From<JobModelOutput> for Job {
         }
     }
 }
-#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord)]
+
+#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, Display, tabled::Tabled)]
+pub enum ServiceType {
+    Scheduler,
+    Filesystem,
+    Ssh,
+    S3,
+    Exception,
+}
+
+impl From<HealthCheckType> for ServiceType {
+    fn from(value: HealthCheckType) -> Self {
+        match value {
+            HealthCheckType::Scheduler => ServiceType::Scheduler,
+            HealthCheckType::Filesystem => ServiceType::Filesystem,
+            HealthCheckType::Ssh => ServiceType::Ssh,
+            HealthCheckType::S3 => ServiceType::S3,
+            HealthCheckType::Exception => ServiceType::Exception,
+        }
+    }
+}
+
+#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, tabled::Tabled)]
+pub struct ServicesHealth {
+    #[tabled(order = 1)]
+    healthy: bool,
+    #[tabled(order = 0)]
+    service_type: ServiceType,
+
+    #[tabled(skip)]
+    message: String,
+}
+
+impl From<SchedulerServiceHealth> for ServicesHealth {
+    fn from(value: SchedulerServiceHealth) -> Self {
+        Self {
+            healthy: value.healthy.unwrap_or(false),
+            service_type: value.service_type.into(),
+            message: value.message.unwrap_or("".to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, tabled::Tabled)]
 pub struct System {
     name: String,
+    #[tabled(skip)]
     file_systems: Vec<FileSystem>,
+    #[tabled(display = "display_health")]
+    services_health: Option<Vec<ServicesHealth>>,
 }
 impl From<HpcclusterOutput> for System {
     fn from(value: HpcclusterOutput) -> Self {
@@ -64,14 +114,20 @@ impl From<HpcclusterOutput> for System {
                 .file_systems
                 .map(|f| f.into_iter().map(|fs| fs.into()).collect())
                 .unwrap_or_default(),
+            services_health: value
+                .services_health
+                .map(|s| s.into_iter().map(|sh| sh.into()).collect()),
         }
     }
 }
-
-pub(crate) trait ApiClient {
-    async fn start_job(&self) -> Result<()>;
-    async fn list_systems(&self) -> Result<Vec<System>>;
-    async fn list_jobs(&self, system_name: String, all_users: Option<bool>) -> Result<Vec<Job>>;
+fn display_health(h: &Option<Vec<ServicesHealth>>) -> String {
+    h.clone()
+        .map(|healths| {
+            tabled::Table::new(healths)
+                .with(tabled::settings::Style::extended())
+                .to_string()
+        })
+        .unwrap_or("".to_string())
 }
 
 pub struct CscsApi {
@@ -85,20 +141,21 @@ impl CscsApi {
             .token(token);
         Ok(Self { client })
     }
-}
-
-impl ApiClient for CscsApi {
-    async fn start_job(&self) -> Result<()> {
+    pub async fn start_job(&self) -> Result<()> {
         Ok(())
     }
-    async fn list_systems(&self) -> Result<Vec<System>> {
+    pub async fn list_systems(&self) -> Result<Vec<System>> {
         let result = get_status_systems(&self.client)
             .await
             .wrap_err("couldn't list CSCS systems")?;
         Ok(result.systems.into_iter().map(|s| s.into()).collect())
     }
-    async fn list_jobs(&self, system_name: String, all_users: Option<bool>) -> Result<Vec<Job>> {
-        let result = get_compute_system_jobs(&self.client, system_name.as_str(), None)
+    pub async fn list_jobs(
+        &self,
+        system_name: String,
+        all_users: Option<bool>,
+    ) -> Result<Vec<Job>> {
+        let result = get_compute_system_jobs(&self.client, system_name.as_str(), all_users)
             .await
             .wrap_err("couldn't fetch cscs jobs")?;
         Ok(result

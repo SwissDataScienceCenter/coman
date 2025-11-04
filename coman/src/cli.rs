@@ -19,9 +19,19 @@ pub enum CscsCommands {
         #[command(subcommand)]
         command: CscsJobCommands,
     },
+    #[clap(alias("s"))]
+    System {
+        #[command(subcommand)]
+        command: CscsSystemCommands,
+    },
 }
 #[derive(Subcommand, Debug)]
 pub enum CscsJobCommands {
+    #[clap(alias("ls"))]
+    List,
+}
+#[derive(Subcommand, Debug)]
+pub enum CscsSystemCommands {
     #[clap(alias("ls"))]
     List,
 }

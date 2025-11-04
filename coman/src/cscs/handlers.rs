@@ -25,7 +25,7 @@ use tuirealm::{
 use crate::{
     app::user_events::{CscsEvent, UserEvent},
     config::Config,
-    cscs::api_client::{ApiClient, CscsApi, Job},
+    cscs::api_client::{CscsApi, Job, System},
     trace_dbg,
     util::keyring::{Secret, get_secret, store_secret},
 };
@@ -164,6 +164,18 @@ pub(crate) async fn cli_cscs_job_list() -> Result<()> {
     }
 }
 
+pub(crate) async fn cli_cscs_system_list() -> Result<()> {
+    match cscs_system_list().await {
+        Ok(systems) => {
+            let mut table = tabled::Table::new(systems);
+            table.with(tabled::settings::Style::modern());
+            println!("{}", table);
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
+}
+
 pub(crate) struct AsyncDeviceFlowPort {
     receiver: mpsc::Receiver<(CoreDeviceAuthorizationResponse, String)>,
     current_response: Option<CoreDeviceAuthorizationResponse>,
@@ -243,14 +255,22 @@ impl AsyncFetchWorkloadsPort {
     }
 }
 
+async fn cscs_system_list() -> Result<Vec<System>> {
+    match get_secret(ACCESS_TOKEN_SECRET_NAME).await {
+        Ok(Some(access_token)) => {
+            let api_client = CscsApi::new(access_token.0).unwrap();
+            api_client.list_systems().await
+        }
+        Ok(None) => Err(eyre!("not logged in")),
+        Err(e) => Err(e),
+    }
+}
+
 async fn cscs_job_list() -> Result<Vec<Job>> {
     match get_secret(ACCESS_TOKEN_SECRET_NAME).await {
         Ok(Some(access_token)) => {
             let api_client = CscsApi::new(access_token.0).unwrap();
             let config = Config::new().unwrap();
-            let systems = api_client.list_systems().await;
-            let formatted = format!("{:?}", systems);
-            trace_dbg!(formatted);
             api_client.list_jobs(config.cscs.system, Some(true)).await
         }
         Ok(None) => Err(eyre!("not logged in")),
