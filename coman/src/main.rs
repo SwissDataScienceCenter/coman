@@ -52,7 +52,11 @@ async fn main() -> Result<()> {
                 cli::CscsCommands::Login => cli_cscs_login().await?,
                 cli::CscsCommands::Job { command } => match command {
                     cli::CscsJobCommands::List => cli_cscs_job_list().await?,
-                    cli::CscsJobCommands::Submit => cli_cscs_job_start().await?,
+                    cli::CscsJobCommands::Submit {
+                        script_file,
+                        image,
+                        command,
+                    } => cli_cscs_job_start(script_file, image, command).await?,
                 },
                 cli::CscsCommands::System { command } => match command {
                     cli::CscsSystemCommands::List => cli_cscs_system_list().await?,

@@ -1,25 +1,39 @@
+use std::path::PathBuf;
+
 use crate::{
     client::FirecrestClient,
     types::{
-        GetJobResponse, GetSystemsResponse, JobDescriptionModel, JobDescriptionModelEnv,
-        PostJobSubmissionResponse, PostJobSubmitRequest,
+        GetJobResponse, JobDescriptionModel, JobDescriptionModelEnv, PostJobSubmissionResponse,
+        PostJobSubmitRequest,
     },
 };
-use eyre::Result;
+use eyre::{Result, eyre};
 use serde_json::json;
 
 pub async fn post_compute_system_job(
     client: &FirecrestClient,
     system_name: &str,
     name: &str,
-    script: &str,
-    working_dir: Option<&str>,
+    script: Option<&str>,
+    script_path: Option<PathBuf>,
+    working_dir: Option<PathBuf>,
 ) -> Result<PostJobSubmissionResponse> {
+    if script.is_none() && script_path.is_none() {
+        return Err(eyre!("either script or script_path must be set"));
+    }
     let body = PostJobSubmitRequest {
         job: JobDescriptionModel {
             name: Some(name.to_string()),
-            script: Some(script.to_string()),
-            working_directory: working_dir.unwrap_or("/").to_string(),
+            script: script.map(|s| s.to_owned()),
+            script_path: script_path
+                .map(|s| s.into_os_string().into_string())
+                .transpose()
+                .map_err(|_| eyre!("couldn't convert script path"))?,
+            working_directory: working_dir
+                .map(|s| s.into_os_string().into_string())
+                .transpose()
+                .map_err(|_| eyre!("couldn't convert working dir path"))?
+                .unwrap_or("/".to_owned()),
             env: Some(JobDescriptionModelEnv::Object(json!({"test":"test"}))),
             ..Default::default()
         },
@@ -31,6 +45,7 @@ pub async fn post_compute_system_job(
         .post(
             format!("compute/{system_name}/jobs").as_str(),
             body_json,
+            None,
             None,
         )
         .await?;

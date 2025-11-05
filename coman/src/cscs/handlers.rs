@@ -15,7 +15,7 @@ use openidconnect::{
     reqwest,
 };
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 use tokio::sync::mpsc;
 use tuirealm::{
     Event,
@@ -25,9 +25,12 @@ use tuirealm::{
 use crate::{
     app::user_events::{CscsEvent, UserEvent},
     config::Config,
-    cscs::api_client::{CscsApi, Job, System},
+    cscs::api_client::{CscsApi, FileSystemType, Job, System},
     trace_dbg,
-    util::keyring::{Secret, get_secret, store_secret},
+    util::{
+        keyring::{Secret, get_secret, store_secret},
+        types::DockerImageUrl,
+    },
 };
 
 pub const ACCESS_TOKEN_SECRET_NAME: &str = "cscs_access_token";
@@ -164,8 +167,12 @@ pub(crate) async fn cli_cscs_job_list() -> Result<()> {
     }
 }
 
-pub(crate) async fn cli_cscs_job_start() -> Result<()> {
-    cscs_start_job().await
+pub(crate) async fn cli_cscs_job_start(
+    script_file: Option<PathBuf>,
+    image: Option<DockerImageUrl>,
+    command: Option<Vec<String>>,
+) -> Result<()> {
+    cscs_start_job(script_file, image, command).await
 }
 
 pub(crate) async fn cli_cscs_system_list() -> Result<()> {
@@ -275,19 +282,98 @@ async fn cscs_job_list() -> Result<Vec<Job>> {
         Ok(Some(access_token)) => {
             let api_client = CscsApi::new(access_token.0).unwrap();
             let config = Config::new().unwrap();
-            api_client.list_jobs(config.cscs.system, Some(true)).await
+            api_client.list_jobs(&config.cscs.system, Some(true)).await
         }
         Ok(None) => Err(eyre!("not logged in")),
         Err(e) => Err(e),
     }
 }
 
-async fn cscs_start_job() -> Result<()> {
+async fn cscs_start_job(
+    script_file: Option<PathBuf>,
+    image: Option<DockerImageUrl>,
+    command: Option<Vec<String>>,
+) -> Result<()> {
     match get_secret(ACCESS_TOKEN_SECRET_NAME).await {
         Ok(Some(access_token)) => {
             let api_client = CscsApi::new(access_token.0).unwrap();
             let config = Config::new().unwrap();
-            api_client.start_job(config.cscs.system).await?;
+            let user_info = api_client.get_userinfo(&config.cscs.system).await?;
+            let system = api_client.get_system(&config.cscs.system).await?;
+            let scratch = match system {
+                Some(system) => PathBuf::from(
+                    system
+                        .file_systems
+                        .iter()
+                        .find(|fs| fs.data_type == FileSystemType::Scratch)
+                        .ok_or(eyre!("couldn't find scratch space for system"))?
+                        .path
+                        .clone(),
+                ),
+                None => {
+                    return Err(eyre!(
+                        "couldn't get system description for {}",
+                        config.cscs.system
+                    ));
+                }
+            };
+            let base_path = scratch
+                .join(user_info.name.clone())
+                .join(config.cscs.name.clone().unwrap_or("coman".to_owned()));
+            let mut tera = tera::Tera::default();
+
+            let environment_path = base_path.join("environment.toml");
+            let environment_template = config.cscs.edf_file_template;
+            tera.add_raw_template("environment.toml", &environment_template)?;
+            let mut context = tera::Context::new();
+            context.insert(
+                "edf_image",
+                &image.unwrap_or(config.cscs.image.try_into()?).to_edf(),
+            );
+            let environment_file = tera.render("environment.toml", &context)?;
+            api_client
+                .mkdir(&config.cscs.system, base_path.clone())
+                .await?;
+            api_client
+                .chmod(&config.cscs.system, base_path.clone(), "700")
+                .await?;
+            api_client
+                .upload(
+                    &config.cscs.system,
+                    environment_path.clone(),
+                    environment_file.into_bytes(),
+                )
+                .await?;
+
+            // upload script
+            let script_path = base_path.join("script.sh");
+            let script_template = script_file
+                .map(std::fs::read_to_string)
+                .unwrap_or(Ok(config.cscs.sbatch_script_template))?;
+            tera.add_raw_template("script.sh", &script_template)?;
+            let mut context = tera::Context::new();
+            context.insert(
+                "name",
+                &config
+                    .cscs
+                    .name
+                    .unwrap_or(format!("{}-coman", user_info.name)),
+            );
+            context.insert("command", &config.cscs.command.join(" "));
+            context.insert("environment_file", &environment_path);
+            let script = tera.render("script.sh", &context)?;
+            api_client
+                .upload(
+                    &config.cscs.system,
+                    script_path.clone(),
+                    script.into_bytes(),
+                )
+                .await?;
+
+            // start job
+            api_client
+                .start_job(&config.cscs.system, script_path)
+                .await?;
             Ok(())
         }
         Ok(None) => Err(eyre!("not logged in")),

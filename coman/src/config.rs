@@ -5,12 +5,12 @@ use std::{env, path::PathBuf};
 use color_eyre::Result;
 use directories::ProjectDirs;
 use lazy_static::lazy_static;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tracing::error;
 
-const CONFIG: &str = include_str!("../.config/config.toml");
+const DEFAULT_CONFIG_TOML: &str = include_str!("../.config/config.toml");
 
-#[derive(Clone, Debug, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct AppConfig {
     #[serde(default)]
     pub data_dir: PathBuf,
@@ -18,12 +18,22 @@ pub struct AppConfig {
     pub config_dir: PathBuf,
 }
 
-#[derive(Clone, Debug, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct CscsConfig {
     #[serde(default)]
     pub system: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub sbatch_script_template: String,
+    #[serde(default)]
+    pub image: String,
+    #[serde(default)]
+    pub edf_file_template: String,
+    #[serde(default)]
+    pub command: Vec<String>,
 }
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default, flatten)]
     pub config: AppConfig,
@@ -48,22 +58,59 @@ impl Config {
         let data_dir = get_data_dir();
         let config_dir = get_config_dir();
         let mut builder = config::Config::builder()
-            .add_source(config::File::from_str(CONFIG, config::FileFormat::Toml))
+            .add_source(config::File::from_str(
+                DEFAULT_CONFIG_TOML,
+                config::FileFormat::Toml,
+            ))
             .set_default("data_dir", data_dir.to_str().unwrap())?
             .set_default("config_dir", config_dir.to_str().unwrap())?;
 
         let config_files = [
-            ("config.json5", config::FileFormat::Json5),
-            ("config.json", config::FileFormat::Json),
-            ("config.yaml", config::FileFormat::Yaml),
-            ("config.toml", config::FileFormat::Toml),
-            ("config.ini", config::FileFormat::Ini),
+            (
+                format!("{}.toml", PROJECT_NAME.to_lowercase()),
+                config::FileFormat::Toml,
+            ),
+            (
+                format!("{}.json5", PROJECT_NAME.to_lowercase()),
+                config::FileFormat::Json5,
+            ),
+            (
+                format!("{}.json", PROJECT_NAME.to_lowercase()),
+                config::FileFormat::Json,
+            ),
+            (
+                format!("{}.yaml", PROJECT_NAME.to_lowercase()),
+                config::FileFormat::Yaml,
+            ),
+            (
+                format!("{}.ini", PROJECT_NAME.to_lowercase()),
+                config::FileFormat::Ini,
+            ),
         ];
         for (file, format) in &config_files {
             let source = config::File::from(config_dir.join(file))
                 .format(*format)
                 .required(false);
             builder = builder.add_source(source);
+        }
+
+        // find config override in current directory
+        let mut search_path = std::env::current_dir().expect("current directory does not exist");
+        loop {
+            for (file, format) in &config_files {
+                if search_path.join(file).exists() {
+                    let source = config::File::from(search_path.join(file))
+                        .format(*format)
+                        .required(false);
+                    builder = builder.add_source(source);
+                    break;
+                }
+            }
+            if let Some(p) = search_path.parent() {
+                search_path = p.to_path_buf();
+            } else {
+                break;
+            }
         }
 
         let cfg: Self = builder.build()?.try_deserialize()?;

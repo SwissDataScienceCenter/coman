@@ -2,31 +2,73 @@ use color_eyre::eyre::{Context, Result};
 use firecrest_client::{
     client::FirecrestClient,
     compute_api::{get_compute_system_jobs, post_compute_system_job},
-    status_api::get_status_systems,
+    filesystem_api::{
+        post_filesystem_ops_mkdir, post_filesystem_ops_upload, put_filesystem_ops_chmod,
+    },
+    status_api::{get_status_systems, get_status_userinfo},
     types::{
-        FileSystem as CSCSFileSystem, HealthCheckType, HpcclusterOutput, JobModelOutput,
-        SchedulerServiceHealth,
+        FileSystem as CSCSFileSystem, FileSystemDataType, HealthCheckType, HpcclusterOutput,
+        JobModelOutput, SchedulerServiceHealth, UserInfoResponse,
     },
 };
-use std::fmt::Display;
+use std::{fmt::Display, path::PathBuf};
 use strum::Display;
 use tabled::Table;
+use tracing::instrument::WithSubscriber;
 
 use crate::{
     cscs::handlers::ACCESS_TOKEN_SECRET_NAME,
     trace_dbg,
     util::keyring::{Secret, get_secret},
 };
+
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, tabled::Tabled)]
-struct FileSystem {
-    data_type: String,
-    default_work_dir: bool,
-    path: String,
+pub struct UserInfo {
+    pub id: String,
+    pub name: String,
+    pub group: String,
+}
+impl From<UserInfoResponse> for UserInfo {
+    fn from(value: UserInfoResponse) -> Self {
+        Self {
+            id: value.user.id,
+            name: value.user.name,
+            group: value.group.name,
+        }
+    }
+}
+
+#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, tabled::Tabled, Display)]
+pub enum FileSystemType {
+    Users,
+    Store,
+    Archive,
+    Apps,
+    Scratch,
+    Project,
+}
+impl From<FileSystemDataType> for FileSystemType {
+    fn from(value: FileSystemDataType) -> Self {
+        match value {
+            FileSystemDataType::Users => Self::Users,
+            FileSystemDataType::Store => Self::Store,
+            FileSystemDataType::Archive => Self::Archive,
+            FileSystemDataType::Apps => Self::Apps,
+            FileSystemDataType::Scratch => Self::Scratch,
+            FileSystemDataType::Project => Self::Project,
+        }
+    }
+}
+#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, tabled::Tabled)]
+pub struct FileSystem {
+    pub data_type: FileSystemType,
+    pub default_work_dir: bool,
+    pub path: String,
 }
 impl From<CSCSFileSystem> for FileSystem {
     fn from(value: CSCSFileSystem) -> Self {
         Self {
-            data_type: serde_json::to_string(&value.data_type).expect("got invalid data type"),
+            data_type: value.data_type.into(),
             default_work_dir: value.default_work_dir.unwrap_or(false),
             path: value.path,
         }
@@ -108,11 +150,11 @@ impl From<SchedulerServiceHealth> for ServicesHealth {
 
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, tabled::Tabled)]
 pub struct System {
-    name: String,
+    pub name: String,
     #[tabled(skip)]
-    file_systems: Vec<FileSystem>,
+    pub file_systems: Vec<FileSystem>,
     #[tabled(display = "display_health")]
-    services_health: Option<Vec<ServicesHealth>>,
+    pub services_health: Option<Vec<ServicesHealth>>,
 }
 impl From<HpcclusterOutput> for System {
     fn from(value: HpcclusterOutput) -> Self {
@@ -149,29 +191,63 @@ impl CscsApi {
             .token(token);
         Ok(Self { client })
     }
-    pub async fn start_job(&self, system_name: String) -> Result<()> {
-        let result = post_compute_system_job(&self.client, &system_name,"test","#!/bin/bash\n\n#SBATCH --job-name=test\n#SBATCH --ntasks=1\n#SBATCH --time=10:00\n\n sleep 360",None).await?;
+    pub async fn start_job(&self, system_name: &str, script_path: PathBuf) -> Result<()> {
+        let result = post_compute_system_job(
+            &self.client,
+            system_name,
+            "test",
+            None,
+            Some(script_path),
+            None,
+        )
+        .await?;
         let _ = trace_dbg!(result);
 
         Ok(())
+    }
+    pub async fn get_system(&self, system: &str) -> Result<Option<System>> {
+        let systems = self.list_systems().await?;
+        Ok(systems.into_iter().find(|s| s.name == system))
     }
     pub async fn list_systems(&self) -> Result<Vec<System>> {
         let result = get_status_systems(&self.client)
             .await
             .wrap_err("couldn't list CSCS systems")?;
+        let result = dbg!(result);
         Ok(result.systems.into_iter().map(|s| s.into()).collect())
     }
-    pub async fn list_jobs(
-        &self,
-        system_name: String,
-        all_users: Option<bool>,
-    ) -> Result<Vec<Job>> {
-        let result = get_compute_system_jobs(&self.client, &system_name, all_users)
+    pub async fn list_jobs(&self, system_name: &str, all_users: Option<bool>) -> Result<Vec<Job>> {
+        let result = get_compute_system_jobs(&self.client, system_name, all_users)
             .await
             .wrap_err("couldn't fetch cscs jobs")?;
         Ok(result
             .jobs
             .map(|jobs| jobs.into_iter().map(|j| j.into()).collect())
             .unwrap_or(vec![]))
+    }
+
+    pub async fn mkdir(&self, system_name: &str, path: PathBuf) -> Result<()> {
+        let _ = post_filesystem_ops_mkdir(&self.client, system_name, path)
+            .await
+            .wrap_err("couldn't create directory")?;
+        Ok(())
+    }
+    pub async fn chmod(&self, system_name: &str, path: PathBuf, mode: &str) -> Result<()> {
+        let _ = put_filesystem_ops_chmod(&self.client, system_name, path, mode)
+            .await
+            .wrap_err("couldn't change directory permission")?;
+        Ok(())
+    }
+    pub async fn upload(&self, system_name: &str, path: PathBuf, file: Vec<u8>) -> Result<()> {
+        post_filesystem_ops_upload(&self.client, system_name, path, file)
+            .await
+            .wrap_err("couldn't upload file")?;
+        Ok(())
+    }
+    pub async fn get_userinfo(&self, system_name: &str) -> Result<UserInfo> {
+        let result = get_status_userinfo(&self.client, system_name)
+            .await
+            .wrap_err("couldn't load user info")?;
+        Ok(result.into())
     }
 }

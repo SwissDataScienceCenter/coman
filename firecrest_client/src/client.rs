@@ -51,6 +51,7 @@ impl FirecrestClient {
         method: reqwest::Method,
         body: Option<String>,
         params: Option<Vec<(&str, &str)>>,
+        multipart: Option<(&str, (&str, Vec<u8>))>,
     ) -> Result<String> {
         let mut url = self.base_path.join(path)?;
         if let Some(params) = params {
@@ -65,6 +66,15 @@ impl FirecrestClient {
         }
         if let Some(body) = body {
             request_builder = request_builder.body(body);
+        }
+        if let Some(mp) = multipart {
+            let form = reqwest::multipart::Form::new().part(
+                mp.0.to_owned(),
+                reqwest::multipart::Part::bytes(mp.1.1)
+                    .file_name(mp.1.0.to_owned())
+                    .mime_str("text/plain")?,
+            );
+            request_builder = request_builder.multipart(form);
         }
         let req = request_builder.build()?;
         let url = req.url().clone();
@@ -84,10 +94,11 @@ impl FirecrestClient {
         }
     }
     pub async fn get(&self, path: &str, params: Option<Vec<(&str, &str)>>) -> Result<String> {
-        self.request(path, reqwest::Method::GET, None, params).await
+        self.request(path, reqwest::Method::GET, None, params, None)
+            .await
     }
     pub async fn delete(&self, path: &str, params: Option<Vec<(&str, &str)>>) -> Result<String> {
-        self.request(path, reqwest::Method::DELETE, None, params)
+        self.request(path, reqwest::Method::DELETE, None, params, None)
             .await
     }
     pub async fn post(
@@ -95,8 +106,18 @@ impl FirecrestClient {
         path: &str,
         body: String,
         params: Option<Vec<(&str, &str)>>,
+        multipart: Option<(&str, (&str, Vec<u8>))>,
     ) -> Result<String> {
-        self.request(path, reqwest::Method::POST, Some(body), params)
+        self.request(path, reqwest::Method::POST, Some(body), params, multipart)
+            .await
+    }
+    pub async fn put(
+        &self,
+        path: &str,
+        body: String,
+        params: Option<Vec<(&str, &str)>>,
+    ) -> Result<String> {
+        self.request(path, reqwest::Method::PUT, Some(body), params, None)
             .await
     }
 }
