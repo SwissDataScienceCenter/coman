@@ -11,7 +11,6 @@ pub enum UserEvent {
     Cscs(CscsEvent),
     Error(String),
     Info(String),
-    None, // this is mainly used to return a nop result that keeps a port alive, as returning no Event stops the port
 }
 
 impl PartialEq for UserEvent {

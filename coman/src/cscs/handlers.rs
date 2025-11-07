@@ -6,8 +6,8 @@ use crate::{
     cscs::{
         api_client::{CscsApi, FileSystemType, Job, JobDetail, System},
         oauth2::{
-            CLIENT_ID_SECRET_NAME, CLIENT_SECRET_SECRET_NAME,
-            client_credentials_login, finish_cscs_device_login, start_cscs_device_login,
+            CLIENT_ID_SECRET_NAME, CLIENT_SECRET_SECRET_NAME, client_credentials_login,
+            finish_cscs_device_login, start_cscs_device_login,
         },
     },
     util::{
@@ -61,17 +61,22 @@ pub async fn cscs_job_list() -> Result<Vec<Job>> {
         Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0).unwrap();
             let config = Config::new().unwrap();
-            api_client.list_jobs(&config.cscs.system, Some(true)).await
+            api_client
+                .list_jobs(&config.cscs.current_system, Some(true))
+                .await
         }
         Err(e) => Err(e),
     }
 }
+
 pub async fn cscs_job_details(job_id: i64) -> Result<Option<JobDetail>> {
     match get_access_token().await {
         Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0).unwrap();
             let config = Config::new().unwrap();
-            api_client.get_job(&config.cscs.system, job_id).await
+            api_client
+                .get_job(&config.cscs.current_system, job_id)
+                .await
         }
         Err(e) => Err(e),
     }
@@ -86,9 +91,9 @@ pub async fn cscs_start_job(
         Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0).unwrap();
             let config = Config::new().unwrap();
-            let user_info = api_client.get_userinfo(&config.cscs.system).await?;
-            let system = api_client.get_system(&config.cscs.system).await?;
-            let scratch = match system {
+            let user_info = api_client.get_userinfo(&config.cscs.current_system).await?;
+            let current_system = api_client.get_system(&config.cscs.current_system).await?;
+            let scratch = match current_system {
                 Some(system) => PathBuf::from(
                     system
                         .file_systems
@@ -101,7 +106,7 @@ pub async fn cscs_start_job(
                 None => {
                     return Err(eyre!(
                         "couldn't get system description for {}",
-                        config.cscs.system
+                        config.cscs.current_system
                     ));
                 }
             };
@@ -113,21 +118,43 @@ pub async fn cscs_start_job(
             let environment_path = base_path.join("environment.toml");
             let environment_template = config.cscs.edf_file_template;
             tera.add_raw_template("environment.toml", &environment_template)?;
+
+            let docker_image = image.unwrap_or(config.cscs.image.try_into()?);
+            let meta = docker_image.inspect().await?;
+            if let Some(system_info) = config.cscs.systems.get(&config.cscs.current_system) {
+                let mut compatible = false;
+                for sys_platform in system_info.architecture.iter() {
+                    if meta.platforms.contains(&sys_platform.clone().into()) {
+                        compatible = true;
+                    }
+                }
+
+                if !compatible {
+                    return Err(eyre!(
+                        "System {} only supports images with architecture(s) '{}' but the supplied image is for architecture(s) '{}'",
+                        config.cscs.current_system,
+                        system_info.architecture.join(","),
+                        meta.platforms
+                            .iter()
+                            .map(|p| p.to_string())
+                            .collect::<Vec<String>>()
+                            .join(",")
+                    ));
+                }
+            }
+
             let mut context = tera::Context::new();
-            context.insert(
-                "edf_image",
-                &image.unwrap_or(config.cscs.image.try_into()?).to_edf(),
-            );
+            context.insert("edf_image", &docker_image.to_edf());
             let environment_file = tera.render("environment.toml", &context)?;
             api_client
-                .mkdir(&config.cscs.system, base_path.clone())
+                .mkdir(&config.cscs.current_system, base_path.clone())
                 .await?;
             api_client
-                .chmod(&config.cscs.system, base_path.clone(), "700")
+                .chmod(&config.cscs.current_system, base_path.clone(), "700")
                 .await?;
             api_client
                 .upload(
-                    &config.cscs.system,
+                    &config.cscs.current_system,
                     environment_path.clone(),
                     environment_file.into_bytes(),
                 )
@@ -150,7 +177,7 @@ pub async fn cscs_start_job(
             let script = tera.render("script.sh", &context)?;
             api_client
                 .upload(
-                    &config.cscs.system,
+                    &config.cscs.current_system,
                     script_path.clone(),
                     script.into_bytes(),
                 )
@@ -158,7 +185,7 @@ pub async fn cscs_start_job(
 
             // start job
             api_client
-                .start_job(&config.cscs.system, &name, script_path)
+                .start_job(&config.cscs.current_system, &name, script_path)
                 .await?;
             Ok(())
         }

@@ -1,5 +1,6 @@
 use color_eyre::{Report, Result};
-use eyre::eyre;
+use docker_credential::{CredentialRetrievalError, DockerCredential};
+use eyre::{Context, eyre};
 use nom::{
     IResult, Parser,
     branch::alt,
@@ -9,8 +10,37 @@ use nom::{
     multi::separated_list1,
     sequence::{preceded, terminated},
 };
-use std::str::FromStr;
+use oci_distribution::{
+    Client, Reference,
+    client::{ClientConfig, ClientProtocol},
+    manifest::OciManifest,
+    secrets::RegistryAuth,
+};
+use std::{collections::HashSet, fmt::Display, str::FromStr};
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash, strum::Display)]
+pub enum OciPlatform {
+    #[allow(non_camel_case_types)]
+    arm64,
+    #[allow(non_camel_case_types)]
+    amd64,
+    Other,
+}
+
+impl From<String> for OciPlatform {
+    fn from(value: String) -> Self {
+        match value.as_str() {
+            "arm64" => Self::arm64,
+            "amd64" => Self::amd64,
+            _ => Self::Other,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct DockerImageMeta {
+    pub platforms: Vec<OciPlatform>,
+}
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct DockerImageUrl {
     registry: Option<String>,
@@ -38,6 +68,55 @@ impl DockerImageUrl {
                 .map(|d| format!("@sha256:{}", d))
                 .unwrap_or_default()
         )
+    }
+
+    pub async fn inspect(&self) -> Result<DockerImageMeta> {
+        let client = Client::new(ClientConfig {
+            protocol: ClientProtocol::Https,
+            ..Default::default()
+        });
+        let reference = self.to_string().parse()?;
+        let auth = docker_auth(&reference)?;
+        let (manifest, _) = client.pull_manifest(&reference, &auth).await?;
+        match manifest {
+            OciManifest::Image(oci_image_manifest) => {
+                // it's not clear what is returned in this case, I never hit this in my testing.
+                // leaving the dbg statement so if a user ever hits this, we can ask for logs and figure it out.
+                let _ = dbg!(oci_image_manifest);
+                Err(eyre!(
+                    "didn't get image index for image, plain manifest does not contain platform data"
+                ))
+            }
+            OciManifest::ImageIndex(oci_image_index) => {
+                let mut platforms: HashSet<OciPlatform> = HashSet::new();
+                platforms.extend(oci_image_index.manifests.into_iter().map(|m| {
+                    m.platform
+                        .map(|p| p.architecture)
+                        .unwrap_or("".to_owned())
+                        .into()
+                }));
+                Ok(DockerImageMeta {
+                    platforms: platforms.into_iter().collect(),
+                })
+            }
+        }
+    }
+}
+
+fn docker_auth(reference: &Reference) -> Result<RegistryAuth> {
+    let server = reference
+        .resolve_registry()
+        .strip_suffix('/')
+        .unwrap_or_else(|| reference.resolve_registry());
+    match docker_credential::get_credential(server) {
+        Ok(DockerCredential::UsernamePassword(username, password)) => {
+            Ok(RegistryAuth::Basic(username, password))
+        }
+        Ok(DockerCredential::IdentityToken(_)) => Ok(RegistryAuth::Anonymous), // id tokens are not supported
+        Err(CredentialRetrievalError::ConfigNotFound)
+        | Err(CredentialRetrievalError::NoCredentialConfigured)
+        | Err(CredentialRetrievalError::ConfigReadError) => Ok(RegistryAuth::Anonymous),
+        Err(e) => Err(e).wrap_err("couldn't get docker credentials"),
     }
 }
 
@@ -88,5 +167,24 @@ impl TryFrom<String> for DockerImageUrl {
 
     fn try_from(value: String) -> std::result::Result<Self, Self::Error> {
         DockerImageUrl::from_str(&value)
+    }
+}
+
+impl Display for DockerImageUrl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(registry) = self.registry.as_ref() {
+            write!(f, "{}/", registry)?;
+        }
+
+        write!(f, "{}", self.image)?;
+
+        if let Some(tag) = self.tag.as_ref() {
+            write!(f, ":{}", tag)?;
+        }
+
+        if let Some(digest) = self.digest.as_ref() {
+            write!(f, "@sha256:{}", digest)?;
+        }
+        Ok(())
     }
 }

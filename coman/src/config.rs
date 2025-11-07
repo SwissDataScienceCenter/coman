@@ -1,6 +1,6 @@
 #![allow(dead_code)] // Remove this once you start using the code
 
-use std::{env, path::PathBuf};
+use std::{collections::HashMap, env, path::PathBuf};
 
 use color_eyre::Result;
 use directories::ProjectDirs;
@@ -8,6 +8,11 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
 const DEFAULT_CONFIG_TOML: &str = include_str!("../.config/config.toml");
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct SystemDescription {
+    pub architecture: Vec<String>,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct AppConfig {
@@ -20,7 +25,7 @@ pub struct AppConfig {
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct CscsConfig {
     #[serde(default)]
-    pub system: String,
+    pub current_system: String,
     #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]
@@ -31,7 +36,11 @@ pub struct CscsConfig {
     pub edf_file_template: String,
     #[serde(default)]
     pub command: Vec<String>,
+
+    #[serde(default)]
+    pub systems: HashMap<String, SystemDescription>,
 }
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default, flatten)]

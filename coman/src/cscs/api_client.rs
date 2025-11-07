@@ -74,6 +74,7 @@ impl From<CSCSFileSystem> for FileSystem {
 
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, Display)]
 pub enum JobStatus {
+    Pending,
     Running,
     Finished,
     Cancelled,
@@ -96,6 +97,7 @@ impl From<JobModelOutput> for Job {
                 "FAILED" => JobStatus::Failed,
                 "COMPLETED" => JobStatus::Finished,
                 "CANCELLED" => JobStatus::Cancelled,
+                "PENDING" => JobStatus::Pending,
                 other => panic!("got job status: {}", other),
             },
             user: value.user.unwrap_or("".to_string()),

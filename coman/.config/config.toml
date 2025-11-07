@@ -1,5 +1,5 @@
 [cscs]
-system = "daint"
+current_system = "daint"
 
 image = "ubuntu"
 
@@ -17,3 +17,11 @@ edf_file_template = """
 image = "{{edf_image}}"
 mounts = ["${SCRATCH}:/scratch"]
 """
+
+[cscs.systems]
+
+[cscs.systems.daint]
+architecture = ["arm64"]
+
+[cscs.systems.eiger]
+architecture = ["amd64"]
