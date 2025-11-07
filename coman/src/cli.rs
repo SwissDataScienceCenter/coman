@@ -34,6 +34,8 @@ pub enum CscsCommands {
 pub enum CscsJobCommands {
     #[clap(alias("ls"))]
     List,
+    #[clap(alias("g"))]
+    Get { job_id: i64 },
     #[clap(alias("s"))]
     Submit {
         #[clap(short, long)]

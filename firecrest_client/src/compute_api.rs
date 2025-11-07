@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use crate::{
     client::FirecrestClient,
     types::{
-        GetJobResponse, JobDescriptionModel, JobDescriptionModelEnv, PostJobSubmissionResponse,
-        PostJobSubmitRequest,
+        GetJobMetadataResponse, GetJobResponse, JobDescriptionModel, JobDescriptionModelEnv,
+        PostJobSubmissionResponse, PostJobSubmitRequest,
     },
 };
 use eyre::{Result, eyre};
@@ -73,5 +73,34 @@ pub async fn get_compute_system_jobs(
         .get(format!("compute/{system_name}/jobs").as_str(), query)
         .await?;
     let model: GetJobResponse = serde_json::from_str(response.as_str())?;
+    Ok(model)
+}
+
+pub async fn get_compute_system_job(
+    client: &FirecrestClient,
+    system_name: &str,
+    job_id: i64,
+) -> Result<GetJobResponse> {
+    let response = client
+        .get(
+            format!("compute/{system_name}/jobs/{job_id}").as_str(),
+            None,
+        )
+        .await?;
+    let model: GetJobResponse = serde_json::from_str(response.as_str())?;
+    Ok(model)
+}
+pub async fn get_compute_system_job_metadata(
+    client: &FirecrestClient,
+    system_name: &str,
+    job_id: i64,
+) -> Result<GetJobMetadataResponse> {
+    let response = client
+        .get(
+            format!("compute/{system_name}/jobs/{job_id}/metadata").as_str(),
+            None,
+        )
+        .await?;
+    let model: GetJobMetadataResponse = serde_json::from_str(response.as_str())?;
     Ok(model)
 }

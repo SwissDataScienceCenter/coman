@@ -1,14 +1,17 @@
 use color_eyre::eyre::{Context, Result};
 use firecrest_client::{
     client::FirecrestClient,
-    compute_api::{get_compute_system_jobs, post_compute_system_job},
+    compute_api::{
+        get_compute_system_job, get_compute_system_job_metadata, get_compute_system_jobs,
+        post_compute_system_job,
+    },
     filesystem_api::{
         post_filesystem_ops_mkdir, post_filesystem_ops_upload, put_filesystem_ops_chmod,
     },
     status_api::{get_status_systems, get_status_userinfo},
     types::{
         FileSystem as CSCSFileSystem, FileSystemDataType, HealthCheckType, HpcclusterOutput,
-        JobModelOutput, SchedulerServiceHealth, UserInfoResponse,
+        JobMetadataModel, JobModelOutput, SchedulerServiceHealth, UserInfoResponse,
     },
 };
 use std::{fmt::Display, path::PathBuf};
@@ -106,6 +109,40 @@ impl From<JobModelOutput> for Job {
     }
 }
 
+#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, tabled::Tabled)]
+pub struct JobDetail {
+    pub id: usize,
+    pub name: String,
+    pub status: JobStatus,
+    pub status_reason: String,
+    pub exit_code: i64,
+    pub user: String,
+    pub stdout: String,
+    pub stderr: String,
+    pub stdin: String,
+}
+impl From<(JobModelOutput, JobMetadataModel)> for JobDetail {
+    fn from(value: (JobModelOutput, JobMetadataModel)) -> Self {
+        Self {
+            id: value.0.job_id as usize,
+            name: value.0.name,
+            status: match value.0.status.state.as_str() {
+                "RUNNING" => JobStatus::Running,
+                "FAILED" => JobStatus::Failed,
+                "COMPLETED" => JobStatus::Finished,
+                "CANCELLED" => JobStatus::Cancelled,
+                other => panic!("got job status: {}", other),
+            },
+            status_reason: value.0.status.state_reason.unwrap_or("".to_owned()),
+            exit_code: value.0.status.exit_code.unwrap_or(0),
+            user: value.0.user.unwrap_or("".to_string()),
+            stdout: value.1.standard_output.unwrap_or("".to_owned()),
+            stderr: value.1.standard_error.unwrap_or("".to_owned()),
+            stdin: value.1.standard_input.unwrap_or("".to_owned()),
+        }
+    }
+}
+
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, Display, tabled::Tabled)]
 pub enum ServiceType {
     Scheduler,
@@ -191,14 +228,21 @@ impl CscsApi {
             .token(token);
         Ok(Self { client })
     }
-    pub async fn start_job(&self, system_name: &str, script_path: PathBuf) -> Result<()> {
+    pub async fn start_job(
+        &self,
+        system_name: &str,
+        name: &str,
+        script_path: PathBuf,
+    ) -> Result<()> {
+        let workingdir = script_path.clone();
+        let workingdir = workingdir.parent();
         let result = post_compute_system_job(
             &self.client,
             system_name,
-            "test",
+            name,
             None,
             Some(script_path),
-            None,
+            workingdir.map(|p| p.to_path_buf()),
         )
         .await?;
         let _ = trace_dbg!(result);
@@ -224,6 +268,29 @@ impl CscsApi {
             .jobs
             .map(|jobs| jobs.into_iter().map(|j| j.into()).collect())
             .unwrap_or(vec![]))
+    }
+    pub async fn get_job(&self, system_name: &str, job_id: i64) -> Result<Option<JobDetail>> {
+        let jobs = get_compute_system_job(&self.client, system_name, job_id)
+            .await
+            .wrap_err("couldn't fetch job info")?;
+        let job = if let Some(jobs) = jobs.jobs
+            && !jobs.is_empty()
+        {
+            jobs[0].clone()
+        } else {
+            return Ok(None);
+        };
+        let job_metadata = get_compute_system_job_metadata(&self.client, system_name, job_id)
+            .await
+            .wrap_err("couldn't fetch job metadata")?;
+        let job_metadata = if let Some(meta) = job_metadata.jobs
+            && !meta.is_empty()
+        {
+            meta[0].clone()
+        } else {
+            return Ok(None);
+        };
+        Ok(Some((job, job_metadata).into()))
     }
 
     pub async fn mkdir(&self, system_name: &str, path: PathBuf) -> Result<()> {

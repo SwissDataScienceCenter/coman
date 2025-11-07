@@ -25,7 +25,7 @@ use tuirealm::{
 use crate::{
     app::user_events::{CscsEvent, UserEvent},
     config::Config,
-    cscs::api_client::{CscsApi, FileSystemType, Job, System},
+    cscs::api_client::{CscsApi, FileSystemType, Job, JobDetail, System},
     trace_dbg,
     util::{
         keyring::{Secret, get_secret, store_secret},
@@ -166,6 +166,28 @@ pub(crate) async fn cli_cscs_job_list() -> Result<()> {
         Err(e) => Err(e),
     }
 }
+pub(crate) async fn cli_cscs_job_detail(job_id: i64) -> Result<()> {
+    match cscs_job_details(job_id).await {
+        Ok(Some(job)) => {
+            let data = &[
+                ("Id", job.id.to_string()),
+                ("Name", job.name),
+                ("Status", job.status.to_string()),
+                ("Status Reason", job.status_reason),
+                ("Exit Code", job.exit_code.to_string()),
+                ("stdin", job.stdin),
+                ("stdout", job.stdout),
+                ("stderr", job.stderr),
+            ];
+            let mut table = tabled::Table::nohead(data);
+            table.with(tabled::settings::Style::modern());
+            println!("{}", table);
+            Ok(())
+        }
+        Ok(None) => Ok(()),
+        Err(e) => Err(e),
+    }
+}
 
 pub(crate) async fn cli_cscs_job_start(
     script_file: Option<PathBuf>,
@@ -288,6 +310,17 @@ async fn cscs_job_list() -> Result<Vec<Job>> {
         Err(e) => Err(e),
     }
 }
+async fn cscs_job_details(job_id: i64) -> Result<Option<JobDetail>> {
+    match get_secret(ACCESS_TOKEN_SECRET_NAME).await {
+        Ok(Some(access_token)) => {
+            let api_client = CscsApi::new(access_token.0).unwrap();
+            let config = Config::new().unwrap();
+            api_client.get_job(&config.cscs.system, job_id).await
+        }
+        Ok(None) => Err(eyre!("not logged in")),
+        Err(e) => Err(e),
+    }
+}
 
 async fn cscs_start_job(
     script_file: Option<PathBuf>,
@@ -351,15 +384,13 @@ async fn cscs_start_job(
                 .map(std::fs::read_to_string)
                 .unwrap_or(Ok(config.cscs.sbatch_script_template))?;
             tera.add_raw_template("script.sh", &script_template)?;
+            let name = config
+                .cscs
+                .name
+                .unwrap_or(format!("{}-coman", user_info.name));
             let mut context = tera::Context::new();
-            context.insert(
-                "name",
-                &config
-                    .cscs
-                    .name
-                    .unwrap_or(format!("{}-coman", user_info.name)),
-            );
-            context.insert("command", &config.cscs.command.join(" "));
+            context.insert("name", &name);
+            context.insert("command", &command.unwrap_or(config.cscs.command).join(" "));
             context.insert("environment_file", &environment_path);
             let script = tera.render("script.sh", &context)?;
             api_client
@@ -372,7 +403,7 @@ async fn cscs_start_job(
 
             // start job
             api_client
-                .start_job(&config.cscs.system, script_path)
+                .start_job(&config.cscs.system, &name, script_path)
                 .await?;
             Ok(())
         }

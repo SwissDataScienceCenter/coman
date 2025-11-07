@@ -30,7 +30,12 @@ futures = "0.3.31"
 human-panic = "2.0.2"
 itertools = "0.14.0"
 json5 = "0.4.1"
-keyring-lib = { version = "1.0.2", features = ["tokio", "derive", "vendored", "rustls"] }
+keyring-lib = { version = "1.0.2", features = [
+  "tokio",
+  "derive",
+  "vendored",
+  "rustls",
+] }
 lazy_static = "1.5.0"
 libc = "0.2.161"
 open = "5.3.2"
@@ -56,7 +61,7 @@ tuirealm = { version = "3.1.0", features = [
   "crossterm",
   "async-ports",
 ] }
-tabled = "0.20.0"
+tabled = { version = "0.20.0", features = ["macros"] }
 nom = "8.0.0"
 tera = "1.20.1"
 
