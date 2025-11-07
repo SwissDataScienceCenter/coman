@@ -1,5 +1,5 @@
 use eyre::{Result, WrapErr};
-use std::{fmt, pin::Pin};
+use std::fmt;
 
 use crate::error::FirecrestError;
 

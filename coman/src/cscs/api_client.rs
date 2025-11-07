@@ -14,16 +14,10 @@ use firecrest_client::{
         JobMetadataModel, JobModelOutput, SchedulerServiceHealth, UserInfoResponse,
     },
 };
-use std::{fmt::Display, path::PathBuf};
+use std::path::PathBuf;
 use strum::Display;
-use tabled::Table;
-use tracing::instrument::WithSubscriber;
 
-use crate::{
-    cscs::handlers::ACCESS_TOKEN_SECRET_NAME,
-    trace_dbg,
-    util::keyring::{Secret, get_secret},
-};
+use crate::trace_dbg;
 
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, tabled::Tabled)]
 pub struct UserInfo {

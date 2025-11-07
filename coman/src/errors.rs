@@ -5,9 +5,8 @@ use crossterm::event::DisableMouseCapture;
 use tokio::sync::mpsc;
 use tracing::error;
 use tuirealm::{
-    Event, EventListenerCfg,
+    Event,
     listener::{ListenerResult, PollAsync},
-    terminal::{CrosstermTerminalAdapter, TerminalBridge},
 };
 
 use crate::app::user_events::UserEvent;

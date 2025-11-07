@@ -6,7 +6,6 @@ use color_eyre::Result;
 use directories::ProjectDirs;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use tracing::error;
 
 const DEFAULT_CONFIG_TOML: &str = include_str!("../.config/config.toml");
 

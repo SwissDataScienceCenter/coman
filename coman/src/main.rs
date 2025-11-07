@@ -20,9 +20,12 @@ use crate::{
     },
     cli::{Cli, version},
     components::{global_listener::GlobalListener, toolbar::Toolbar, workload_list::WorkloadList},
-    cscs::handlers::{
-        AsyncDeviceFlowPort, AsyncFetchWorkloadsPort, cli_cscs_job_detail, cli_cscs_job_list,
-        cli_cscs_job_start, cli_cscs_login, cli_cscs_system_list,
+    cscs::{
+        cli::{
+            cli_cscs_job_detail, cli_cscs_job_list, cli_cscs_job_start, cli_cscs_login,
+            cli_cscs_system_list,
+        },
+        ports::{AsyncDeviceFlowPort, AsyncFetchWorkloadsPort},
     },
     errors::AsyncErrorPort,
 };

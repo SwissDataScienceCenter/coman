@@ -1,4 +1,4 @@
-use color_eyre::{Report, Result, eyre::Context};
+use color_eyre::{Report, Result};
 use eyre::eyre;
 use nom::{
     IResult, Parser,
@@ -7,7 +7,7 @@ use nom::{
     character::complete::{alphanumeric1, digit1},
     combinator::{complete, opt, recognize},
     multi::separated_list1,
-    sequence::{pair, preceded, terminated},
+    sequence::{preceded, terminated},
 };
 use std::str::FromStr;
 

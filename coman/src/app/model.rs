@@ -13,7 +13,7 @@ use crate::{
         user_events::UserEvent,
     },
     components::{error_popup::ErrorPopup, info_popup::InfoPopup, workload_menu::WorkloadMenu},
-    cscs::handlers::start_cscs_device_login,
+    cscs::oauth2::start_cscs_device_login,
     trace_dbg,
     util::ui::draw_area_in_absolute,
 };

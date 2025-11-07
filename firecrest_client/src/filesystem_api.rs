@@ -2,10 +2,7 @@ use std::path::PathBuf;
 
 use crate::{
     client::FirecrestClient,
-    types::{
-        BodyPostUploadFilesystemSystemNameOpsUploadPost, PostMakeDirRequest, PostMkdirResponse,
-        PutFileChmodRequest, PutFileChmodResponse,
-    },
+    types::{PostMakeDirRequest, PostMkdirResponse, PutFileChmodRequest, PutFileChmodResponse},
 };
 use eyre::{Result, eyre};
 
