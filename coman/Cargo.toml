@@ -64,6 +64,7 @@ tuirealm = { version = "3.1.0", features = [
 tabled = { version = "0.20.0", features = ["macros"] }
 nom = "8.0.0"
 tera = "1.20.1"
+inquire = "0.9.1"
 
 [build-dependencies]
 anyhow = "1.0.90"

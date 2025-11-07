@@ -1,5 +1,5 @@
 [cscs]
-system = "eiger"
+system = "daint"
 
 image = "ubuntu"
 

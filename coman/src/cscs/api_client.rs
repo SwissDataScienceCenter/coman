@@ -251,7 +251,6 @@ impl CscsApi {
         let result = get_status_systems(&self.client)
             .await
             .wrap_err("couldn't list CSCS systems")?;
-        let result = dbg!(result);
         Ok(result.systems.into_iter().map(|s| s.into()).collect())
     }
     pub async fn list_jobs(&self, system_name: &str, all_users: Option<bool>) -> Result<Vec<Job>> {

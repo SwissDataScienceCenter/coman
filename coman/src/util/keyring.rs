@@ -3,6 +3,7 @@ use std::fmt::{Debug, Display};
 use color_eyre::Result;
 use keyring::KeyringEntry;
 
+#[derive(Clone)]
 pub struct Secret(pub String);
 
 impl Display for Secret {

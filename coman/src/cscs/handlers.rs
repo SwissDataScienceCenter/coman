@@ -1,20 +1,34 @@
-use color_eyre::{
-    Result,
-    eyre::eyre,
-};
+use color_eyre::{Result, eyre::eyre};
 use std::path::PathBuf;
 
 use crate::{
     config::Config,
     cscs::{
         api_client::{CscsApi, FileSystemType, Job, JobDetail, System},
-        oauth2::{ACCESS_TOKEN_SECRET_NAME, finish_cscs_device_login, start_cscs_device_login},
+        oauth2::{
+            CLIENT_ID_SECRET_NAME, CLIENT_SECRET_SECRET_NAME,
+            client_credentials_login, finish_cscs_device_login, start_cscs_device_login,
+        },
     },
     util::{
         keyring::{Secret, get_secret},
         types::DockerImageUrl,
     },
 };
+async fn get_access_token() -> Result<Secret> {
+    let client_id = match get_secret(CLIENT_ID_SECRET_NAME).await {
+        Ok(Some(client_id)) => client_id,
+        Ok(None) => Err(eyre!("not logged in"))?,
+        Err(e) => Err(e)?,
+    };
+    let client_secret = match get_secret(CLIENT_SECRET_SECRET_NAME).await {
+        Ok(Some(client_secret)) => client_secret,
+        Ok(None) => Err(eyre!("not logged in"))?,
+        Err(e) => Err(e)?,
+    };
+    let token = client_credentials_login(client_id, client_secret).await?;
+    Ok(token.0)
+}
 
 pub async fn cscs_login() -> Result<(Secret, Option<Secret>)> {
     let (details, verify_url) = start_cscs_device_login().await?;
@@ -33,35 +47,32 @@ pub async fn cscs_login() -> Result<(Secret, Option<Secret>)> {
 }
 
 pub async fn cscs_system_list() -> Result<Vec<System>> {
-    match get_secret(ACCESS_TOKEN_SECRET_NAME).await {
-        Ok(Some(access_token)) => {
+    match get_access_token().await {
+        Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0).unwrap();
             api_client.list_systems().await
         }
-        Ok(None) => Err(eyre!("not logged in")),
         Err(e) => Err(e),
     }
 }
 
 pub async fn cscs_job_list() -> Result<Vec<Job>> {
-    match get_secret(ACCESS_TOKEN_SECRET_NAME).await {
-        Ok(Some(access_token)) => {
+    match get_access_token().await {
+        Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0).unwrap();
             let config = Config::new().unwrap();
             api_client.list_jobs(&config.cscs.system, Some(true)).await
         }
-        Ok(None) => Err(eyre!("not logged in")),
         Err(e) => Err(e),
     }
 }
 pub async fn cscs_job_details(job_id: i64) -> Result<Option<JobDetail>> {
-    match get_secret(ACCESS_TOKEN_SECRET_NAME).await {
-        Ok(Some(access_token)) => {
+    match get_access_token().await {
+        Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0).unwrap();
             let config = Config::new().unwrap();
             api_client.get_job(&config.cscs.system, job_id).await
         }
-        Ok(None) => Err(eyre!("not logged in")),
         Err(e) => Err(e),
     }
 }
@@ -71,8 +82,8 @@ pub async fn cscs_start_job(
     image: Option<DockerImageUrl>,
     command: Option<Vec<String>>,
 ) -> Result<()> {
-    match get_secret(ACCESS_TOKEN_SECRET_NAME).await {
-        Ok(Some(access_token)) => {
+    match get_access_token().await {
+        Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0).unwrap();
             let config = Config::new().unwrap();
             let user_info = api_client.get_userinfo(&config.cscs.system).await?;
@@ -151,7 +162,6 @@ pub async fn cscs_start_job(
                 .await?;
             Ok(())
         }
-        Ok(None) => Err(eyre!("not logged in")),
         Err(e) => Err(e),
     }
 }
