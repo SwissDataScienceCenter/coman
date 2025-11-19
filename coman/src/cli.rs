@@ -45,6 +45,8 @@ pub enum CscsJobCommands {
         #[clap(short, long, trailing_var_arg = true)]
         command: Option<Vec<String>>,
     },
+    #[clap(alias("st"))]
+    Stop { job_id: i64 },
 }
 #[derive(Subcommand, Debug)]
 pub enum CscsSystemCommands {

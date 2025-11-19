@@ -1,9 +1,10 @@
+use chrono::prelude::*;
 use color_eyre::eyre::{Context, Result};
 use firecrest_client::{
     client::FirecrestClient,
     compute_api::{
         get_compute_system_job, get_compute_system_job_metadata, get_compute_system_jobs,
-        post_compute_system_job,
+        post_compute_system_job, stop_compute_system_job,
     },
     filesystem_api::{
         post_filesystem_ops_mkdir, post_filesystem_ops_upload, put_filesystem_ops_chmod,
@@ -80,27 +81,46 @@ pub enum JobStatus {
     Cancelled,
     Failed,
 }
+impl From<String> for JobStatus {
+    fn from(value: String) -> Self {
+        match value.as_str() {
+            "RUNNING" => JobStatus::Running,
+            "FAILED" => JobStatus::Failed,
+            "COMPLETED" => JobStatus::Finished,
+            "CANCELLED" => JobStatus::Cancelled,
+            "PENDING" => JobStatus::Pending,
+            other => panic!("got job status: {}", other),
+        }
+    }
+}
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, tabled::Tabled)]
 pub struct Job {
     pub id: usize,
     pub name: String,
     pub status: JobStatus,
     pub user: String,
+    #[tabled(display("display_option_datetime"))]
+    pub start_date: Option<DateTime<Local>>,
+    #[tabled(display("display_option_datetime"))]
+    pub end_date: Option<DateTime<Local>>,
 }
 impl From<JobModelOutput> for Job {
     fn from(value: JobModelOutput) -> Self {
         Self {
             id: value.job_id as usize,
             name: value.name,
-            status: match value.status.state.as_str() {
-                "RUNNING" => JobStatus::Running,
-                "FAILED" => JobStatus::Failed,
-                "COMPLETED" => JobStatus::Finished,
-                "CANCELLED" => JobStatus::Cancelled,
-                "PENDING" => JobStatus::Pending,
-                other => panic!("got job status: {}", other),
-            },
+            status: value.status.state.into(),
             user: value.user.unwrap_or("".to_string()),
+            start_date: value.time.start.map(|s| {
+                DateTime::from_timestamp_secs(s)
+                    .unwrap()
+                    .with_timezone(&Local)
+            }),
+            end_date: value.time.end.map(|e| {
+                DateTime::from_timestamp_secs(e)
+                    .unwrap()
+                    .with_timezone(&Local)
+            }),
         }
     }
 }
@@ -109,6 +129,10 @@ impl From<JobModelOutput> for Job {
 pub struct JobDetail {
     pub id: usize,
     pub name: String,
+    #[tabled(display("display_option_datetime"))]
+    pub start_date: Option<DateTime<Local>>,
+    #[tabled(display("display_option_datetime"))]
+    pub end_date: Option<DateTime<Local>>,
     pub status: JobStatus,
     pub status_reason: String,
     pub exit_code: i64,
@@ -117,18 +141,28 @@ pub struct JobDetail {
     pub stderr: String,
     pub stdin: String,
 }
+fn display_option_datetime(value: &Option<DateTime<Local>>) -> String {
+    match value {
+        Some(dt) => dt.to_string(),
+        None => "".to_owned(),
+    }
+}
 impl From<(JobModelOutput, JobMetadataModel)> for JobDetail {
     fn from(value: (JobModelOutput, JobMetadataModel)) -> Self {
         Self {
             id: value.0.job_id as usize,
             name: value.0.name,
-            status: match value.0.status.state.as_str() {
-                "RUNNING" => JobStatus::Running,
-                "FAILED" => JobStatus::Failed,
-                "COMPLETED" => JobStatus::Finished,
-                "CANCELLED" => JobStatus::Cancelled,
-                other => panic!("got job status: {}", other),
-            },
+            start_date: value.0.time.start.map(|s| {
+                DateTime::from_timestamp_secs(s)
+                    .unwrap()
+                    .with_timezone(&Local)
+            }),
+            end_date: value.0.time.end.map(|e| {
+                DateTime::from_timestamp_secs(e)
+                    .unwrap()
+                    .with_timezone(&Local)
+            }),
+            status: value.0.status.state.into(),
             status_reason: value.0.status.state_reason.unwrap_or("".to_owned()),
             exit_code: value.0.status.exit_code.unwrap_or(0),
             user: value.0.user.unwrap_or("".to_string()),
@@ -286,6 +320,13 @@ impl CscsApi {
             return Ok(None);
         };
         Ok(Some((job, job_metadata).into()))
+    }
+
+    pub async fn delete_stop(&self, system_name: &str, job_id: i64) -> Result<()> {
+        stop_compute_system_job(&self.client, system_name, job_id)
+            .await
+            .wrap_err("couldn't delete job")?;
+        Ok(())
     }
 
     pub async fn mkdir(&self, system_name: &str, path: PathBuf) -> Result<()> {
