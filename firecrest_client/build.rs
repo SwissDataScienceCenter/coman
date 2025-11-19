@@ -1,0 +1,35 @@
+
+use anyhow::Result;
+
+fn main() -> Result<()> {
+    println!("cargo::rerun-if-changed=../openapi_spec/firecrest_3.1.yaml");
+    // convert to json in temp dir
+    let f = std::fs::File::open("../openapi_spec/firecrest_3.1.yaml")?;
+    let json_value: serde_json::Value = serde_yaml::from_reader(f)?;
+    let out = tempfile::Builder::new()
+        .suffix(".json")
+        .disable_cleanup(true)
+        .tempfile()?;
+    let outpath = out.path();
+    let outpath = dbg!(outpath);
+    let o = std::fs::File::create(outpath)?;
+    serde_json::to_writer_pretty(o, &json_value)?;
+    std::process::Command::new("oas3-gen")
+        .arg("-i")
+        .arg(outpath.to_str().unwrap())
+        .arg("-o")
+        .arg("./src/types.rs")
+        .spawn()
+        .expect(
+            "oas3-gen failed to run, if it's missing please install with 'cargo install oas3-gen'",
+        )
+        .wait()?;
+    // we need to add an into clause because the defaults in the openapi spec are weird
+    let content = std::fs::read_to_string("./src/types.rs")?;
+    let content = content.replace(
+        "default(Some(\"gzip\".to_string())",
+        "default(Some(\"gzip\".to_string().into())",
+    );
+    std::fs::write("./src/types.rs", content)?;
+    Ok(())
+}

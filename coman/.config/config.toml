@@ -1,13 +1,19 @@
-[keybindings]
-[keybindings.Main]
-"q"="Quit"
-"Ctrl-d"="Quit"
-"Ctrl-c"="Quit"
-"Ctrl-z"="Suspend"
-"x"="Menu"
-"Esc"="Escape"
-"Enter"="Enter"
-"Up"="Up"
-"j"="Up"
-"Down"="Down"
-"k"="Down"
+[cscs]
+system = "daint"
+
+image = "ubuntu"
+
+command = ["sleep", "1"]
+
+sbatch_script_template = """
+#!/bin/bash
+#SBATCH --job-name={{name}}
+#SBATCH --ntasks=1
+#SBATCH --time=10:00
+srun --environment={{environment_file}} {{command}}
+"""
+
+edf_file_template = """
+image = "{{edf_image}}"
+mounts = ["${SCRATCH}:/scratch"]
+"""

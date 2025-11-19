@@ -80,7 +80,7 @@ impl Component<Msg, UserEvent> for WorkloadMenu {
             }) => {
                 let msg = if let State::One(StateValue::Usize(index)) = self.state() {
                     match index {
-                        0 => Some(Msg::Menu(MenuMsg::CSCSLogin)),
+                        0 => Some(Msg::Menu(MenuMsg::CscsLogin)),
                         _ => Some(Msg::Menu(MenuMsg::Closed)),
                     }
                 } else {

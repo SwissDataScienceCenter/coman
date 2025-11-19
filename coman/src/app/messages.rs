@@ -2,13 +2,33 @@
 pub enum MenuMsg {
     Opened,
     Closed,
-    CSCSLogin,
+    CscsLogin,
 }
+
+#[derive(Debug, PartialEq)]
+pub enum InfoPopupMsg {
+    Opened(String),
+    Closed,
+}
+#[derive(Debug, PartialEq)]
+pub enum ErrorPopupMsg {
+    Opened(String),
+    Closed,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum CscsMsg {
+    Login,
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Msg {
     AppClose,
     Menu(MenuMsg),
-    CSCSLogin,
-    CSCSToken(String, Option<String>),
+    InfoPopup(InfoPopupMsg),
+    ErrorPopup(ErrorPopupMsg),
+    Error(String),
+    Info(String),
+    Cscs(CscsMsg),
     None,
 }

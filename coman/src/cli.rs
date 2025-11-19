@@ -1,19 +1,55 @@
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
 
-use crate::config::{get_config_dir, get_data_dir};
+use crate::{
+    config::{get_config_dir, get_data_dir},
+    util::types::DockerImageUrl,
+};
 
 #[derive(Subcommand, Debug)]
 pub enum CliCommands {
     Version,
-    CSCS {
+    Cscs {
         #[command(subcommand)]
-        command: CSCSCommands,
+        command: CscsCommands,
     },
 }
 
 #[derive(Subcommand, Debug)]
-pub enum CSCSCommands {
+pub enum CscsCommands {
     Login,
+    #[clap(alias("j"))]
+    Job {
+        #[command(subcommand)]
+        command: CscsJobCommands,
+    },
+    #[clap(alias("s"))]
+    System {
+        #[command(subcommand)]
+        command: CscsSystemCommands,
+    },
+}
+#[derive(Subcommand, Debug)]
+pub enum CscsJobCommands {
+    #[clap(alias("ls"))]
+    List,
+    #[clap(alias("g"))]
+    Get { job_id: i64 },
+    #[clap(alias("s"))]
+    Submit {
+        #[clap(short, long)]
+        script_file: Option<PathBuf>,
+        #[clap(short, long)]
+        image: Option<DockerImageUrl>,
+        #[clap(short, long, trailing_var_arg = true)]
+        command: Option<Vec<String>>,
+    },
+}
+#[derive(Subcommand, Debug)]
+pub enum CscsSystemCommands {
+    #[clap(alias("ls"))]
+    List,
 }
 
 #[derive(Parser, Debug)]

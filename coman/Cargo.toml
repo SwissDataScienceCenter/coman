@@ -25,15 +25,21 @@ config = "0.14.0"
 crossterm = { version = "0.29.0", features = ["serde", "event-stream"] }
 derive_deref = "1.1.1"
 directories = "5.0.1"
+eyre = "0.6.12"
 futures = "0.3.31"
 human-panic = "2.0.2"
 itertools = "0.14.0"
 json5 = "0.4.1"
-keyring-lib = { version = "1.0.2", features = ["tokio", "derive", "vendored", "rustls"] }
+keyring-lib = { version = "1.0.2", features = [
+  "tokio",
+  "derive",
+  "vendored",
+  "rustls",
+] }
 lazy_static = "1.5.0"
 libc = "0.2.161"
 open = "5.3.2"
-openapi_client = { workspace = true }
+firecrest_client = { workspace = true }
 openidconnect = "4.0.1"
 pretty_assertions = "1.4.1"
 ratatui = { version = "0.29.0", features = ["serde", "macros"] }
@@ -55,6 +61,10 @@ tuirealm = { version = "3.1.0", features = [
   "crossterm",
   "async-ports",
 ] }
+tabled = { version = "0.20.0", features = ["macros"] }
+nom = "8.0.0"
+tera = "1.20.1"
+inquire = "0.9.1"
 
 [build-dependencies]
 anyhow = "1.0.90"

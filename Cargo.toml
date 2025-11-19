@@ -1,7 +1,7 @@
 [workspace]
 
-members = ["coman", "openapi_client"]
+members = ["coman", "firecrest_client"]
 resolver = "3"
 
 [workspace.dependencies]
-openapi_client = { path = "./openapi_client", version = "2.4.0" }
+firecrest_client = { path = "./firecrest_client", version = "2.4.0" }
