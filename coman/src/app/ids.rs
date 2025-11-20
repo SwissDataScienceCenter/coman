@@ -6,4 +6,5 @@ pub enum Id {
     Menu,
     InfoPopup,
     ErrorPopup,
+    LoginPopup,
 }

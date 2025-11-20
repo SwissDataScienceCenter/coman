@@ -11,32 +11,26 @@ use crate::{
         oauth2::{CLIENT_ID_SECRET_NAME, CLIENT_SECRET_SECRET_NAME, client_credentials_login},
     },
     util::{
-        keyring::{Secret, get_secret, store_secret},
+        keyring::{Secret, store_secret},
         types::DockerImageUrl,
     },
 };
 
-pub(crate) async fn cli_cscs_login() -> Result<()> {
-    let client_id = match get_secret(CLIENT_ID_SECRET_NAME).await? {
-        Some(client_id) => client_id,
-        None => {
-            let client_id = Text::new("Client Id:").prompt()?;
-            let client_id_secret = Secret::new(client_id);
-            store_secret(CLIENT_ID_SECRET_NAME, client_id_secret.clone()).await?;
-            client_id_secret
-        }
-    };
-    let client_secret = match get_secret(CLIENT_SECRET_SECRET_NAME).await? {
-        Some(client_secret) => client_secret,
-        None => {
-            let client_secret = Password::new("Client Secret:").prompt()?;
-            let client_secret_secret = Secret::new(client_secret);
-            store_secret(CLIENT_SECRET_SECRET_NAME, client_secret_secret.clone()).await?;
-            client_secret_secret
-        }
-    };
+pub(crate) async fn cscs_login(client_id: String, client_secret: String) -> Result<()> {
+    let client_id_secret = Secret::new(client_id);
+    store_secret(CLIENT_ID_SECRET_NAME, client_id_secret.clone()).await?;
+    let client_secret_secret = Secret::new(client_secret);
+    store_secret(CLIENT_SECRET_SECRET_NAME, client_secret_secret.clone()).await?;
+    client_credentials_login(client_id_secret, client_secret_secret)
+        .await
+        .map(|_| ())
+}
 
-    match client_credentials_login(client_id, client_secret).await {
+pub(crate) async fn cli_cscs_login() -> Result<()> {
+    let client_id = Text::new("Client Id:").prompt()?;
+    let client_secret = Password::new("Client Secret:").prompt()?;
+
+    match cscs_login(client_id, client_secret).await {
         Ok(_) => {
             println!("Successfully logged in");
         }

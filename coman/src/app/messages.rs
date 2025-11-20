@@ -17,8 +17,15 @@ pub enum ErrorPopupMsg {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum LoginPopupMsg {
+    Opened,
+    Closed,
+    LoginDone(String, String),
+}
+
+#[derive(Debug, PartialEq)]
 pub enum CscsMsg {
-    Login,
+    Login(String, String),
 }
 
 #[derive(Debug, PartialEq)]
@@ -27,6 +34,7 @@ pub enum Msg {
     Menu(MenuMsg),
     InfoPopup(InfoPopupMsg),
     ErrorPopup(ErrorPopupMsg),
+    LoginPopup(LoginPopupMsg),
     Error(String),
     Info(String),
     Cscs(CscsMsg),
