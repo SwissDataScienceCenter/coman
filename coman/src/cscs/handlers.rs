@@ -56,6 +56,19 @@ pub async fn cscs_system_list() -> Result<Vec<System>> {
     }
 }
 
+pub async fn cscs_system_set(system_name: String, global: bool) -> Result<()> {
+    if global {
+        let mut config = Config::new_global()?;
+        config.cscs.current_system = system_name;
+        config.write_global()?;
+    } else {
+        let mut config = Config::new()?;
+        config.cscs.current_system = system_name;
+        config.write_local()?;
+    }
+    Ok(())
+}
+
 pub async fn cscs_job_list() -> Result<Vec<Job>> {
     match get_access_token().await {
         Ok(access_token) => {
@@ -99,6 +112,8 @@ pub async fn cscs_start_job(
     script_file: Option<PathBuf>,
     image: Option<DockerImageUrl>,
     command: Option<Vec<String>>,
+    container_workdir: Option<String>,
+    env: Vec<(String, String)>,
 ) -> Result<()> {
     match get_access_token().await {
         Ok(access_token) => {
@@ -123,9 +138,15 @@ pub async fn cscs_start_job(
                     ));
                 }
             };
+            let container_workdir =
+                container_workdir.unwrap_or(config.cscs.workdir.unwrap_or("/scratch".to_owned()));
             let base_path = scratch
                 .join(user_info.name.clone())
-                .join(config.cscs.name.clone().unwrap_or("coman".to_owned()));
+                .join(config.name.clone().unwrap_or("coman".to_owned()));
+
+            let mut envvars = config.cscs.env.clone();
+            envvars.extend(env);
+
             let mut tera = tera::Tera::default();
 
             let environment_path = base_path.join("environment.toml");
@@ -158,6 +179,9 @@ pub async fn cscs_start_job(
 
             let mut context = tera::Context::new();
             context.insert("edf_image", &docker_image.to_edf());
+            context.insert("container_workdir", &container_workdir);
+            context.insert("env", &envvars);
+
             let environment_file = tera.render("environment.toml", &context)?;
             api_client
                 .mkdir(&config.cscs.current_system, base_path.clone())
@@ -179,14 +203,12 @@ pub async fn cscs_start_job(
                 .map(std::fs::read_to_string)
                 .unwrap_or(Ok(config.cscs.sbatch_script_template))?;
             tera.add_raw_template("script.sh", &script_template)?;
-            let name = config
-                .cscs
-                .name
-                .unwrap_or(format!("{}-coman", user_info.name));
+            let name = config.name.unwrap_or(format!("{}-coman", user_info.name));
             let mut context = tera::Context::new();
             context.insert("name", &name);
             context.insert("command", &command.unwrap_or(config.cscs.command).join(" "));
             context.insert("environment_file", &environment_path);
+            context.insert("container_workdir", &container_workdir);
             let script = tera.render("script.sh", &context)?;
             api_client
                 .upload(
@@ -198,7 +220,7 @@ pub async fn cscs_start_job(
 
             // start job
             api_client
-                .start_job(&config.cscs.current_system, &name, script_path)
+                .start_job(&config.cscs.current_system, &name, script_path, envvars)
                 .await?;
             Ok(())
         }

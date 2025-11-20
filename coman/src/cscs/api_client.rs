@@ -15,7 +15,7 @@ use firecrest_client::{
         JobMetadataModel, JobModelOutput, SchedulerServiceHealth, UserInfoResponse,
     },
 };
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 use strum::Display;
 
 use crate::trace_dbg;
@@ -263,6 +263,7 @@ impl CscsApi {
         system_name: &str,
         name: &str,
         script_path: PathBuf,
+        envvars: HashMap<String, String>,
     ) -> Result<()> {
         let workingdir = script_path.clone();
         let workingdir = workingdir.parent();
@@ -273,6 +274,7 @@ impl CscsApi {
             None,
             Some(script_path),
             workingdir.map(|p| p.to_path_buf()),
+            envvars,
         )
         .await?;
         let _ = trace_dbg!(result);

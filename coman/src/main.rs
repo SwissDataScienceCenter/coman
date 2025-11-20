@@ -20,10 +20,11 @@ use crate::{
     },
     cli::{Cli, version},
     components::{global_listener::GlobalListener, toolbar::Toolbar, workload_list::WorkloadList},
+    config::Config,
     cscs::{
         cli::{
-            cli_cscs_job_cancel, cli_cscs_job_detail, cli_cscs_job_list, cli_cscs_job_start,
-            cli_cscs_login, cli_cscs_system_list,
+            cli_cscs_job_cancel, cli_cscs_job_detail, cli_cscs_job_list, cli_cscs_job_start, 
+            cli_cscs_login, cli_cscs_set_system, cli_cscs_system_list,
         },
         ports::{AsyncDeviceFlowPort, AsyncFetchWorkloadsPort},
     },
@@ -61,13 +62,20 @@ async fn main() -> Result<()> {
                         script_file,
                         image,
                         command,
-                    } => cli_cscs_job_start(script_file, image, command).await?,
+                        workdir,
+                        env,
+                    } => cli_cscs_job_start(script_file, image, command, workdir, env).await?,
                     cli::CscsJobCommands::Cancel { job_id } => cli_cscs_job_cancel(job_id).await?,
                 },
                 cli::CscsCommands::System { command } => match command {
                     cli::CscsSystemCommands::List => cli_cscs_system_list().await?,
+                    cli::CscsSystemCommands::Set {
+                        system_name,
+                        global,
+                    } => cli_cscs_set_system(system_name, global).await?,
                 },
             },
+            cli::CliCommands::Init { destination } => Config::create_config(destination)?,
         },
         None => run_tui()?,
     }

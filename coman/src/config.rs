@@ -4,6 +4,7 @@ use std::{collections::HashMap, env, path::PathBuf};
 
 use color_eyre::Result;
 use directories::ProjectDirs;
+use eyre::eyre;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
@@ -27,9 +28,11 @@ pub struct CscsConfig {
     #[serde(default)]
     pub current_system: String,
     #[serde(default)]
-    pub name: Option<String>,
-    #[serde(default)]
     pub sbatch_script_template: String,
+    #[serde(default)]
+    pub workdir: Option<String>,
+    #[serde(default)]
+    pub env: HashMap<String, String>,
     #[serde(default)]
     pub image: String,
     #[serde(default)]
@@ -43,6 +46,8 @@ pub struct CscsConfig {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Config {
+    #[serde(default)]
+    pub name: Option<String>,
     #[serde(default, flatten)]
     pub config: AppConfig,
     #[serde(default)]
@@ -59,71 +64,123 @@ lazy_static! {
         env::var(format!("{}_CONFIG", PROJECT_NAME.clone()))
             .ok()
             .map(PathBuf::from);
+    pub static ref CONFIG_FILE_NAME: String = format!("{}.toml", PROJECT_NAME.clone());
+    pub static ref CONFIG_FORMAT: config::FileFormat = config::FileFormat::Toml;
 }
 
 impl Config {
-    pub fn new() -> Result<Self, config::ConfigError> {
-        let data_dir = get_data_dir();
-        let config_dir = get_config_dir();
-        let mut builder = config::Config::builder()
-            .add_source(config::File::from_str(
-                DEFAULT_CONFIG_TOML,
-                config::FileFormat::Toml,
-            ))
-            .set_default("data_dir", data_dir.to_str().unwrap())?
-            .set_default("config_dir", config_dir.to_str().unwrap())?;
-
-        let config_files = [
-            (
-                format!("{}.toml", PROJECT_NAME.to_lowercase()),
-                config::FileFormat::Toml,
-            ),
-            (
-                format!("{}.json5", PROJECT_NAME.to_lowercase()),
-                config::FileFormat::Json5,
-            ),
-            (
-                format!("{}.json", PROJECT_NAME.to_lowercase()),
-                config::FileFormat::Json,
-            ),
-            (
-                format!("{}.yaml", PROJECT_NAME.to_lowercase()),
-                config::FileFormat::Yaml,
-            ),
-            (
-                format!("{}.ini", PROJECT_NAME.to_lowercase()),
-                config::FileFormat::Ini,
-            ),
-        ];
-        for (file, format) in &config_files {
-            let source = config::File::from(config_dir.join(file))
-                .format(*format)
-                .required(false);
-            builder = builder.add_source(source);
-        }
-
-        // find config override in current directory
-        let mut search_path = std::env::current_dir().expect("current directory does not exist");
-        loop {
-            for (file, format) in &config_files {
-                if search_path.join(file).exists() {
-                    let source = config::File::from(search_path.join(file))
-                        .format(*format)
-                        .required(false);
-                    builder = builder.add_source(source);
-                    break;
-                }
-            }
-            if let Some(p) = search_path.parent() {
-                search_path = p.to_path_buf();
-            } else {
-                break;
-            }
-        }
+    pub fn new() -> Result<Self> {
+        let builder = default_config_builder()?;
+        let builder = global_config_builder(builder)?;
+        let builder = project_local_config_builder(builder)?;
 
         let cfg: Self = builder.build()?.try_deserialize()?;
         Ok(cfg)
     }
+    pub fn new_global() -> Result<Self> {
+        let builder = default_config_builder()?;
+        let builder = global_config_builder(builder)?;
+
+        let cfg: Self = builder.build()?.try_deserialize()?;
+        Ok(cfg)
+    }
+
+    pub fn write_local(&self) -> Result<()> {
+        match get_project_local_config_file() {
+            Some(path) => {
+                let content = toml::to_string_pretty(self)?;
+                std::fs::write(path, content)?;
+                Ok(())
+            }
+            None => Err(eyre!(
+                "No config file exists in current project. Consider creating one using '{} init",
+                PROJECT_NAME.to_lowercase().clone()
+            )),
+        }
+    }
+
+    pub fn write_global(&self) -> Result<()> {
+        let config_dir = get_config_dir();
+        let path = config_dir.join(CONFIG_FILE_NAME.clone());
+        let content = toml::to_string_pretty(self)?;
+        std::fs::write(path, content)?;
+        Ok(())
+    }
+
+    pub fn create_config(destination: Option<PathBuf>) -> Result<()> {
+        let mut config = Config::new()?;
+        let project_dir = destination
+            .unwrap_or(std::env::current_dir().expect("current directory does not exist"));
+        if !project_dir.exists() || !project_dir.is_dir() {
+            return Err(eyre!(
+                "destination must exist and be a directory, got {}",
+                project_dir.to_string_lossy()
+            ));
+        }
+
+        let name = project_dir
+            .file_name()
+            .expect("could not get base name from destination");
+        config.name = Some(name.to_string_lossy().to_string());
+
+        let config_path = project_dir.join(CONFIG_FILE_NAME.clone());
+        std::fs::write(config_path.clone(), "")?;
+        let content = toml::to_string_pretty(&config)?;
+        std::fs::write(config_path, content)?;
+        Ok(())
+    }
+}
+
+pub fn default_config_builder() -> Result<config::ConfigBuilder<config::builder::DefaultState>> {
+    let data_dir = get_data_dir();
+    let config_dir = get_config_dir();
+    let builder = config::Config::builder()
+        .add_source(config::File::from_str(
+            DEFAULT_CONFIG_TOML,
+            config::FileFormat::Toml,
+        ))
+        .set_default("data_dir", data_dir.to_str().unwrap())?
+        .set_default("config_dir", config_dir.to_str().unwrap())?;
+    Ok(builder)
+}
+
+pub fn global_config_builder(
+    builder: config::ConfigBuilder<config::builder::DefaultState>,
+) -> Result<config::ConfigBuilder<config::builder::DefaultState>> {
+    let config_dir = get_config_dir();
+    let source = config::File::from(config_dir.join(CONFIG_FILE_NAME.clone()))
+        .format(*CONFIG_FORMAT)
+        .required(false);
+    let builder = builder.add_source(source);
+    Ok(builder)
+}
+
+pub fn project_local_config_builder(
+    builder: config::ConfigBuilder<config::builder::DefaultState>,
+) -> Result<config::ConfigBuilder<config::builder::DefaultState>> {
+    if let Some(config_path) = get_project_local_config_file() {
+        let source = config::File::from(config_path)
+            .format(*CONFIG_FORMAT)
+            .required(false);
+        let builder = builder.add_source(source);
+        return Ok(builder);
+    }
+    Ok(builder)
+}
+
+pub fn get_project_local_config_file() -> Option<PathBuf> {
+    let mut search_path = std::env::current_dir().expect("current directory does not exist");
+    loop {
+        if search_path.join(CONFIG_FILE_NAME.clone()).exists() {
+            return Some(search_path.join(CONFIG_FILE_NAME.clone()));
+        }
+        if let Some(p) = search_path.parent() {
+            search_path = p.to_path_buf();
+        } else {
+            break;
+        }
+    }
+    None
 }
 
 pub fn get_data_dir() -> PathBuf {

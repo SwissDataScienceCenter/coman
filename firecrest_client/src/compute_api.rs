@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 use crate::{
     client::FirecrestClient,
@@ -17,6 +17,7 @@ pub async fn post_compute_system_job(
     script: Option<&str>,
     script_path: Option<PathBuf>,
     working_dir: Option<PathBuf>,
+    envvars: HashMap<String, String>,
 ) -> Result<PostJobSubmissionResponse> {
     if script.is_none() && script_path.is_none() {
         return Err(eyre!("either script or script_path must be set"));
@@ -34,7 +35,7 @@ pub async fn post_compute_system_job(
                 .transpose()
                 .map_err(|_| eyre!("couldn't convert working dir path"))?
                 .unwrap_or("/".to_owned()),
-            env: Some(JobDescriptionModelEnv::Object(json!({"test":"test"}))),
+            env: Some(JobDescriptionModelEnv::Object(json!(envvars))),
             ..Default::default()
         },
     };
