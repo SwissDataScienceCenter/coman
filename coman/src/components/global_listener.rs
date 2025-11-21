@@ -5,7 +5,7 @@ use tuirealm::{
 };
 
 use crate::app::{
-    messages::{MenuMsg, Msg},
+    messages::{MenuMsg, Msg, SystemSelectMsg},
     user_events::{CscsEvent, UserEvent},
 };
 
@@ -33,6 +33,9 @@ impl Component<Msg, UserEvent> for GlobalListener {
             Event::User(UserEvent::Info(msg)) => Some(Msg::Info(msg)),
             Event::User(UserEvent::Cscs(CscsEvent::LoggedIn)) => {
                 Some(Msg::Info("Successfully logged in".to_string()))
+            }
+            Event::User(UserEvent::Cscs(CscsEvent::SelectSystemList(systems))) => {
+                Some(Msg::SystemSelectPopup(SystemSelectMsg::Opened(systems)))
             }
             _ => None,
         }

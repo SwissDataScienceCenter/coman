@@ -9,14 +9,16 @@ use tuirealm::{
 use crate::{
     app::{
         ids::Id,
-        messages::{CscsMsg, ErrorPopupMsg, InfoPopupMsg, LoginPopupMsg, MenuMsg, Msg},
+        messages::{
+            CscsMsg, ErrorPopupMsg, InfoPopupMsg, LoginPopupMsg, MenuMsg, Msg, SystemSelectMsg,
+        },
         user_events::UserEvent,
     },
     components::{
         error_popup::ErrorPopup, info_popup::InfoPopup, login_popup::LoginPopup,
-        workload_menu::WorkloadMenu,
+        system_select_popup::SystemSelectPopup, workload_menu::WorkloadMenu,
     },
-    cscs::cli::cscs_login,
+    cscs::{cli::cscs_login, handlers::cscs_system_set},
     trace_dbg,
     util::ui::draw_area_in_absolute,
 };
@@ -37,6 +39,9 @@ where
 
     ///Used to allow sending errors from tokio::spawn async jobs
     pub error_tx: mpsc::Sender<String>,
+
+    /// Triggers async request to select current system
+    pub select_system_tx: mpsc::Sender<()>,
 }
 
 impl<T> Model<T>
@@ -47,6 +52,7 @@ where
         app: Application<Id, Msg, UserEvent>,
         bridge: TerminalBridge<T>,
         error_tx: mpsc::Sender<String>,
+        select_system_tx: mpsc::Sender<()>,
     ) -> Self {
         Self {
             app,
@@ -54,6 +60,7 @@ where
             redraw: true,
             terminal: bridge,
             error_tx,
+            select_system_tx,
         }
     }
 
@@ -91,6 +98,10 @@ where
                         let popup = draw_area_in_absolute(f.area(), 10);
                         f.render_widget(Clear, popup);
                         self.app.view(&Id::LoginPopup, f, popup);
+                    } else if self.app.mounted(&Id::SystemSelectPopup) {
+                        let popup = draw_area_in_absolute(f.area(), 10);
+                        f.render_widget(Clear, popup);
+                        self.app.view(&Id::SystemSelectPopup, f, popup);
                     }
                 })
                 .is_ok()
@@ -114,6 +125,32 @@ where
             LoginPopupMsg::LoginDone(client_id, client_secret) => {
                 assert!(self.app.umount(&Id::LoginPopup).is_ok());
                 Some(Msg::Cscs(CscsMsg::Login(client_id, client_secret)))
+            }
+        }
+    }
+    fn handle_system_select_popup_msg(&mut self, msg: SystemSelectMsg) -> Option<Msg> {
+        match msg {
+            SystemSelectMsg::Opened(systems) => {
+                assert!(
+                    self.app
+                        .mount(
+                            Id::SystemSelectPopup,
+                            Box::new(SystemSelectPopup::new(systems)),
+                            vec![]
+                        )
+                        .is_ok()
+                );
+                assert!(self.app.active(&Id::SystemSelectPopup).is_ok());
+                trace_dbg!("mounted system select popup");
+                None
+            }
+            SystemSelectMsg::Closed => {
+                assert!(self.app.umount(&Id::SystemSelectPopup).is_ok());
+                None
+            }
+            SystemSelectMsg::SystemSelected(system) => {
+                assert!(self.app.umount(&Id::SystemSelectPopup).is_ok());
+                Some(Msg::Cscs(CscsMsg::SystemSelected(system)))
             }
         }
     }
@@ -174,6 +211,10 @@ where
                 assert!(self.app.umount(&Id::Menu).is_ok());
                 Some(Msg::LoginPopup(LoginPopupMsg::Opened))
             }
+            MenuMsg::CscsSwitchSystem => {
+                assert!(self.app.umount(&Id::Menu).is_ok());
+                Some(Msg::Cscs(CscsMsg::SelectSystem))
+            }
         }
     }
 }
@@ -218,8 +259,32 @@ where
                     });
                     None
                 }
-                Msg::None => None,
+                Msg::Cscs(CscsMsg::SelectSystem) => {
+                    let system_select_tx = self.select_system_tx.clone();
+                    tokio::spawn(async move {
+                        system_select_tx.send(()).await.unwrap();
+                    });
+                    None
+                }
+                Msg::Cscs(CscsMsg::SystemSelected(system)) => {
+                    let error_tx = self.error_tx.clone();
+                    tokio::spawn(async move {
+                        match cscs_system_set(system, true).await {
+                            Ok(_) => {}
+                            Err(e) => error_tx
+                                .send(format!(
+                                    "{:?}",
+                                    Err::<(), Report>(e).wrap_err("failed to set current system")
+                                ))
+                                .await
+                                .unwrap(),
+                        };
+                    });
+                    None
+                }
                 Msg::LoginPopup(msg) => self.handle_login_popup_msg(msg),
+                Msg::SystemSelectPopup(msg) => self.handle_system_select_popup_msg(msg),
+                Msg::None => None,
             }
         } else {
             None

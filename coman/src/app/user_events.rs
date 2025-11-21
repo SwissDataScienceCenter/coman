@@ -1,9 +1,10 @@
-use crate::cscs::api_client::Job;
+use crate::cscs::api_client::{Job, System};
 
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord)]
 pub enum CscsEvent {
     LoggedIn,
     GotWorkloadData(Vec<Job>),
+    SelectSystemList(Vec<System>),
 }
 
 #[derive(Debug, Eq, Clone, PartialOrd, Ord)]

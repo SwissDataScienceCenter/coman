@@ -52,7 +52,7 @@ impl LoginPopup {
                 Layout::default()
                     .constraints(&[Constraint::Length(3), Constraint::Length(3)])
                     .direction(LayoutDirection::Vertical)
-                    .margin(2),
+                    .margin(1),
             )
     }
 
@@ -179,7 +179,7 @@ impl Component<Msg, UserEvent> for LoginPopup {
             }) => self.perform(Cmd::Delete),
             Event::Keyboard(KeyEvent {
                 code: Key::Char(ch),
-                modifiers: KeyModifiers::NONE,
+                ..
             }) => self.perform(Cmd::Type(ch)),
             Event::Keyboard(KeyEvent { code: Key::Tab, .. }) => {
                 self.focus_next();

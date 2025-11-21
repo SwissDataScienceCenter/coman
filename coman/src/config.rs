@@ -64,7 +64,8 @@ lazy_static! {
         env::var(format!("{}_CONFIG", PROJECT_NAME.clone()))
             .ok()
             .map(PathBuf::from);
-    pub static ref CONFIG_FILE_NAME: String = format!("{}.toml", PROJECT_NAME.clone());
+    pub static ref CONFIG_FILE_NAME: String =
+        format!("{}.toml", PROJECT_NAME.to_lowercase().clone());
     pub static ref CONFIG_FORMAT: config::FileFormat = config::FileFormat::Toml;
 }
 
@@ -110,7 +111,8 @@ impl Config {
     pub fn create_config(destination: Option<PathBuf>) -> Result<()> {
         let mut config = Config::new()?;
         let project_dir = destination
-            .unwrap_or(std::env::current_dir().expect("current directory does not exist"));
+            .unwrap_or(std::env::current_dir().expect("current directory does not exist"))
+            .canonicalize()?;
         if !project_dir.exists() || !project_dir.is_dir() {
             return Err(eyre!(
                 "destination must exist and be a directory, got {}",

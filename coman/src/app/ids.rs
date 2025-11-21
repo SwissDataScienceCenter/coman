@@ -7,4 +7,5 @@ pub enum Id {
     InfoPopup,
     ErrorPopup,
     LoginPopup,
+    SystemSelectPopup,
 }
