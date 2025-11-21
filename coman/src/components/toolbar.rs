@@ -12,7 +12,7 @@ impl Toolbar {
     pub fn new() -> Self {
         Self {
             component: Label::default()
-                .text("q: quit, tab/shift+tab: change focus, x: menu, ?: help"),
+                .text("q: quit, l: logs, tab/shift+tab: change focus, x: menu, ?: help"),
         }
     }
 }

@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use crate::{
     cscs::{
         handlers::{
-            cscs_job_cancel, cscs_job_details, cscs_job_list, cscs_start_job, cscs_system_list,
-            cscs_system_set,
+            cscs_job_cancel, cscs_job_details, cscs_job_list, cscs_job_log, cscs_start_job,
+            cscs_system_list, cscs_system_set,
         },
         oauth2::{CLIENT_ID_SECRET_NAME, CLIENT_SECRET_SECRET_NAME, client_credentials_login},
     },
@@ -80,6 +80,16 @@ pub(crate) async fn cli_cscs_job_detail(job_id: i64) -> Result<()> {
             Ok(())
         }
         Ok(None) => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+pub(crate) async fn cli_cscs_job_log(job_id: i64) -> Result<()> {
+    match cscs_job_log(job_id).await {
+        Ok(content) => {
+            println!("{}", content);
+            Ok(())
+        }
         Err(e) => Err(e),
     }
 }

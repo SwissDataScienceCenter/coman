@@ -23,10 +23,10 @@ use crate::{
     config::Config,
     cscs::{
         cli::{
-            cli_cscs_job_cancel, cli_cscs_job_detail, cli_cscs_job_list, cli_cscs_job_start, 
+            cli_cscs_job_cancel, cli_cscs_job_detail, cli_cscs_job_list, cli_cscs_job_log, cli_cscs_job_start,
             cli_cscs_login, cli_cscs_set_system, cli_cscs_system_list,
         },
-        ports::{AsyncFetchWorkloadsPort, AsyncSelectSystemPort},
+        ports::{AsyncFetchWorkloadsPort, AsyncJobLogPort, AsyncSelectSystemPort},
     },
     errors::AsyncErrorPort,
 };
@@ -58,6 +58,7 @@ async fn main() -> Result<()> {
                 cli::CscsCommands::Job { command } => match command {
                     cli::CscsJobCommands::List => cli_cscs_job_list().await?,
                     cli::CscsJobCommands::Get { job_id } => cli_cscs_job_detail(job_id).await?,
+                    cli::CscsJobCommands::Log { job_id } => cli_cscs_job_log(job_id).await?,
                     cli::CscsJobCommands::Submit {
                         script_file,
                         image,
@@ -91,6 +92,7 @@ fn run_tui() -> Result<()> {
     let handle = Handle::current();
 
     let (select_system_tx, select_system_rx) = mpsc::channel(100);
+    let (job_log_tx, job_log_rx) = mpsc::channel(100);
     let (error_tx, error_rx) = mpsc::channel(100);
     let event_listener = EventListenerCfg::default()
         .with_handle(handle)
@@ -109,13 +111,29 @@ fn run_tui() -> Result<()> {
             Box::new(AsyncSelectSystemPort::new(select_system_rx)),
             Duration::default(),
             1,
+        )
+        .add_async_port(
+            Box::new(AsyncJobLogPort::new(job_log_rx)),
+            Duration::from_secs(3),
+            1,
         );
 
     let mut app: Application<Id, Msg, UserEvent> = Application::init(event_listener);
 
     // subscribe component to clause
     app.mount(Id::Toolbar, Box::new(Toolbar::new()), vec![])?;
-    app.mount(Id::WorkloadList, Box::new(WorkloadList::default()), vec![])?;
+    app.mount(
+        Id::WorkloadList,
+        Box::new(WorkloadList::default()),
+        vec![Sub::new(
+            SubEventClause::Any,
+            SubClause::Not(Box::new(SubClause::OrMany(vec![
+                SubClause::IsMounted(Id::Menu),
+                SubClause::IsMounted(Id::ErrorPopup),
+                SubClause::IsMounted(Id::LoginPopup),
+            ]))),
+        )],
+    )?;
     app.mount(
         Id::GlobalListener,
         Box::new(GlobalListener::default()),
@@ -162,7 +180,7 @@ fn run_tui() -> Result<()> {
 
     app.active(&Id::WorkloadList).expect("failed to active");
 
-    let mut model = Model::new(app, bridge, error_tx, select_system_tx);
+    let mut model = Model::new(app, bridge, error_tx, select_system_tx, job_log_tx);
     // Main loop
     // NOTE: loop until quit; quit is set in update if AppClose is received from counter
     while !model.quit {

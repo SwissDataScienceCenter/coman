@@ -7,7 +7,8 @@ use firecrest_client::{
         get_compute_system_jobs, post_compute_system_job,
     },
     filesystem_api::{
-        post_filesystem_ops_mkdir, post_filesystem_ops_upload, put_filesystem_ops_chmod,
+        get_filesystem_ops_tail, post_filesystem_ops_mkdir, post_filesystem_ops_upload,
+        put_filesystem_ops_chmod,
     },
     status_api::{get_status_systems, get_status_userinfo},
     types::{
@@ -348,6 +349,15 @@ impl CscsApi {
             .await
             .wrap_err("couldn't upload file")?;
         Ok(())
+    }
+    pub async fn tail(&self, system_name: &str, path: PathBuf, lines: usize) -> Result<String> {
+        let result = get_filesystem_ops_tail(&self.client, system_name, path, lines)
+            .await
+            .wrap_err("couldn't tail file")?;
+        match result.output {
+            Some(output) => Ok(output.content),
+            None => Ok("".to_string()),
+        }
     }
     pub async fn get_userinfo(&self, system_name: &str) -> Result<UserInfo> {
         let result = get_status_userinfo(&self.client, system_name)

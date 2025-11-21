@@ -40,7 +40,13 @@ pub enum CscsJobCommands {
     #[clap(alias("ls"))]
     List,
     #[clap(alias("g"))]
-    Get { job_id: i64 },
+    Get {
+        job_id: i64,
+    },
+    Log {
+        job_id: i64,
+    },
+
     #[clap(alias("s"))]
     Submit {
         #[clap(short, long, help = "the path to the srun script file to use")]
@@ -59,7 +65,9 @@ pub enum CscsJobCommands {
         command: Option<Vec<String>>,
     },
     #[clap(alias("c"))]
-    Cancel { job_id: i64 },
+    Cancel { 
+        job_id: i64, 
+    },
 }
 #[derive(Subcommand, Debug)]
 pub enum CscsSystemCommands {

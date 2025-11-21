@@ -1,15 +1,10 @@
 use tui_realm_stdlib::List;
 use tuirealm::{
-    Component, Event, Frame, MockComponent, State, StateValue,
+    Component, Event, MockComponent, State, StateValue,
     command::{Cmd, CmdResult, Direction, Position},
-    event::{Key, KeyEvent, KeyModifiers},
+    event::{Key, KeyEvent},
     props::{
-        Alignment, AttrValue, Attribute, BorderType, Borders, Color, InputType, Layout, Props,
-        Style, TableBuilder, TextSpan,
-    },
-    ratatui::{
-        layout::{Constraint, Direction as LayoutDirection, Rect},
-        widgets::Block,
+        Alignment, BorderType, Borders, Color, TableBuilder, TextSpan,
     },
 };
 

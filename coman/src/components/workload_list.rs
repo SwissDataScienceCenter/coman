@@ -1,19 +1,23 @@
 use tui_realm_stdlib::List;
 use tuirealm::{
-    AttrValue, Attribute, Component, Event, MockComponent,
+    AttrValue, Attribute, Component, Event, MockComponent, State, StateValue,
     command::{Cmd, CmdResult, Direction, Position},
-    event::{Key, KeyEvent},
+    event::{Key, KeyEvent, KeyModifiers},
     props::{Alignment, BorderType, Borders, Color, TableBuilder, TextSpan},
 };
 
-use crate::app::{
-    messages::Msg,
-    user_events::{CscsEvent, UserEvent},
+use crate::{
+    app::{
+        messages::{JobMsg, Msg},
+        user_events::{CscsEvent, UserEvent},
+    },
+    cscs::api_client::Job,
 };
 
 #[derive(MockComponent)]
 pub(crate) struct WorkloadList {
     component: List,
+    jobs: Vec<Job>,
 }
 
 impl Default for WorkloadList {
@@ -31,6 +35,7 @@ impl Default for WorkloadList {
                 .highlighted_str("-")
                 .rewind(true)
                 .step(4),
+            jobs: vec![],
         }
     }
 }
@@ -58,9 +63,11 @@ impl Component<Msg, UserEvent> for WorkloadList {
                 self.perform(Cmd::GoTo(Position::End))
             }
             Event::User(UserEvent::Cscs(CscsEvent::GotWorkloadData(data))) => {
-                if data.len() == 0 {
+                if data.is_empty() {
+                    self.jobs = vec![];
                     self.attr(Attribute::Content, AttrValue::Table(vec![]));
                 } else {
+                    self.jobs = data.clone();
                     let mut table = TableBuilder::default();
                     for (idx, job) in data.iter().enumerate() {
                         if idx > 0 {
@@ -76,6 +83,18 @@ impl Component<Msg, UserEvent> for WorkloadList {
                     self.attr(Attribute::Content, AttrValue::Table(table.build()));
                 }
                 self.perform(Cmd::Change)
+            }
+            Event::Keyboard(KeyEvent {
+                code: Key::Char('l'),
+                modifiers: KeyModifiers::NONE,
+            }) => {
+                if let State::One(StateValue::Usize(index)) = self.state()
+                    && !self.jobs.is_empty()
+                {
+                    let job = self.jobs[index].clone();
+                    return Some(Msg::Job(JobMsg::ShowLog(job.id)));
+                }
+                CmdResult::None
             }
             _ => CmdResult::None,
         };
