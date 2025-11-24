@@ -18,22 +18,18 @@ impl Component<Msg, UserEvent> for GlobalListener {
     fn on(&mut self, ev: tuirealm::Event<UserEvent>) -> Option<Msg> {
         match ev {
             Event::Keyboard(KeyEvent {
-                code: Key::Char('q'),
-                ..
+                code: Key::Char('q'), ..
             })
             | Event::Keyboard(KeyEvent {
                 code: Key::Char('c'),
                 modifiers: KeyModifiers::CONTROL,
             }) => Some(Msg::AppClose),
             Event::Keyboard(KeyEvent {
-                code: Key::Char('x'),
-                ..
+                code: Key::Char('x'), ..
             }) => Some(Msg::Menu(MenuMsg::Opened)),
             Event::User(UserEvent::Error(msg)) => Some(Msg::Error(msg)),
             Event::User(UserEvent::Info(msg)) => Some(Msg::Info(msg)),
-            Event::User(UserEvent::Cscs(CscsEvent::LoggedIn)) => {
-                Some(Msg::Info("Successfully logged in".to_string()))
-            }
+            Event::User(UserEvent::Cscs(CscsEvent::LoggedIn)) => Some(Msg::Info("Successfully logged in".to_string())),
             Event::User(UserEvent::Cscs(CscsEvent::SelectSystemList(systems))) => {
                 Some(Msg::SystemSelectPopup(SystemSelectMsg::Opened(systems)))
             }

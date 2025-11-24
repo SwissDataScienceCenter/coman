@@ -1,0 +1,39 @@
+name: Lint and Test
+on:
+  push:
+    branches:
+      - "main"
+  pull_request:
+permissions: read-all
+env:
+  CRATE_NAME: coman
+  GITHUB_TOKEN: ${{ github.token }}
+  RUST_BACKTRACE: 1
+  RUSTFLAGS: "-Dwarnings"
+
+jobs:
+  check-linux:
+    name: check-linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: setup rust
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup component add --toolchain nightly-x86_64-unknown-linux-gnu rustfmt
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v0-rust"
+      - name: install tooling
+        run: cargo install oas3-gen
+      - name: Build
+        run: cargo build --verbose
+      - name: Check formatting
+        run: cargo +nightly fmt --check
+      - name: Lint
+        run: cargo clippy --all-targets --all-features -p coman
+      - name: Test
+        run: cargo test --verbose

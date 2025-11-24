@@ -1,14 +1,15 @@
 use std::{collections::HashMap, path::PathBuf};
 
+use eyre::{Result, eyre};
+use serde_json::json;
+
 use crate::{
     client::FirecrestClient,
     types::{
-        GetJobMetadataResponse, GetJobResponse, JobDescriptionModel, JobDescriptionModelEnv,
-        PostJobSubmissionResponse, PostJobSubmitRequest,
+        GetJobMetadataResponse, GetJobResponse, JobDescriptionModel, JobDescriptionModelEnv, PostJobSubmissionResponse,
+        PostJobSubmitRequest,
     },
 };
-use eyre::{Result, eyre};
-use serde_json::json;
 
 pub async fn post_compute_system_job(
     client: &FirecrestClient,
@@ -41,12 +42,7 @@ pub async fn post_compute_system_job(
     };
     let body_json = serde_json::to_string(&body)?;
     let response = client
-        .post(
-            format!("compute/{system_name}/jobs").as_str(),
-            body_json,
-            None,
-            None,
-        )
+        .post(format!("compute/{system_name}/jobs").as_str(), body_json, None, None)
         .await?;
     let model: PostJobSubmissionResponse = serde_json::from_str(response.as_str())?;
 
@@ -81,10 +77,7 @@ pub async fn get_compute_system_job(
     job_id: i64,
 ) -> Result<GetJobResponse> {
     let response = client
-        .get(
-            format!("compute/{system_name}/jobs/{job_id}").as_str(),
-            None,
-        )
+        .get(format!("compute/{system_name}/jobs/{job_id}").as_str(), None)
         .await?;
     let model: GetJobResponse = serde_json::from_str(response.as_str())?;
     Ok(model)
@@ -95,25 +88,15 @@ pub async fn get_compute_system_job_metadata(
     job_id: i64,
 ) -> Result<GetJobMetadataResponse> {
     let response = client
-        .get(
-            format!("compute/{system_name}/jobs/{job_id}/metadata").as_str(),
-            None,
-        )
+        .get(format!("compute/{system_name}/jobs/{job_id}/metadata").as_str(), None)
         .await?;
     let model: GetJobMetadataResponse = serde_json::from_str(response.as_str())?;
     Ok(model)
 }
 
-pub async fn cancel_compute_system_job(
-    client: &FirecrestClient,
-    system_name: &str,
-    job_id: i64,
-) -> Result<()> {
+pub async fn cancel_compute_system_job(client: &FirecrestClient, system_name: &str, job_id: i64) -> Result<()> {
     let _ = client
-        .delete(
-            format!("compute/{system_name}/jobs/{job_id}").as_str(),
-            None,
-        )
+        .delete(format!("compute/{system_name}/jobs/{job_id}").as_str(), None)
         .await?;
     Ok(())
 }

@@ -1,22 +1,22 @@
+use std::{collections::HashMap, path::PathBuf};
+
 use chrono::prelude::*;
 use color_eyre::eyre::{Context, Result};
 use firecrest_client::{
     client::FirecrestClient,
     compute_api::{
-        cancel_compute_system_job, get_compute_system_job, get_compute_system_job_metadata,
-        get_compute_system_jobs, post_compute_system_job,
+        cancel_compute_system_job, get_compute_system_job, get_compute_system_job_metadata, get_compute_system_jobs,
+        post_compute_system_job,
     },
     filesystem_api::{
-        get_filesystem_ops_tail, post_filesystem_ops_mkdir, post_filesystem_ops_upload,
-        put_filesystem_ops_chmod,
+        get_filesystem_ops_tail, post_filesystem_ops_mkdir, post_filesystem_ops_upload, put_filesystem_ops_chmod,
     },
     status_api::{get_status_systems, get_status_userinfo},
     types::{
-        FileSystem as CSCSFileSystem, FileSystemDataType, HealthCheckType, HpcclusterOutput,
-        JobMetadataModel, JobModelOutput, SchedulerServiceHealth, UserInfoResponse,
+        FileSystem as CSCSFileSystem, FileSystemDataType, HealthCheckType, HpcclusterOutput, JobMetadataModel,
+        JobModelOutput, SchedulerServiceHealth, UserInfoResponse,
     },
 };
-use std::{collections::HashMap, path::PathBuf};
 use strum::Display;
 
 use crate::trace_dbg;
@@ -112,16 +112,14 @@ impl From<JobModelOutput> for Job {
             name: value.name,
             status: value.status.state.into(),
             user: value.user.unwrap_or("".to_string()),
-            start_date: value.time.start.map(|s| {
-                DateTime::from_timestamp_secs(s)
-                    .unwrap()
-                    .with_timezone(&Local)
-            }),
-            end_date: value.time.end.map(|e| {
-                DateTime::from_timestamp_secs(e)
-                    .unwrap()
-                    .with_timezone(&Local)
-            }),
+            start_date: value
+                .time
+                .start
+                .map(|s| DateTime::from_timestamp_secs(s).unwrap().with_timezone(&Local)),
+            end_date: value
+                .time
+                .end
+                .map(|e| DateTime::from_timestamp_secs(e).unwrap().with_timezone(&Local)),
         }
     }
 }
@@ -153,16 +151,16 @@ impl From<(JobModelOutput, JobMetadataModel)> for JobDetail {
         Self {
             id: value.0.job_id as usize,
             name: value.0.name,
-            start_date: value.0.time.start.map(|s| {
-                DateTime::from_timestamp_secs(s)
-                    .unwrap()
-                    .with_timezone(&Local)
-            }),
-            end_date: value.0.time.end.map(|e| {
-                DateTime::from_timestamp_secs(e)
-                    .unwrap()
-                    .with_timezone(&Local)
-            }),
+            start_date: value
+                .0
+                .time
+                .start
+                .map(|s| DateTime::from_timestamp_secs(s).unwrap().with_timezone(&Local)),
+            end_date: value
+                .0
+                .time
+                .end
+                .map(|e| DateTime::from_timestamp_secs(e).unwrap().with_timezone(&Local)),
             status: value.0.status.state.into(),
             status_reason: value.0.status.state_reason.unwrap_or("".to_owned()),
             exit_code: value.0.status.exit_code.unwrap_or(0),

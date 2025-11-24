@@ -1,13 +1,11 @@
 use std::path::PathBuf;
 
+use eyre::{Result, eyre};
+
 use crate::{
     client::FirecrestClient,
-    types::{
-        GetFileTailResponse, PostMakeDirRequest, PostMkdirResponse, PutFileChmodRequest,
-        PutFileChmodResponse,
-    },
+    types::{GetFileTailResponse, PostMakeDirRequest, PostMkdirResponse, PutFileChmodRequest, PutFileChmodResponse},
 };
-use eyre::{Result, eyre};
 
 pub async fn post_filesystem_ops_mkdir(
     client: &FirecrestClient,
@@ -51,11 +49,7 @@ pub async fn put_filesystem_ops_chmod(
     };
     let body_json = serde_json::to_string(&body)?;
     let response = client
-        .put(
-            format!("filesystem/{system_name}/ops/chmod").as_str(),
-            body_json,
-            None,
-        )
+        .put(format!("filesystem/{system_name}/ops/chmod").as_str(), body_json, None)
         .await?;
     let model: PutFileChmodResponse = serde_json::from_str(response.as_str())?;
     Ok(model)
@@ -67,10 +61,7 @@ pub async fn get_filesystem_ops_tail(
     path: PathBuf,
     lines: usize,
 ) -> Result<GetFileTailResponse> {
-    let path = path
-        .as_os_str()
-        .to_str()
-        .ok_or(eyre!("couldn't cast path to string"))?;
+    let path = path.as_os_str().to_str().ok_or(eyre!("couldn't cast path to string"))?;
     let response = client
         .get(
             format!("filesystem/{system_name}/ops/tail").as_str(),

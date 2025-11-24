@@ -3,10 +3,7 @@ use tuirealm::{
     Component, Event, Frame, MockComponent, State,
     command::{Cmd, CmdResult, Direction, Position},
     event::{Key, KeyEvent},
-    props::{
-        Alignment, AttrValue, Attribute, BorderType, Borders, Color, InputType, Layout, Props,
-        Style,
-    },
+    props::{Alignment, AttrValue, Attribute, BorderType, Borders, Color, InputType, Layout, Props, Style},
     ratatui::{
         layout::{Constraint, Direction as LayoutDirection, Rect},
         widgets::Block,
@@ -38,15 +35,9 @@ impl LoginPopup {
             client_secret_input: Box::new(ClientSecretInput::default()),
             active_input: ActiveInput::ClientId,
         };
+        popup.client_id_input.attr(Attribute::Focus, AttrValue::Flag(true));
         popup
-            .client_id_input
-            .attr(Attribute::Focus, AttrValue::Flag(true));
-        popup
-            .borders(
-                Borders::default()
-                    .modifiers(BorderType::Thick)
-                    .color(Color::Green),
-            )
+            .borders(Borders::default().modifiers(BorderType::Thick).color(Color::Green))
             .title("Login", Alignment::Left)
             .layout(
                 Layout::default()
@@ -86,17 +77,13 @@ impl LoginPopup {
     pub fn focus_next(&mut self) {
         self.active_input = match self.active_input {
             ActiveInput::ClientId => {
-                self.client_id_input
-                    .attr(Attribute::Focus, AttrValue::Flag(false));
-                self.client_secret_input
-                    .attr(Attribute::Focus, AttrValue::Flag(true));
+                self.client_id_input.attr(Attribute::Focus, AttrValue::Flag(false));
+                self.client_secret_input.attr(Attribute::Focus, AttrValue::Flag(true));
                 ActiveInput::ClientSecret
             }
             ActiveInput::ClientSecret => {
-                self.client_secret_input
-                    .attr(Attribute::Focus, AttrValue::Flag(false));
-                self.client_id_input
-                    .attr(Attribute::Focus, AttrValue::Flag(true));
+                self.client_secret_input.attr(Attribute::Focus, AttrValue::Flag(false));
+                self.client_id_input.attr(Attribute::Focus, AttrValue::Flag(true));
                 ActiveInput::ClientId
             }
         };
@@ -158,47 +145,26 @@ impl MockComponent for LoginPopup {
 impl Component<Msg, UserEvent> for LoginPopup {
     fn on(&mut self, ev: tuirealm::Event<UserEvent>) -> Option<Msg> {
         let _ = match ev {
+            Event::Keyboard(KeyEvent { code: Key::Left, .. }) => self.perform(Cmd::Move(Direction::Left)),
+            Event::Keyboard(KeyEvent { code: Key::Right, .. }) => self.perform(Cmd::Move(Direction::Right)),
+            Event::Keyboard(KeyEvent { code: Key::Home, .. }) => self.perform(Cmd::GoTo(Position::Begin)),
+            Event::Keyboard(KeyEvent { code: Key::End, .. }) => self.perform(Cmd::GoTo(Position::End)),
+            Event::Keyboard(KeyEvent { code: Key::Delete, .. }) => self.perform(Cmd::Cancel),
             Event::Keyboard(KeyEvent {
-                code: Key::Left, ..
-            }) => self.perform(Cmd::Move(Direction::Left)),
-            Event::Keyboard(KeyEvent {
-                code: Key::Right, ..
-            }) => self.perform(Cmd::Move(Direction::Right)),
-            Event::Keyboard(KeyEvent {
-                code: Key::Home, ..
-            }) => self.perform(Cmd::GoTo(Position::Begin)),
-            Event::Keyboard(KeyEvent { code: Key::End, .. }) => {
-                self.perform(Cmd::GoTo(Position::End))
-            }
-            Event::Keyboard(KeyEvent {
-                code: Key::Delete, ..
-            }) => self.perform(Cmd::Cancel),
-            Event::Keyboard(KeyEvent {
-                code: Key::Backspace,
-                ..
+                code: Key::Backspace, ..
             }) => self.perform(Cmd::Delete),
             Event::Keyboard(KeyEvent {
-                code: Key::Char(ch),
-                ..
+                code: Key::Char(ch), ..
             }) => self.perform(Cmd::Type(ch)),
             Event::Keyboard(KeyEvent { code: Key::Tab, .. }) => {
                 self.focus_next();
                 CmdResult::None
             }
-            Event::Keyboard(KeyEvent {
-                code: Key::Enter, ..
-            }) => {
+            Event::Keyboard(KeyEvent { code: Key::Enter, .. }) => {
                 //todo send data
                 let client_id = self.client_id_input.state().unwrap_one().unwrap_string();
-                let client_secret = self
-                    .client_secret_input
-                    .state()
-                    .unwrap_one()
-                    .unwrap_string();
-                return Some(Msg::LoginPopup(LoginPopupMsg::LoginDone(
-                    client_id,
-                    client_secret,
-                )));
+                let client_secret = self.client_secret_input.state().unwrap_one().unwrap_string();
+                return Some(Msg::LoginPopup(LoginPopupMsg::LoginDone(client_id, client_secret)));
             }
             Event::Keyboard(KeyEvent { code: Key::Esc, .. }) => {
                 return Some(Msg::LoginPopup(LoginPopupMsg::Closed));

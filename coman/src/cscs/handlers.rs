@@ -1,17 +1,18 @@
-use color_eyre::{Result, eyre::eyre};
 use std::path::PathBuf;
+
+use color_eyre::{Result, eyre::eyre};
 
 use crate::{
     config::Config,
     cscs::{
         api_client::{CscsApi, FileSystemType, Job, JobDetail, System},
         oauth2::{
-            CLIENT_ID_SECRET_NAME, CLIENT_SECRET_SECRET_NAME, client_credentials_login,
-            finish_cscs_device_login, start_cscs_device_login,
+            CLIENT_ID_SECRET_NAME, CLIENT_SECRET_SECRET_NAME, client_credentials_login, finish_cscs_device_login,
+            start_cscs_device_login,
         },
     },
     util::{
-        keyring::{Secret, get_secret},
+        keyring::{Secret, get_secret, store_secret},
         types::DockerImageUrl,
     },
 };
@@ -29,14 +30,21 @@ async fn get_access_token() -> Result<Secret> {
     let token = client_credentials_login(client_id, client_secret).await?;
     Ok(token.0)
 }
+pub(crate) async fn cscs_login(client_id: String, client_secret: String) -> Result<()> {
+    let client_id_secret = Secret::new(client_id);
+    store_secret(CLIENT_ID_SECRET_NAME, client_id_secret.clone()).await?;
+    let client_secret_secret = Secret::new(client_secret);
+    store_secret(CLIENT_SECRET_SECRET_NAME, client_secret_secret.clone()).await?;
+    client_credentials_login(client_id_secret, client_secret_secret)
+        .await
+        .map(|_| ())
+}
 
-pub async fn cscs_login() -> Result<(Secret, Option<Secret>)> {
+#[allow(dead_code)]
+pub async fn cscs_login_device_code() -> Result<(Secret, Option<Secret>)> {
     let (details, verify_url) = start_cscs_device_login().await?;
 
-    println!(
-        "Please visit {} and authorize this application.",
-        verify_url
-    );
+    println!("Please visit {} and authorize this application.", verify_url);
     open::that(verify_url.clone())
         .or_else(|_| {
             println!("Couldn't open browser, please navigate to {}", verify_url);
@@ -74,9 +82,7 @@ pub async fn cscs_job_list() -> Result<Vec<Job>> {
         Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0).unwrap();
             let config = Config::new().unwrap();
-            api_client
-                .list_jobs(&config.cscs.current_system, Some(true))
-                .await
+            api_client.list_jobs(&config.cscs.current_system, Some(true)).await
         }
         Err(e) => Err(e),
     }
@@ -87,9 +93,7 @@ pub async fn cscs_job_details(job_id: i64) -> Result<Option<JobDetail>> {
         Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0).unwrap();
             let config = Config::new().unwrap();
-            api_client
-                .get_job(&config.cscs.current_system, job_id)
-                .await
+            api_client.get_job(&config.cscs.current_system, job_id).await
         }
         Err(e) => Err(e),
     }
@@ -100,18 +104,12 @@ pub async fn cscs_job_log(job_id: i64) -> Result<String> {
         Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0).unwrap();
             let config = Config::new().unwrap();
-            let job = api_client
-                .get_job(&config.cscs.current_system, job_id)
-                .await?;
+            let job = api_client.get_job(&config.cscs.current_system, job_id).await?;
             if job.is_none() {
                 return Err(eyre!("couldn't find job {}", job_id));
             }
             api_client
-                .tail(
-                    &config.cscs.current_system,
-                    PathBuf::from(job.unwrap().stdout),
-                    100,
-                )
+                .tail(&config.cscs.current_system, PathBuf::from(job.unwrap().stdout), 100)
                 .await
         }
         Err(e) => Err(e),
@@ -123,9 +121,7 @@ pub async fn cscs_job_cancel(job_id: i64) -> Result<()> {
         Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0).unwrap();
             let config = Config::new().unwrap();
-            api_client
-                .cancel_job(&config.cscs.current_system, job_id)
-                .await
+            api_client.cancel_job(&config.cscs.current_system, job_id).await
         }
         Err(e) => Err(e),
     }
@@ -161,8 +157,7 @@ pub async fn cscs_start_job(
                     ));
                 }
             };
-            let container_workdir =
-                container_workdir.unwrap_or(config.cscs.workdir.unwrap_or("/scratch".to_owned()));
+            let container_workdir = container_workdir.unwrap_or(config.cscs.workdir.unwrap_or("/scratch".to_owned()));
             let base_path = scratch
                 .join(user_info.name.clone())
                 .join(config.name.clone().unwrap_or("coman".to_owned()));
@@ -206,9 +201,7 @@ pub async fn cscs_start_job(
             context.insert("env", &envvars);
 
             let environment_file = tera.render("environment.toml", &context)?;
-            api_client
-                .mkdir(&config.cscs.current_system, base_path.clone())
-                .await?;
+            api_client.mkdir(&config.cscs.current_system, base_path.clone()).await?;
             api_client
                 .chmod(&config.cscs.current_system, base_path.clone(), "700")
                 .await?;
@@ -234,11 +227,7 @@ pub async fn cscs_start_job(
             context.insert("container_workdir", &container_workdir);
             let script = tera.render("script.sh", &context)?;
             api_client
-                .upload(
-                    &config.cscs.current_system,
-                    script_path.clone(),
-                    script.into_bytes(),
-                )
+                .upload(&config.cscs.current_system, script_path.clone(), script.into_bytes())
                 .await?;
 
             // start job

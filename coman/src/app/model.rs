@@ -1,30 +1,29 @@
 use eyre::{Context, Report};
+use tokio::sync::mpsc;
 use tuirealm::{
     Application, Update,
-    ratatui::layout::{Constraint, Direction, Layout},
-    ratatui::widgets::Clear,
+    ratatui::{
+        layout::{Constraint, Direction, Layout},
+        widgets::Clear,
+    },
     terminal::{TerminalAdapter, TerminalBridge},
 };
 
 use crate::{
     app::{
         ids::Id,
-        messages::{
-            CscsMsg, ErrorPopupMsg, InfoPopupMsg, JobMsg, LoginPopupMsg, MenuMsg, Msg,
-            SystemSelectMsg,
-        },
+        messages::{CscsMsg, ErrorPopupMsg, InfoPopupMsg, JobMsg, LoginPopupMsg, MenuMsg, Msg, SystemSelectMsg},
         user_events::UserEvent,
     },
     components::{
         error_popup::ErrorPopup, info_popup::InfoPopup, login_popup::LoginPopup,
-        system_select_popup::SystemSelectPopup, workload_list::WorkloadList,
-        workload_log::WorkloadLog, workload_menu::WorkloadMenu,
+        system_select_popup::SystemSelectPopup, workload_list::WorkloadList, workload_log::WorkloadLog,
+        workload_menu::WorkloadMenu,
     },
-    cscs::{cli::cscs_login, handlers::cscs_system_set},
+    cscs::handlers::{cscs_login, cscs_system_set},
     trace_dbg,
     util::ui::draw_area_in_absolute,
 };
-use tokio::sync::mpsc;
 
 pub struct Model<T>
 where
@@ -145,11 +144,7 @@ where
             SystemSelectMsg::Opened(systems) => {
                 assert!(
                     self.app
-                        .mount(
-                            Id::SystemSelectPopup,
-                            Box::new(SystemSelectPopup::new(systems)),
-                            vec![]
-                        )
+                        .mount(Id::SystemSelectPopup, Box::new(SystemSelectPopup::new(systems)), vec![])
                         .is_ok()
                 );
                 assert!(self.app.active(&Id::SystemSelectPopup).is_ok());
@@ -306,8 +301,7 @@ where
                             Err(e) => error_tx
                                 .send(format!(
                                     "{:?}",
-                                    Err::<(), Report>(e)
-                                        .wrap_err("Login failed with supplied credentials")
+                                    Err::<(), Report>(e).wrap_err("Login failed with supplied credentials")
                                 ))
                                 .await
                                 .unwrap(),

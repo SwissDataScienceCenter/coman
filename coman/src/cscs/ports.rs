@@ -17,12 +17,14 @@ use crate::{
     util::keyring::store_secret,
 };
 
+#[allow(dead_code)]
 pub(crate) struct AsyncDeviceFlowPort {
     receiver: mpsc::Receiver<(CoreDeviceAuthorizationResponse, String)>,
     current_response: Option<CoreDeviceAuthorizationResponse>,
 }
 
 impl AsyncDeviceFlowPort {
+    #[allow(dead_code)]
     pub fn new(receiver: mpsc::Receiver<(CoreDeviceAuthorizationResponse, String)>) -> Self {
         Self {
             receiver,
@@ -100,14 +102,10 @@ impl AsyncFetchWorkloadsPort {
 impl PollAsync<UserEvent> for AsyncFetchWorkloadsPort {
     async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
         match cscs_job_list().await {
-            Ok(jobs) => Ok(Some(Event::User(UserEvent::Cscs(
-                CscsEvent::GotWorkloadData(jobs),
-            )))),
+            Ok(jobs) => Ok(Some(Event::User(UserEvent::Cscs(CscsEvent::GotWorkloadData(jobs))))),
             Err(e) => {
                 let _ = trace_dbg!(e);
-                Ok(Some(Event::User(UserEvent::Cscs(
-                    CscsEvent::GotWorkloadData(vec![]),
-                ))))
+                Ok(Some(Event::User(UserEvent::Cscs(CscsEvent::GotWorkloadData(vec![])))))
             }
         }
     }
@@ -128,9 +126,7 @@ impl PollAsync<UserEvent> for AsyncSelectSystemPort {
     async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
         if self.receiver.recv().await.is_some() {
             match cscs_system_list().await {
-                Ok(systems) => Ok(Some(Event::User(UserEvent::Cscs(
-                    CscsEvent::SelectSystemList(systems),
-                )))),
+                Ok(systems) => Ok(Some(Event::User(UserEvent::Cscs(CscsEvent::SelectSystemList(systems))))),
                 Err(e) => Ok(Some(Event::User(UserEvent::Error(format!(
                     "{:?}",
                     Err::<(), Report>(e)
@@ -172,9 +168,7 @@ impl PollAsync<UserEvent> for AsyncJobLogPort {
             match cscs_job_log(job_id as i64).await {
                 Ok(log) => {
                     let log = trace_dbg!(log);
-                    Ok(Some(Event::User(UserEvent::Cscs(CscsEvent::GotJobLog(
-                        log,
-                    )))))
+                    Ok(Some(Event::User(UserEvent::Cscs(CscsEvent::GotJobLog(log)))))
                 }
                 Err(e) => Ok(Some(Event::User(UserEvent::Error(format!(
                     "{:?}",

@@ -1,30 +1,15 @@
-use color_eyre::{Result, eyre::Context};
-use inquire::{Password, Text};
 use std::path::PathBuf;
 
-use crate::{
-    cscs::{
-        handlers::{
-            cscs_job_cancel, cscs_job_details, cscs_job_list, cscs_job_log, cscs_start_job,
-            cscs_system_list, cscs_system_set,
-        },
-        oauth2::{CLIENT_ID_SECRET_NAME, CLIENT_SECRET_SECRET_NAME, client_credentials_login},
-    },
-    util::{
-        keyring::{Secret, store_secret},
-        types::DockerImageUrl,
-    },
-};
+use color_eyre::{Result, eyre::Context};
+use inquire::{Password, Text};
 
-pub(crate) async fn cscs_login(client_id: String, client_secret: String) -> Result<()> {
-    let client_id_secret = Secret::new(client_id);
-    store_secret(CLIENT_ID_SECRET_NAME, client_id_secret.clone()).await?;
-    let client_secret_secret = Secret::new(client_secret);
-    store_secret(CLIENT_SECRET_SECRET_NAME, client_secret_secret.clone()).await?;
-    client_credentials_login(client_id_secret, client_secret_secret)
-        .await
-        .map(|_| ())
-}
+use crate::{
+    cscs::handlers::{
+        cscs_job_cancel, cscs_job_details, cscs_job_list, cscs_job_log, cscs_login, cscs_start_job, cscs_system_list,
+        cscs_system_set,
+    },
+    util::types::DockerImageUrl,
+};
 
 pub(crate) async fn cli_cscs_login() -> Result<()> {
     let client_id = Text::new("Client Id:").prompt()?;
@@ -57,15 +42,11 @@ pub(crate) async fn cli_cscs_job_detail(job_id: i64) -> Result<()> {
                 ("Name", job.name),
                 (
                     "Start Date",
-                    job.start_date
-                        .map(|dt| dt.to_string())
-                        .unwrap_or("".to_owned()),
+                    job.start_date.map(|dt| dt.to_string()).unwrap_or("".to_owned()),
                 ),
                 (
                     "End Date",
-                    job.end_date
-                        .map(|dt| dt.to_string())
-                        .unwrap_or("".to_owned()),
+                    job.end_date.map(|dt| dt.to_string()).unwrap_or("".to_owned()),
                 ),
                 ("Status", job.status.to_string()),
                 ("Status Reason", job.status_reason),

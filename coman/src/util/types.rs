@@ -1,3 +1,5 @@
+use std::{collections::HashSet, fmt::Display, str::FromStr};
+
 use color_eyre::{Report, Result};
 use docker_credential::{CredentialRetrievalError, DockerCredential};
 use eyre::{Context, eyre};
@@ -16,7 +18,6 @@ use oci_distribution::{
     manifest::OciManifest,
     secrets::RegistryAuth,
 };
-use std::{collections::HashSet, fmt::Display, str::FromStr};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash, strum::Display)]
 pub enum OciPlatform {
@@ -54,15 +55,9 @@ impl DockerImageUrl {
     pub fn to_edf(&self) -> String {
         format!(
             "{}{}{}{}",
-            self.registry
-                .clone()
-                .map(|r| format!("{r}/"))
-                .unwrap_or_default(),
+            self.registry.clone().map(|r| format!("{r}/")).unwrap_or_default(),
             self.image,
-            self.tag
-                .clone()
-                .map(|t| format!(":{}", t))
-                .unwrap_or_default(),
+            self.tag.clone().map(|t| format!(":{}", t)).unwrap_or_default(),
             self.digest
                 .clone()
                 .map(|d| format!("@sha256:{}", d))
@@ -89,12 +84,12 @@ impl DockerImageUrl {
             }
             OciManifest::ImageIndex(oci_image_index) => {
                 let mut platforms: HashSet<OciPlatform> = HashSet::new();
-                platforms.extend(oci_image_index.manifests.into_iter().map(|m| {
-                    m.platform
-                        .map(|p| p.architecture)
-                        .unwrap_or("".to_owned())
-                        .into()
-                }));
+                platforms.extend(
+                    oci_image_index
+                        .manifests
+                        .into_iter()
+                        .map(|m| m.platform.map(|p| p.architecture).unwrap_or("".to_owned()).into()),
+                );
                 Ok(DockerImageMeta {
                     platforms: platforms.into_iter().collect(),
                 })
@@ -109,9 +104,7 @@ fn docker_auth(reference: &Reference) -> Result<RegistryAuth> {
         .strip_suffix('/')
         .unwrap_or_else(|| reference.resolve_registry());
     match docker_credential::get_credential(server) {
-        Ok(DockerCredential::UsernamePassword(username, password)) => {
-            Ok(RegistryAuth::Basic(username, password))
-        }
+        Ok(DockerCredential::UsernamePassword(username, password)) => Ok(RegistryAuth::Basic(username, password)),
         Ok(DockerCredential::IdentityToken(_)) => Ok(RegistryAuth::Anonymous), // id tokens are not supported
         Err(CredentialRetrievalError::ConfigNotFound)
         | Err(CredentialRetrievalError::NoCredentialConfigured)
@@ -142,10 +135,7 @@ impl FromStr for DockerImageUrl {
                 )),
                 tag("/"),
             )),
-            alt((
-                recognize((alphanumeric1, tag("/"), alphanumeric1)),
-                alphanumeric1,
-            )),
+            alt((recognize((alphanumeric1, tag("/"), alphanumeric1)), alphanumeric1)),
             opt(preceded(tag(":"), alphanumeric1)),
             opt(preceded(tag("@sha256:"), alphanumeric1)),
         ));
