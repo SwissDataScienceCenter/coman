@@ -1,11 +1,11 @@
-use std::path::PathBuf;
+use std::{os::unix::fs::MetadataExt, path::PathBuf};
 
 use color_eyre::{Result, eyre::eyre};
 
 use crate::{
     config::Config,
     cscs::{
-        api_client::{CscsApi, FileSystemType, Job, JobDetail, System},
+        api_client::{CscsApi, FileStat, FileSystemType, Job, JobDetail, PathEntry, System, UserInfo},
         oauth2::{
             CLIENT_ID_SECRET_NAME, CLIENT_SECRET_SECRET_NAME, client_credentials_login, finish_cscs_device_login,
             start_cscs_device_login,
@@ -16,6 +16,9 @@ use crate::{
         types::DockerImageUrl,
     },
 };
+
+const CSCS_MAX_DIRECT_SIZE: usize = 5242880;
+
 async fn get_access_token() -> Result<Secret> {
     let client_id = match get_secret(CLIENT_ID_SECRET_NAME).await {
         Ok(Some(client_id)) => client_id,
@@ -235,6 +238,110 @@ pub async fn cscs_start_job(
                 .start_job(&config.cscs.current_system, &name, script_path, envvars)
                 .await?;
             Ok(())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+pub async fn cscs_file_list(path: PathBuf) -> Result<Vec<PathEntry>> {
+    match get_access_token().await {
+        Ok(access_token) => {
+            let api_client = CscsApi::new(access_token.0).unwrap();
+            let config = Config::new().unwrap();
+            api_client.list_path(&config.cscs.current_system, path).await
+        }
+        Err(e) => Err(e),
+    }
+}
+
+pub async fn cscs_file_download(remote: PathBuf, local: PathBuf) -> Result<Option<(i64, String)>> {
+    match get_access_token().await {
+        Ok(access_token) => {
+            let api_client = CscsApi::new(access_token.0).unwrap();
+            let config = Config::new().unwrap();
+            let paths = api_client
+                .list_path(&config.cscs.current_system, remote.clone())
+                .await?;
+            let path = paths.first().ok_or(eyre!("remote path doesn't exist"))?;
+            if let crate::cscs::api_client::PathType::Directory = path.path_type {
+                return Err(eyre!("remote path must be a file, not directory"));
+            }
+            if let Some(size) = path.size
+                && size < CSCS_MAX_DIRECT_SIZE
+            {
+                // download directly
+                let contents = api_client.download(&config.cscs.current_system, remote).await?;
+                std::fs::write(local, contents)?;
+                Ok(None)
+            } else {
+                // download via s3
+                let job_data = api_client
+                    .transfer_download(&config.cscs.current_system, remote)
+                    .await?;
+                Ok(Some(job_data))
+            }
+        }
+        Err(e) => Err(e),
+    }
+}
+pub async fn cscs_file_upload(local: PathBuf, remote: PathBuf) -> Result<Option<(i64, Vec<String>, i64)>> {
+    match get_access_token().await {
+        Ok(access_token) => {
+            let api_client = CscsApi::new(access_token.0).unwrap();
+            let config = Config::new().unwrap();
+
+            let file_meta = std::fs::metadata(local.clone())?;
+            if (file_meta.size() as usize) < CSCS_MAX_DIRECT_SIZE {
+                // upload directly
+                let contents = std::fs::read(local)?;
+                api_client.upload(&config.cscs.current_system, remote, contents).await?;
+                Ok(None)
+            } else {
+                // upload via s3
+                let transfer_data = api_client
+                    .transfer_upload(
+                        &config.cscs.current_system,
+                        &config.cscs.account,
+                        remote,
+                        file_meta.size() as i64,
+                    )
+                    .await?;
+
+                Ok(Some(transfer_data))
+            }
+        }
+        Err(e) => Err(e),
+    }
+}
+
+pub async fn cscs_stat_path(path: PathBuf) -> Result<Option<FileStat>> {
+    match get_access_token().await {
+        Ok(access_token) => {
+            let api_client = CscsApi::new(access_token.0).unwrap();
+            let config = Config::new().unwrap();
+            api_client.stat_path(&config.cscs.current_system, path).await
+        }
+        Err(e) => Err(e),
+    }
+}
+
+pub async fn cscs_download_path(path: PathBuf) -> Result<String> {
+    match get_access_token().await {
+        Ok(access_token) => {
+            let api_client = CscsApi::new(access_token.0).unwrap();
+            let config = Config::new().unwrap();
+            api_client.download(&config.cscs.current_system, path).await
+        }
+        Err(e) => Err(e),
+    }
+}
+
+pub async fn cscs_user_info() -> Result<UserInfo> {
+    match get_access_token().await {
+        Ok(access_token) => {
+            let api_client = CscsApi::new(access_token.0).unwrap();
+            let config = Config::new().unwrap();
+            api_client.get_userinfo(&config.cscs.current_system).await
         }
         Err(e) => Err(e),
     }

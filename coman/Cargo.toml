@@ -69,6 +69,8 @@ oci-distribution = "0.11.0"
 docker_credential = "1.3.2"
 chrono = "0.4.42"
 openssl = { version = "0.10.75", features = ["vendored"] }
+tui-realm-treeview = "3.0.0"
+rust-s3 = "0.37.0"
 
 [build-dependencies]
 anyhow = "1.0.90"

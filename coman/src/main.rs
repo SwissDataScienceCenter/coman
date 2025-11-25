@@ -13,19 +13,22 @@ use tuirealm::{
 use crate::{
     app::{
         ids::Id,
-        messages::Msg,
+        messages::{Msg, View},
         model::Model,
-        user_events::{CscsEvent, UserEvent},
+        user_events::{CscsEvent, FileEvent, UserEvent},
     },
     cli::{Cli, version},
-    components::{global_listener::GlobalListener, toolbar::Toolbar, workload_list::WorkloadList},
+    components::{file_tree::FileTree, global_listener::GlobalListener, toolbar::Toolbar, workload_list::WorkloadList},
     config::Config,
     cscs::{
         cli::{
-            cli_cscs_job_cancel, cli_cscs_job_detail, cli_cscs_job_list, cli_cscs_job_log, cli_cscs_job_start,
-            cli_cscs_login, cli_cscs_set_system, cli_cscs_system_list,
+            cli_cscs_file_download, cli_cscs_file_list, cli_cscs_file_upload, cli_cscs_job_cancel, cli_cscs_job_detail,
+            cli_cscs_job_list, cli_cscs_job_log, cli_cscs_job_start, cli_cscs_login, cli_cscs_set_system,
+            cli_cscs_system_list,
         },
-        ports::{AsyncFetchWorkloadsPort, AsyncJobLogPort, AsyncSelectSystemPort},
+        ports::{
+            AsyncFetchWorkloadsPort, AsyncFileTreePort, AsyncJobLogPort, AsyncSelectSystemPort, AsyncUserEventPort,
+        },
     },
     errors::AsyncErrorPort,
 };
@@ -65,6 +68,11 @@ async fn main() -> Result<()> {
                     } => cli_cscs_job_start(script_file, image, command, workdir, env).await?,
                     cli::CscsJobCommands::Cancel { job_id } => cli_cscs_job_cancel(job_id).await?,
                 },
+                cli::CscsCommands::File { command } => match command {
+                    cli::CscsFileCommands::List { path } => cli_cscs_file_list(path).await?,
+                    cli::CscsFileCommands::Download { remote, local } => cli_cscs_file_download(remote, local).await?,
+                    cli::CscsFileCommands::Upload { local, remote } => cli_cscs_file_upload(local, remote).await?,
+                },
                 cli::CscsCommands::System { command } => match command {
                     cli::CscsSystemCommands::List => cli_cscs_system_list().await?,
                     cli::CscsSystemCommands::Set { system_name, global } => {
@@ -89,7 +97,14 @@ fn run_tui() -> Result<()> {
 
     let (select_system_tx, select_system_rx) = mpsc::channel(100);
     let (job_log_tx, job_log_rx) = mpsc::channel(100);
+    let (file_tree_tx, file_tree_rx) = mpsc::channel(100);
+    let (user_event_tx, user_event_rx) = mpsc::channel(100);
     let (error_tx, error_rx) = mpsc::channel(100);
+
+    // Set up ports that produce events
+    // Since the TUI code is synchronous, we set up async ports for async actions that
+    // listen on a tokio queue for triggers, do async actions and then produce regular events
+    // that the components can handle
     let event_listener = EventListenerCfg::default()
         .with_handle(handle)
         .async_crossterm_input_listener(Duration::default(), 3)
@@ -100,23 +115,56 @@ fn run_tui() -> Result<()> {
             Duration::default(),
             1,
         )
-        .add_async_port(Box::new(AsyncJobLogPort::new(job_log_rx)), Duration::from_secs(3), 1);
+        .add_async_port(Box::new(AsyncJobLogPort::new(job_log_rx)), Duration::from_secs(3), 1)
+        .add_async_port(Box::new(AsyncFileTreePort::new(file_tree_rx)), Duration::default(), 1)
+        .add_async_port(Box::new(AsyncUserEventPort::new(user_event_rx)), Duration::default(), 1);
 
     let mut app: Application<Id, Msg, UserEvent> = Application::init(event_listener);
 
-    // subscribe component to clause
-    app.mount(Id::Toolbar, Box::new(Toolbar::new()), vec![])?;
+    // Mount components and set up which component get which message
+    app.mount(
+        Id::Toolbar,
+        Box::new(Toolbar::new()),
+        vec![Sub::new(
+            SubEventClause::Discriminant(UserEvent::SwitchedToView(View::default())),
+            SubClause::Always,
+        )],
+    )?;
     app.mount(
         Id::WorkloadList,
         Box::new(WorkloadList::default()),
         vec![Sub::new(
             SubEventClause::Any,
-            SubClause::Not(Box::new(SubClause::OrMany(vec![
-                SubClause::IsMounted(Id::Menu),
-                SubClause::IsMounted(Id::ErrorPopup),
-                SubClause::IsMounted(Id::LoginPopup),
-            ]))),
+            SubClause::AndMany(vec![
+                SubClause::IsMounted(Id::WorkloadList),
+                SubClause::Not(Box::new(SubClause::OrMany(vec![
+                    SubClause::IsMounted(Id::Menu),
+                    SubClause::IsMounted(Id::ErrorPopup),
+                    SubClause::IsMounted(Id::LoginPopup),
+                ]))),
+            ]),
         )],
+    )?;
+    app.mount(
+        Id::FileView,
+        Box::new(FileTree::new(file_tree_tx)),
+        vec![
+            Sub::new(
+                SubEventClause::Discriminant(UserEvent::File(FileEvent::List("".to_owned(), vec![]))),
+                SubClause::Always,
+            ),
+            Sub::new(
+                SubEventClause::Any,
+                SubClause::AndMany(vec![
+                    SubClause::IsMounted(Id::FileView),
+                    SubClause::Not(Box::new(SubClause::OrMany(vec![
+                        SubClause::IsMounted(Id::Menu),
+                        SubClause::IsMounted(Id::ErrorPopup),
+                        SubClause::IsMounted(Id::LoginPopup),
+                    ]))),
+                ]),
+            ),
+        ],
     )?;
     app.mount(
         Id::GlobalListener,
@@ -159,12 +207,34 @@ fn run_tui() -> Result<()> {
                     SubClause::IsMounted(Id::LoginPopup),
                 ]))),
             ),
+            Sub::new(
+                SubEventClause::Keyboard(KeyEvent {
+                    code: Key::Char('f'),
+                    modifiers: KeyModifiers::NONE,
+                }),
+                SubClause::Not(Box::new(SubClause::OrMany(vec![
+                    SubClause::IsMounted(Id::Menu),
+                    SubClause::IsMounted(Id::ErrorPopup),
+                    SubClause::IsMounted(Id::LoginPopup),
+                ]))),
+            ),
+            Sub::new(
+                SubEventClause::Keyboard(KeyEvent {
+                    code: Key::Char('w'),
+                    modifiers: KeyModifiers::NONE,
+                }),
+                SubClause::Not(Box::new(SubClause::OrMany(vec![
+                    SubClause::IsMounted(Id::Menu),
+                    SubClause::IsMounted(Id::ErrorPopup),
+                    SubClause::IsMounted(Id::LoginPopup),
+                ]))),
+            ),
         ],
     )?;
 
     app.active(&Id::WorkloadList).expect("failed to active");
 
-    let mut model = Model::new(app, bridge, error_tx, select_system_tx, job_log_tx);
+    let mut model = Model::new(app, bridge, error_tx, select_system_tx, job_log_tx, user_event_tx);
     // Main loop
     // NOTE: loop until quit; quit is set in update if AppClose is received from counter
     while !model.quit {

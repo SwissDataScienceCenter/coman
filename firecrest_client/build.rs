@@ -14,6 +14,7 @@ fn main() -> Result<()> {
     let o = std::fs::File::create(outpath)?;
     serde_json::to_writer_pretty(o, &json_value)?;
     std::process::Command::new("oas3-gen")
+        .arg("generate")
         .arg("-i")
         .arg(outpath.to_str().unwrap())
         .arg("-o")

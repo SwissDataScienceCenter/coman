@@ -8,6 +8,8 @@ use eyre::eyre;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
+use crate::trace_dbg;
+
 const DEFAULT_CONFIG_TOML: &str = include_str!("../.config/config.toml");
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -27,6 +29,8 @@ pub struct AppConfig {
 pub struct CscsConfig {
     #[serde(default)]
     pub current_system: String,
+    #[serde(default)]
+    pub account: String,
     #[serde(default)]
     pub sbatch_script_template: String,
     #[serde(default)]
@@ -101,6 +105,8 @@ impl Config {
         let config_dir = get_config_dir();
         let path = config_dir.join(CONFIG_FILE_NAME.clone());
         let content = toml::to_string_pretty(self)?;
+        let parent = path.parent().unwrap();
+        std::fs::create_dir_all(parent)?;
         std::fs::write(path, content)?;
         Ok(())
     }

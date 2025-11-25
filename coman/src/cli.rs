@@ -29,6 +29,11 @@ pub enum CscsCommands {
         #[command(subcommand)]
         command: CscsJobCommands,
     },
+    #[clap(alias("f"))]
+    File {
+        #[command(subcommand)]
+        command: CscsFileCommands,
+    },
     #[clap(alias("s"))]
     System {
         #[command(subcommand)]
@@ -69,6 +74,17 @@ pub enum CscsJobCommands {
         job_id: i64,
     },
 }
+
+#[derive(Subcommand, Debug)]
+pub enum CscsFileCommands {
+    #[clap(alias("ls"))]
+    List { path: PathBuf },
+    #[clap(alias("dl"))]
+    Download { remote: PathBuf, local: PathBuf },
+    #[clap(alias("ul"))]
+    Upload { local: PathBuf, remote: PathBuf },
+}
+
 #[derive(Subcommand, Debug)]
 pub enum CscsSystemCommands {
     #[clap(alias("ls"), about = "List available compute systems")]

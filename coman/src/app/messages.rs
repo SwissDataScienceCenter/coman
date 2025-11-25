@@ -1,4 +1,4 @@
-use crate::cscs::api_client::System;
+use crate::{app::user_events::UserEvent, cscs::api_client::System};
 
 #[derive(Debug, PartialEq)]
 pub enum MenuMsg {
@@ -6,6 +6,7 @@ pub enum MenuMsg {
     Closed,
     CscsLogin,
     CscsSwitchSystem,
+    Event(UserEvent),
 }
 
 #[derive(Debug, PartialEq)]
@@ -43,6 +44,12 @@ pub enum JobMsg {
     ShowLog(usize),
     CloseLog,
 }
+#[derive(Debug, Clone, Copy, Default, PartialEq, PartialOrd, Eq, Ord, strum::Display)]
+pub enum View {
+    #[default]
+    Workloads,
+    Files,
+}
 #[derive(Debug, PartialEq)]
 pub enum Msg {
     AppClose,
@@ -55,5 +62,7 @@ pub enum Msg {
     Info(String),
     Cscs(CscsMsg),
     Job(JobMsg),
+    ChangeView(View),
+    CreateEvent(UserEvent),
     None,
 }

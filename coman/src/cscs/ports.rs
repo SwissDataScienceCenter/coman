@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use color_eyre::{Section, eyre::Context};
 use eyre::Report;
 use openidconnect::core::CoreDeviceAuthorizationResponse;
@@ -8,15 +10,21 @@ use tuirealm::{
 };
 
 use crate::{
-    app::user_events::{CscsEvent, UserEvent},
+    app::user_events::{CscsEvent, FileEvent, UserEvent},
+    config::Config,
     cscs::{
-        handlers::{cscs_job_list, cscs_job_log, cscs_system_list},
+        api_client::{PathEntry, PathType},
+        handlers::{
+            cscs_download_path, cscs_file_list, cscs_job_list, cscs_job_log, cscs_stat_path, cscs_system_list,
+            cscs_user_info,
+        },
         oauth2::{ACCESS_TOKEN_SECRET_NAME, REFRESH_TOKEN_SECRET_NAME, finish_cscs_device_login},
     },
     trace_dbg,
     util::keyring::store_secret,
 };
 
+/// This port does the polling of the token for finishing the device code oauth2 flow
 #[allow(dead_code)]
 pub(crate) struct AsyncDeviceFlowPort {
     receiver: mpsc::Receiver<(CoreDeviceAuthorizationResponse, String)>,
@@ -90,6 +98,8 @@ impl PollAsync<UserEvent> for AsyncDeviceFlowPort {
         }
     }
 }
+
+/// This port periodically fetches jobs from CSCS
 pub(crate) struct AsyncFetchWorkloadsPort {}
 
 impl AsyncFetchWorkloadsPort {
@@ -111,6 +121,7 @@ impl PollAsync<UserEvent> for AsyncFetchWorkloadsPort {
     }
 }
 
+/// This port handles getting available compute systems from CSCS
 pub(crate) struct AsyncSelectSystemPort {
     receiver: mpsc::Receiver<()>,
 }
@@ -140,6 +151,7 @@ impl PollAsync<UserEvent> for AsyncSelectSystemPort {
     }
 }
 
+/// This port handles polling the logs of a CSCS job
 pub(crate) struct AsyncJobLogPort {
     receiver: mpsc::Receiver<Option<usize>>,
     current_job: Option<usize>,
@@ -177,6 +189,143 @@ impl PollAsync<UserEvent> for AsyncJobLogPort {
             }
         } else {
             trace_dbg!("nothing");
+            Ok(Some(Event::None))
+        }
+    }
+}
+
+pub enum TreeAction {
+    List(String),
+    Download(String),
+}
+
+/// This port handles asynchronous file operations on CSCS
+pub(crate) struct AsyncFileTreePort {
+    receiver: mpsc::Receiver<TreeAction>,
+}
+
+impl AsyncFileTreePort {
+    pub fn new(receiver: mpsc::Receiver<TreeAction>) -> Self {
+        Self { receiver }
+    }
+}
+#[tuirealm::async_trait]
+impl PollAsync<UserEvent> for AsyncFileTreePort {
+    async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
+        if self.receiver.is_closed() {
+            return Ok(None);
+        }
+        if let Some(action) = self.receiver.recv().await {
+            match action {
+                TreeAction::List(id) => {
+                    if id == "/" {
+                        // load file system roots
+                        let config = Config::new().expect("couldn't load config");
+                        let user_info = match cscs_user_info().await {
+                            Ok(user_info) => user_info,
+                            Err(e) => {
+                                return Ok(Some(Event::User(UserEvent::Error(format!(
+                                    "{:?}",
+                                    Err::<(), Report>(e).wrap_err("couldn't list path")
+                                )))));
+                            }
+                        };
+                        match cscs_system_list().await {
+                            Ok(systems) => {
+                                let system = systems
+                                    .iter()
+                                    .find(|s| s.name == config.cscs.current_system)
+                                    .unwrap_or_else(|| {
+                                        panic!("couldn't get info for system {}", config.cscs.current_system)
+                                    });
+                                // listing big directories fails in the api and we might not actually be allowed to
+                                // access the roots of the storage.
+                                // So we try to append the user name to the paths and use that, if it works
+                                let mut subpaths = vec![];
+                                for fs in system.file_systems.clone() {
+                                    let entry = match cscs_stat_path(
+                                        PathBuf::from(fs.path.clone()).join(user_info.name.clone()),
+                                    )
+                                    .await
+                                    {
+                                        Ok(Some(_)) => PathEntry {
+                                            name: format!("{}/{}", fs.path.clone(), user_info.name),
+                                            path_type: PathType::Directory,
+                                            permissions: None,
+                                            size: None,
+                                        },
+                                        _ => PathEntry {
+                                            name: fs.path.clone(),
+                                            path_type: PathType::Directory,
+                                            permissions: None,
+                                            size: None,
+                                        },
+                                    };
+                                    subpaths.push(entry);
+                                }
+                                Ok(Some(Event::User(UserEvent::File(FileEvent::List(id, subpaths)))))
+                            }
+                            Err(e) => Ok(Some(Event::User(UserEvent::Error(format!(
+                                "{:?}",
+                                Err::<(), Report>(e).wrap_err("couldn't list path")
+                            ))))),
+                        }
+                    } else {
+                        let id = trace_dbg!(id);
+                        let path = PathBuf::from(id.clone());
+                        match cscs_file_list(path).await {
+                            Ok(subpaths) => {
+                                let subpaths = trace_dbg!(subpaths);
+                                Ok(Some(Event::User(UserEvent::File(FileEvent::List(id, subpaths)))))
+                            }
+                            Err(e) => Ok(Some(Event::User(UserEvent::Error(format!(
+                                "{:?}",
+                                Err::<(), Report>(e).wrap_err("couldn't list path")
+                            ))))),
+                        }
+                    }
+                }
+                TreeAction::Download(path) => {
+                    let path = trace_dbg!(path);
+                    let path = PathBuf::from(path);
+                    match cscs_download_path(path).await {
+                        Ok(content) => {
+                            let content = trace_dbg!(content);
+                            std::fs::write("/tmp/download.txt", content)
+                                .wrap_err("couldn't download file")
+                                .unwrap();
+                            Ok(Some(Event::None))
+                        }
+                        Err(e) => Ok(Some(Event::User(UserEvent::Error(format!(
+                            "{:?}",
+                            Err::<(), Report>(e).wrap_err("couldn't download path")
+                        ))))),
+                    }
+                }
+            }
+        } else {
+            return Ok(Some(Event::None));
+        }
+    }
+}
+
+/// This is a convenience class to create new user events from the model
+pub(crate) struct AsyncUserEventPort {
+    receiver: mpsc::Receiver<UserEvent>,
+}
+
+impl AsyncUserEventPort {
+    pub fn new(receiver: mpsc::Receiver<UserEvent>) -> Self {
+        Self { receiver }
+    }
+}
+#[tuirealm::async_trait]
+impl PollAsync<UserEvent> for AsyncUserEventPort {
+    async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
+        if let Some(event) = self.receiver.recv().await {
+            let event = trace_dbg!(event);
+            Ok(Some(Event::User(event)))
+        } else {
             Ok(Some(Event::None))
         }
     }
