@@ -39,8 +39,6 @@ pub async fn post_compute_system_job(
         },
     };
     let body_json = serde_json::to_string(&body)?;
-    let body_json = dbg!(body_json);
-
     let response = client
         .post(
             format!("compute/{system_name}/jobs").as_str(),
