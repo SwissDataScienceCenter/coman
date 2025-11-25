@@ -5,7 +5,7 @@ use color_eyre::{Result, eyre::eyre};
 use crate::{
     config::Config,
     cscs::{
-        api_client::{CscsApi, FileSystemType, Job, JobDetail, System},
+        api_client::{CscsApi, FileStat, FileSystemType, Job, JobDetail, PathEntry, System, UserInfo},
         oauth2::{
             CLIENT_ID_SECRET_NAME, CLIENT_SECRET_SECRET_NAME, client_credentials_login, finish_cscs_device_login,
             start_cscs_device_login,
@@ -235,6 +235,49 @@ pub async fn cscs_start_job(
                 .start_job(&config.cscs.current_system, &name, script_path, envvars)
                 .await?;
             Ok(())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+pub async fn cscs_list_path(path: PathBuf) -> Result<Vec<PathEntry>> {
+    match get_access_token().await {
+        Ok(access_token) => {
+            let api_client = CscsApi::new(access_token.0).unwrap();
+            let config = Config::new().unwrap();
+            api_client.list_path(&config.cscs.current_system, path).await
+        }
+        Err(e) => Err(e),
+    }
+}
+pub async fn cscs_stat_path(path: PathBuf) -> Result<Option<FileStat>> {
+    match get_access_token().await {
+        Ok(access_token) => {
+            let api_client = CscsApi::new(access_token.0).unwrap();
+            let config = Config::new().unwrap();
+            api_client.stat_path(&config.cscs.current_system, path).await
+        }
+        Err(e) => Err(e),
+    }
+}
+
+pub async fn cscs_download_path(path: PathBuf) -> Result<String> {
+    match get_access_token().await {
+        Ok(access_token) => {
+            let api_client = CscsApi::new(access_token.0).unwrap();
+            let config = Config::new().unwrap();
+            api_client.download(&config.cscs.current_system, path).await
+        }
+        Err(e) => Err(e),
+    }
+}
+
+pub async fn cscs_user_info() -> Result<UserInfo> {
+    match get_access_token().await {
+        Ok(access_token) => {
+            let api_client = CscsApi::new(access_token.0).unwrap();
+            let config = Config::new().unwrap();
+            api_client.get_userinfo(&config.cscs.current_system).await
         }
         Err(e) => Err(e),
     }

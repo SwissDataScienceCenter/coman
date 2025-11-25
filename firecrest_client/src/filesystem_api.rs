@@ -4,21 +4,55 @@ use eyre::{Result, eyre};
 
 use crate::{
     client::FirecrestClient,
-    types::{GetFileTailResponse, PostMakeDirRequest, PostMkdirResponse, PutFileChmodRequest, PutFileChmodResponse},
+    types::{
+        GetDirectoryLsResponse, GetFileStatResponse, GetFileTailResponse, PostMakeDirRequest, PostMkdirResponse,
+        PutFileChmodRequest, PutFileChmodResponse,
+    },
 };
+
+pub async fn get_filesystem_ops_ls(
+    client: &FirecrestClient,
+    system_name: &str,
+    path: PathBuf,
+) -> Result<GetDirectoryLsResponse> {
+    let path = path.as_os_str().to_str().ok_or(eyre!("couldn't cast path to string"))?;
+    let response = client
+        .get(
+            format!("filesystem/{system_name}/ops/ls").as_str(),
+            Some(vec![("path", path)]),
+        )
+        .await?;
+    let model: GetDirectoryLsResponse = serde_json::from_str(response.as_str())?;
+    Ok(model)
+}
+pub async fn get_filesystem_ops_stat(
+    client: &FirecrestClient,
+    system_name: &str,
+    path: PathBuf,
+) -> Result<GetFileStatResponse> {
+    let path = path.as_os_str().to_str().ok_or(eyre!("couldn't cast path to string"))?;
+    let response = client
+        .get(
+            format!("filesystem/{system_name}/ops/stat").as_str(),
+            Some(vec![("path", path)]),
+        )
+        .await?;
+    let model: GetFileStatResponse = serde_json::from_str(response.as_str())?;
+    Ok(model)
+}
 
 pub async fn post_filesystem_ops_mkdir(
     client: &FirecrestClient,
     system_name: &str,
     path: PathBuf,
 ) -> Result<PostMkdirResponse> {
+    let path = path
+        .into_os_string()
+        .into_string()
+        .map_err(|_| eyre!("couldn't convert path"))?;
     let body = PostMakeDirRequest {
         parent: Some(true),
-        source_path: Some(
-            path.into_os_string()
-                .into_string()
-                .map_err(|_| eyre!("couldn't convert path"))?,
-        ),
+        source_path: Some(path),
     };
     let body_json = serde_json::to_string(&body)?;
     let response = client
@@ -98,4 +132,15 @@ pub async fn post_filesystem_ops_upload(
         )
         .await?;
     Ok(())
+}
+
+pub async fn get_filesystem_ops_download(client: &FirecrestClient, system_name: &str, path: PathBuf) -> Result<String> {
+    let file_path = path.as_os_str().to_str().ok_or(eyre!("couldn't cast path to string"))?;
+    let response = client
+        .get(
+            format!("filesystem/{system_name}/ops/download").as_str(),
+            Some(vec![("path", file_path)]),
+        )
+        .await?;
+    Ok(response.as_str().to_string())
 }

@@ -9,12 +9,13 @@ use firecrest_client::{
         post_compute_system_job,
     },
     filesystem_api::{
-        get_filesystem_ops_tail, post_filesystem_ops_mkdir, post_filesystem_ops_upload, put_filesystem_ops_chmod,
+        get_filesystem_ops_download, get_filesystem_ops_ls, get_filesystem_ops_stat, get_filesystem_ops_tail,
+        post_filesystem_ops_mkdir, post_filesystem_ops_upload, put_filesystem_ops_chmod,
     },
     status_api::{get_status_systems, get_status_userinfo},
     types::{
-        FileSystem as CSCSFileSystem, FileSystemDataType, HealthCheckType, HpcclusterOutput, JobMetadataModel,
-        JobModelOutput, SchedulerServiceHealth, UserInfoResponse,
+        File as CSCSFile, FileStat as CSCSFileStat, FileSystem as CSCSFileSystem, FileSystemDataType, HealthCheckType,
+        HpcclusterOutput, JobMetadataModel, JobModelOutput, SchedulerServiceHealth, UserInfoResponse,
     },
 };
 use strum::Display;
@@ -71,6 +72,41 @@ impl From<CSCSFileSystem> for FileSystem {
             default_work_dir: value.default_work_dir.unwrap_or(false),
             path: value.path,
         }
+    }
+}
+
+#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, Display)]
+pub enum PathType {
+    Directory,
+    File,
+}
+
+#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord)]
+pub struct PathEntry {
+    pub name: String,
+    pub path_type: PathType,
+}
+
+impl From<CSCSFile> for PathEntry {
+    fn from(value: CSCSFile) -> Self {
+        Self {
+            name: value.name,
+            path_type: match value.r#type.as_str() {
+                "d" => PathType::Directory,
+                "-" => PathType::File,
+                _ => panic!("Unknown file type: {}", value.r#type),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord)]
+pub struct FileStat {
+    pub size: i64,
+}
+impl From<CSCSFileStat> for FileStat {
+    fn from(value: CSCSFileStat) -> Self {
+        Self { size: value.size }
     }
 }
 
@@ -348,6 +384,12 @@ impl CscsApi {
             .wrap_err("couldn't upload file")?;
         Ok(())
     }
+    pub async fn download(&self, system_name: &str, path: PathBuf) -> Result<String> {
+        let content = get_filesystem_ops_download(&self.client, system_name, path)
+            .await
+            .wrap_err("couldn't download file")?;
+        Ok(content)
+    }
     pub async fn tail(&self, system_name: &str, path: PathBuf, lines: usize) -> Result<String> {
         let result = get_filesystem_ops_tail(&self.client, system_name, path, lines)
             .await
@@ -356,6 +398,22 @@ impl CscsApi {
             Some(output) => Ok(output.content),
             None => Ok("".to_string()),
         }
+    }
+    pub async fn list_path(&self, system_name: &str, path: PathBuf) -> Result<Vec<PathEntry>> {
+        let result = get_filesystem_ops_ls(&self.client, system_name, path)
+            .await
+            .wrap_err("couldn't list path")?;
+        let result = trace_dbg!(result);
+        match result.output {
+            Some(entries) => Ok(entries.into_iter().map(|e| e.into()).collect()),
+            None => Ok(vec![]),
+        }
+    }
+    pub async fn stat_path(&self, system_name: &str, path: PathBuf) -> Result<Option<FileStat>> {
+        let result = get_filesystem_ops_stat(&self.client, system_name, path)
+            .await
+            .wrap_err("couldn't stat file")?;
+        Ok(result.output.map(|f| f.into()))
     }
     pub async fn get_userinfo(&self, system_name: &str) -> Result<UserInfo> {
         let result = get_status_userinfo(&self.client, system_name)
