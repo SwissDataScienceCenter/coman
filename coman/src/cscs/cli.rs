@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use crate::{
     cscs::{
         handlers::{
-            cscs_job_stop, cscs_job_details, cscs_job_list, cscs_start_job, cscs_system_list,
+            cscs_job_cancel, cscs_job_details, cscs_job_list, cscs_start_job, cscs_system_list,
         },
         oauth2::{CLIENT_ID_SECRET_NAME, CLIENT_SECRET_SECRET_NAME, client_credentials_login},
     },
@@ -97,8 +97,8 @@ pub(crate) async fn cli_cscs_job_start(
     cscs_start_job(script_file, image, command).await
 }
 
-pub(crate) async fn cli_cscs_job_stop(job_id: i64) -> Result<()> {
-    cscs_job_stop(job_id).await
+pub(crate) async fn cli_cscs_job_cancel(job_id: i64) -> Result<()> {
+    cscs_job_cancel(job_id).await
 }
 
 pub(crate) async fn cli_cscs_system_list() -> Result<()> {

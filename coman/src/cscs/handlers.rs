@@ -82,13 +82,13 @@ pub async fn cscs_job_details(job_id: i64) -> Result<Option<JobDetail>> {
     }
 }
 
-pub async fn cscs_job_stop(job_id: i64) -> Result<()> {
+pub async fn cscs_job_cancel(job_id: i64) -> Result<()> {
     match get_access_token().await {
         Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0).unwrap();
             let config = Config::new().unwrap();
             api_client
-                .delete_stop(&config.cscs.current_system, job_id)
+                .cancel_job(&config.cscs.current_system, job_id)
                 .await
         }
         Err(e) => Err(e),

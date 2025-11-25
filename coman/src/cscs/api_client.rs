@@ -3,8 +3,8 @@ use color_eyre::eyre::{Context, Result};
 use firecrest_client::{
     client::FirecrestClient,
     compute_api::{
-        get_compute_system_job, get_compute_system_job_metadata, get_compute_system_jobs,
-        post_compute_system_job, stop_compute_system_job,
+        cancel_compute_system_job, get_compute_system_job, get_compute_system_job_metadata,
+        get_compute_system_jobs, post_compute_system_job,
     },
     filesystem_api::{
         post_filesystem_ops_mkdir, post_filesystem_ops_upload, put_filesystem_ops_chmod,
@@ -322,8 +322,8 @@ impl CscsApi {
         Ok(Some((job, job_metadata).into()))
     }
 
-    pub async fn delete_stop(&self, system_name: &str, job_id: i64) -> Result<()> {
-        stop_compute_system_job(&self.client, system_name, job_id)
+    pub async fn cancel_job(&self, system_name: &str, job_id: i64) -> Result<()> {
+        cancel_compute_system_job(&self.client, system_name, job_id)
             .await
             .wrap_err("couldn't delete job")?;
         Ok(())

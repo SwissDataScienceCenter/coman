@@ -22,7 +22,7 @@ use crate::{
     components::{global_listener::GlobalListener, toolbar::Toolbar, workload_list::WorkloadList},
     cscs::{
         cli::{
-            cli_cscs_job_stop, cli_cscs_job_detail, cli_cscs_job_list, cli_cscs_job_start,
+            cli_cscs_job_cancel, cli_cscs_job_detail, cli_cscs_job_list, cli_cscs_job_start,
             cli_cscs_login, cli_cscs_system_list,
         },
         ports::{AsyncDeviceFlowPort, AsyncFetchWorkloadsPort},
@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
                         image,
                         command,
                     } => cli_cscs_job_start(script_file, image, command).await?,
-                    cli::CscsJobCommands::Stop { job_id } => cli_cscs_job_stop(job_id).await?,
+                    cli::CscsJobCommands::Cancel { job_id } => cli_cscs_job_cancel(job_id).await?,
                 },
                 cli::CscsCommands::System { command } => match command {
                     cli::CscsSystemCommands::List => cli_cscs_system_list().await?,

@@ -103,7 +103,7 @@ pub async fn get_compute_system_job_metadata(
     Ok(model)
 }
 
-pub async fn stop_compute_system_job(
+pub async fn cancel_compute_system_job(
     client: &FirecrestClient,
     system_name: &str,
     job_id: i64,
