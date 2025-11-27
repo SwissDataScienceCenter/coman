@@ -1,4 +1,4 @@
-use openidconnect::core::CoreDeviceAuthorizationResponse;
+use eyre::{Context, Report};
 use tuirealm::{
     Application, Update,
     ratatui::layout::{Constraint, Direction, Layout},
@@ -9,11 +9,14 @@ use tuirealm::{
 use crate::{
     app::{
         ids::Id,
-        messages::{CscsMsg, ErrorPopupMsg, InfoPopupMsg, MenuMsg, Msg},
+        messages::{CscsMsg, ErrorPopupMsg, InfoPopupMsg, LoginPopupMsg, MenuMsg, Msg},
         user_events::UserEvent,
     },
-    components::{error_popup::ErrorPopup, info_popup::InfoPopup, workload_menu::WorkloadMenu},
-    cscs::oauth2::start_cscs_device_login,
+    components::{
+        error_popup::ErrorPopup, info_popup::InfoPopup, login_popup::LoginPopup,
+        workload_menu::WorkloadMenu,
+    },
+    cscs::cli::cscs_login,
     trace_dbg,
     util::ui::draw_area_in_absolute,
 };
@@ -32,8 +35,6 @@ where
     /// Used to draw to terminal
     pub terminal: TerminalBridge<T>,
 
-    /// Tokio channel sender for starting device code flow in Port
-    pub cscs_device_flow_tx: mpsc::Sender<(CoreDeviceAuthorizationResponse, String)>,
     ///Used to allow sending errors from tokio::spawn async jobs
     pub error_tx: mpsc::Sender<String>,
 }
@@ -45,7 +46,6 @@ where
     pub fn new(
         app: Application<Id, Msg, UserEvent>,
         bridge: TerminalBridge<T>,
-        cscs_device_flow_tx: mpsc::Sender<(CoreDeviceAuthorizationResponse, String)>,
         error_tx: mpsc::Sender<String>,
     ) -> Self {
         Self {
@@ -53,7 +53,6 @@ where
             quit: false,
             redraw: true,
             terminal: bridge,
-            cscs_device_flow_tx,
             error_tx,
         }
     }
@@ -88,10 +87,35 @@ where
                         let popup = draw_area_in_absolute(f.area(), 10);
                         f.render_widget(Clear, popup);
                         self.app.view(&Id::InfoPopup, f, popup);
+                    } else if self.app.mounted(&Id::LoginPopup) {
+                        let popup = draw_area_in_absolute(f.area(), 10);
+                        f.render_widget(Clear, popup);
+                        self.app.view(&Id::LoginPopup, f, popup);
                     }
                 })
                 .is_ok()
         );
+    }
+    fn handle_login_popup_msg(&mut self, msg: LoginPopupMsg) -> Option<Msg> {
+        match msg {
+            LoginPopupMsg::Opened => {
+                assert!(
+                    self.app
+                        .mount(Id::LoginPopup, Box::new(LoginPopup::new()), vec![])
+                        .is_ok()
+                );
+                assert!(self.app.active(&Id::LoginPopup).is_ok());
+                None
+            }
+            LoginPopupMsg::Closed => {
+                assert!(self.app.umount(&Id::LoginPopup).is_ok());
+                None
+            }
+            LoginPopupMsg::LoginDone(client_id, client_secret) => {
+                assert!(self.app.umount(&Id::LoginPopup).is_ok());
+                Some(Msg::Cscs(CscsMsg::Login(client_id, client_secret)))
+            }
+        }
     }
     fn handle_error_popup_msg(&mut self, msg: ErrorPopupMsg) -> Option<Msg> {
         match msg {
@@ -148,7 +172,7 @@ where
             }
             MenuMsg::CscsLogin => {
                 assert!(self.app.umount(&Id::Menu).is_ok());
-                Some(Msg::Cscs(CscsMsg::Login))
+                Some(Msg::LoginPopup(LoginPopupMsg::Opened))
             }
         }
     }
@@ -177,19 +201,25 @@ where
                 Msg::Menu(menu_msg) => self.handle_menu_msg(menu_msg),
                 Msg::ErrorPopup(popup_msg) => self.handle_error_popup_msg(popup_msg),
                 Msg::InfoPopup(popup_msg) => self.handle_info_popup_msg(popup_msg),
-                Msg::Cscs(CscsMsg::Login) => {
-                    let device_flow_tx = self.cscs_device_flow_tx.clone();
+                Msg::Cscs(CscsMsg::Login(client_id, client_secret)) => {
                     let error_tx = self.error_tx.clone();
                     tokio::spawn(async move {
-                        match start_cscs_device_login().await {
-                            Ok(result) => device_flow_tx.send(result).await.unwrap(),
-                            Err(e) => error_tx.send(format!("{:?}", e)).await.unwrap(),
-                        }
+                        match cscs_login(client_id, client_secret).await {
+                            Ok(_) => {}
+                            Err(e) => error_tx
+                                .send(format!(
+                                    "{:?}",
+                                    Err::<(), Report>(e)
+                                        .wrap_err("Login failed with supplied credentials")
+                                ))
+                                .await
+                                .unwrap(),
+                        };
                     });
                     None
                 }
-
                 Msg::None => None,
+                Msg::LoginPopup(msg) => self.handle_login_popup_msg(msg),
             }
         } else {
             None

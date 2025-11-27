@@ -26,7 +26,7 @@ use crate::{
             cli_cscs_job_cancel, cli_cscs_job_detail, cli_cscs_job_list, cli_cscs_job_start, 
             cli_cscs_login, cli_cscs_set_system, cli_cscs_system_list,
         },
-        ports::{AsyncDeviceFlowPort, AsyncFetchWorkloadsPort},
+        ports::AsyncFetchWorkloadsPort,
     },
     errors::AsyncErrorPort,
 };
@@ -90,16 +90,10 @@ fn run_tui() -> Result<()> {
     let bridge = TerminalBridge::init(adapter).expect("Cannot initialize terminal");
     let handle = Handle::current();
 
-    let (cscs_device_tx, cscs_device_rx) = mpsc::channel(100);
     let (error_tx, error_rx) = mpsc::channel(100);
     let event_listener = EventListenerCfg::default()
         .with_handle(handle)
         .async_crossterm_input_listener(Duration::default(), 3)
-        .add_async_port(
-            Box::new(AsyncDeviceFlowPort::new(cscs_device_rx)),
-            Duration::from_millis(500),
-            1,
-        )
         .add_async_port(
             Box::new(AsyncErrorPort::new(error_rx)),
             Duration::default(),
@@ -125,7 +119,7 @@ fn run_tui() -> Result<()> {
                     code: Key::Char('q'),
                     modifiers: KeyModifiers::NONE,
                 }),
-                SubClause::Always,
+                SubClause::Not(Box::new(SubClause::IsMounted(Id::LoginPopup))),
             ),
             Sub::new(
                 SubEventClause::Keyboard(KeyEvent {
@@ -152,8 +146,10 @@ fn run_tui() -> Result<()> {
                     modifiers: KeyModifiers::NONE,
                 }),
                 SubClause::Not(Box::new(SubClause::AndMany(vec![
+                SubClause::Not(Box::new(SubClause::OrMany(vec![
                     SubClause::IsMounted(Id::Menu),
                     SubClause::IsMounted(Id::ErrorPopup),
+                    SubClause::IsMounted(Id::LoginPopup),
                 ]))),
             ),
         ],
@@ -161,7 +157,7 @@ fn run_tui() -> Result<()> {
 
     app.active(&Id::WorkloadList).expect("failed to active");
 
-    let mut model = Model::new(app, bridge, cscs_device_tx, error_tx);
+    let mut model = Model::new(app, bridge, error_tx);
     // Main loop
     // NOTE: loop until quit; quit is set in update if AppClose is received from counter
     while !model.quit {
