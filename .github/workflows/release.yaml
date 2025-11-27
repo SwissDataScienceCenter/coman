@@ -44,6 +44,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform.target }}
+      - name: Install oas3-gen
+        run: cargo install oas3-gen
       - name: Install build dependencies on Linux
         run: sudo apt-get update --yes && sudo apt-get install --yes musl-tools openssl libssl-dev
         if: contains(matrix.platform.os, 'ubuntu')
