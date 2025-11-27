@@ -82,6 +82,19 @@ pub async fn cscs_job_details(job_id: i64) -> Result<Option<JobDetail>> {
     }
 }
 
+pub async fn cscs_job_cancel(job_id: i64) -> Result<()> {
+    match get_access_token().await {
+        Ok(access_token) => {
+            let api_client = CscsApi::new(access_token.0).unwrap();
+            let config = Config::new().unwrap();
+            api_client
+                .cancel_job(&config.cscs.current_system, job_id)
+                .await
+        }
+        Err(e) => Err(e),
+    }
+}
+
 pub async fn cscs_start_job(
     script_file: Option<PathBuf>,
     image: Option<DockerImageUrl>,

@@ -4,10 +4,10 @@ use std::path::PathBuf;
 
 use crate::{
     cscs::{
-        handlers::{cscs_job_details, cscs_job_list, cscs_start_job, cscs_system_list},
-        oauth2::{
-            CLIENT_ID_SECRET_NAME, CLIENT_SECRET_SECRET_NAME, client_credentials_login,
+        handlers::{
+            cscs_job_cancel, cscs_job_details, cscs_job_list, cscs_start_job, cscs_system_list,
         },
+        oauth2::{CLIENT_ID_SECRET_NAME, CLIENT_SECRET_SECRET_NAME, client_credentials_login},
     },
     util::{
         keyring::{Secret, get_secret, store_secret},
@@ -60,6 +60,18 @@ pub(crate) async fn cli_cscs_job_detail(job_id: i64) -> Result<()> {
             let data = &[
                 ("Id", job.id.to_string()),
                 ("Name", job.name),
+                (
+                    "Start Date",
+                    job.start_date
+                        .map(|dt| dt.to_string())
+                        .unwrap_or("".to_owned()),
+                ),
+                (
+                    "End Date",
+                    job.end_date
+                        .map(|dt| dt.to_string())
+                        .unwrap_or("".to_owned()),
+                ),
                 ("Status", job.status.to_string()),
                 ("Status Reason", job.status_reason),
                 ("Exit Code", job.exit_code.to_string()),
@@ -83,6 +95,10 @@ pub(crate) async fn cli_cscs_job_start(
     command: Option<Vec<String>>,
 ) -> Result<()> {
     cscs_start_job(script_file, image, command).await
+}
+
+pub(crate) async fn cli_cscs_job_cancel(job_id: i64) -> Result<()> {
+    cscs_job_cancel(job_id).await
 }
 
 pub(crate) async fn cli_cscs_system_list() -> Result<()> {

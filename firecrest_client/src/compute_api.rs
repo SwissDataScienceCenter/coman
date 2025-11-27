@@ -102,3 +102,17 @@ pub async fn get_compute_system_job_metadata(
     let model: GetJobMetadataResponse = serde_json::from_str(response.as_str())?;
     Ok(model)
 }
+
+pub async fn cancel_compute_system_job(
+    client: &FirecrestClient,
+    system_name: &str,
+    job_id: i64,
+) -> Result<()> {
+    let _ = client
+        .delete(
+            format!("compute/{system_name}/jobs/{job_id}").as_str(),
+            None,
+        )
+        .await?;
+    Ok(())
+}
