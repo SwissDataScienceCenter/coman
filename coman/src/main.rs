@@ -1,10 +1,9 @@
 use std::time::Duration;
-use tokio::sync::mpsc;
 
 use clap::Parser;
 use color_eyre::Result;
 use keyring::set_global_service_name;
-use tokio::runtime::Handle;
+use tokio::{runtime::Handle, sync::mpsc};
 use tuirealm::{
     Application, EventListenerCfg, PollStrategy, Sub, SubClause, SubEventClause, Update,
     event::{Key, KeyEvent, KeyModifiers},
@@ -51,9 +50,7 @@ async fn main() -> Result<()> {
     match args.command {
         Some(command) => match command {
             cli::CliCommands::Version => println!("{}", version()),
-            cli::CliCommands::Cscs {
-                command: cscs_command,
-            } => match cscs_command {
+            cli::CliCommands::Cscs { command: cscs_command } => match cscs_command {
                 cli::CscsCommands::Login => cli_cscs_login().await?,
                 cli::CscsCommands::Job { command } => match command {
                     cli::CscsJobCommands::List => cli_cscs_job_list().await?,
@@ -70,10 +67,9 @@ async fn main() -> Result<()> {
                 },
                 cli::CscsCommands::System { command } => match command {
                     cli::CscsSystemCommands::List => cli_cscs_system_list().await?,
-                    cli::CscsSystemCommands::Set {
-                        system_name,
-                        global,
-                    } => cli_cscs_set_system(system_name, global).await?,
+                    cli::CscsSystemCommands::Set { system_name, global } => {
+                        cli_cscs_set_system(system_name, global).await?
+                    }
                 },
             },
             cli::CliCommands::Init { destination } => Config::create_config(destination)?,
@@ -97,26 +93,14 @@ fn run_tui() -> Result<()> {
     let event_listener = EventListenerCfg::default()
         .with_handle(handle)
         .async_crossterm_input_listener(Duration::default(), 3)
-        .add_async_port(
-            Box::new(AsyncErrorPort::new(error_rx)),
-            Duration::default(),
-            1,
-        )
-        .add_async_port(
-            Box::new(AsyncFetchWorkloadsPort::new()),
-            Duration::from_secs(2),
-            1,
-        )
+        .add_async_port(Box::new(AsyncErrorPort::new(error_rx)), Duration::default(), 1)
+        .add_async_port(Box::new(AsyncFetchWorkloadsPort::new()), Duration::from_secs(2), 1)
         .add_async_port(
             Box::new(AsyncSelectSystemPort::new(select_system_rx)),
             Duration::default(),
             1,
         )
-        .add_async_port(
-            Box::new(AsyncJobLogPort::new(job_log_rx)),
-            Duration::from_secs(3),
-            1,
-        );
+        .add_async_port(Box::new(AsyncJobLogPort::new(job_log_rx)), Duration::from_secs(3), 1);
 
     let mut app: Application<Id, Msg, UserEvent> = Application::init(event_listener);
 

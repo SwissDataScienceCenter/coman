@@ -56,16 +56,13 @@ pub struct Config {
 
 lazy_static! {
     pub static ref PROJECT_NAME: String = env!("CARGO_CRATE_NAME").to_uppercase().to_string();
-    pub static ref DATA_FOLDER: Option<PathBuf> =
-        env::var(format!("{}_DATA", PROJECT_NAME.clone()))
-            .ok()
-            .map(PathBuf::from);
-    pub static ref CONFIG_FOLDER: Option<PathBuf> =
-        env::var(format!("{}_CONFIG", PROJECT_NAME.clone()))
-            .ok()
-            .map(PathBuf::from);
-    pub static ref CONFIG_FILE_NAME: String =
-        format!("{}.toml", PROJECT_NAME.to_lowercase().clone());
+    pub static ref DATA_FOLDER: Option<PathBuf> = env::var(format!("{}_DATA", PROJECT_NAME.clone()))
+        .ok()
+        .map(PathBuf::from);
+    pub static ref CONFIG_FOLDER: Option<PathBuf> = env::var(format!("{}_CONFIG", PROJECT_NAME.clone()))
+        .ok()
+        .map(PathBuf::from);
+    pub static ref CONFIG_FILE_NAME: String = format!("{}.toml", PROJECT_NAME.to_lowercase().clone());
     pub static ref CONFIG_FORMAT: config::FileFormat = config::FileFormat::Toml;
 }
 
@@ -137,10 +134,7 @@ pub fn default_config_builder() -> Result<config::ConfigBuilder<config::builder:
     let data_dir = get_data_dir();
     let config_dir = get_config_dir();
     let builder = config::Config::builder()
-        .add_source(config::File::from_str(
-            DEFAULT_CONFIG_TOML,
-            config::FileFormat::Toml,
-        ))
+        .add_source(config::File::from_str(DEFAULT_CONFIG_TOML, config::FileFormat::Toml))
         .set_default("data_dir", data_dir.to_str().unwrap())?
         .set_default("config_dir", config_dir.to_str().unwrap())?;
     Ok(builder)
@@ -161,9 +155,7 @@ pub fn project_local_config_builder(
     builder: config::ConfigBuilder<config::builder::DefaultState>,
 ) -> Result<config::ConfigBuilder<config::builder::DefaultState>> {
     if let Some(config_path) = get_project_local_config_file() {
-        let source = config::File::from(config_path)
-            .format(*CONFIG_FORMAT)
-            .required(false);
+        let source = config::File::from(config_path).format(*CONFIG_FORMAT).required(false);
         let builder = builder.add_source(source);
         return Ok(builder);
     }

@@ -1,5 +1,6 @@
-use eyre::{Result, WrapErr};
 use std::fmt;
+
+use eyre::{Result, WrapErr};
 
 use crate::error::FirecrestError;
 
@@ -94,12 +95,10 @@ impl FirecrestClient {
         }
     }
     pub async fn get(&self, path: &str, params: Option<Vec<(&str, &str)>>) -> Result<String> {
-        self.request(path, reqwest::Method::GET, None, params, None)
-            .await
+        self.request(path, reqwest::Method::GET, None, params, None).await
     }
     pub async fn delete(&self, path: &str, params: Option<Vec<(&str, &str)>>) -> Result<String> {
-        self.request(path, reqwest::Method::DELETE, None, params, None)
-            .await
+        self.request(path, reqwest::Method::DELETE, None, params, None).await
     }
     pub async fn post(
         &self,
@@ -111,13 +110,7 @@ impl FirecrestClient {
         self.request(path, reqwest::Method::POST, Some(body), params, multipart)
             .await
     }
-    pub async fn put(
-        &self,
-        path: &str,
-        body: String,
-        params: Option<Vec<(&str, &str)>>,
-    ) -> Result<String> {
-        self.request(path, reqwest::Method::PUT, Some(body), params, None)
-            .await
+    pub async fn put(&self, path: &str, body: String, params: Option<Vec<(&str, &str)>>) -> Result<String> {
+        self.request(path, reqwest::Method::PUT, Some(body), params, None).await
     }
 }

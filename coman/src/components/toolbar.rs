@@ -11,8 +11,7 @@ pub struct Toolbar {
 impl Toolbar {
     pub fn new() -> Self {
         Self {
-            component: Label::default()
-                .text("q: quit, l: logs, tab/shift+tab: change focus, x: menu, ?: help"),
+            component: Label::default().text("q: quit, l: logs, tab/shift+tab: change focus, x: menu, ?: help"),
         }
     }
 }

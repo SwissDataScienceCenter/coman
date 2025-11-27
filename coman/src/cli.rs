@@ -65,8 +65,8 @@ pub enum CscsJobCommands {
         command: Option<Vec<String>>,
     },
     #[clap(alias("c"))]
-    Cancel { 
-        job_id: i64, 
+    Cancel {
+        job_id: i64,
     },
 }
 #[derive(Subcommand, Debug)]
@@ -78,12 +78,7 @@ pub enum CscsSystemCommands {
         about = "Set system to use (e.g. `daint`, see `coman cscs ls` for available systems)"
     )]
     Set {
-        #[clap(
-            short,
-            long,
-            action,
-            help = "set in global config instead of project-local one"
-        )]
+        #[clap(short, long, action, help = "set in global config instead of project-local one")]
         global: bool,
         #[clap(help = "System name to use")]
         system_name: String,

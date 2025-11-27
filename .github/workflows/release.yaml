@@ -1,0 +1,84 @@
+name: Release
+on:
+  push:
+    branches:
+      - "main"
+    tags:
+      - "v*"
+env:
+  CRATE_NAME: coman
+  GITHUB_TOKEN: ${{ github.token }}
+  RUST_BACKTRACE: 1
+jobs:
+  release:
+    name: Release - ${{ matrix.platform.os_name }}
+    strategy:
+      matrix:
+        platform:
+          - os_name: Linux-x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            bin: coman
+            name: coman-Linux-x86_64-musl.tar.gz
+            cargo_command: cargo
+
+          - os_name: Windows-aarch64
+            os: windows-latest
+            target: aarch64-pc-windows-msvc
+            bin: coman.exe
+            name: coman-Windows-aarch64.zip
+            cargo_command: cargo
+
+          - os_name: macOS-x86_64
+            os: macOS-latest
+            target: x86_64-apple-darwin
+            bin: coman
+            name: coman-Darwin-x86_64.tar.gz
+            cargo_command: cargo
+
+    runs-on: ${{ matrix.platform.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform.target }}
+      - name: Install musl-tools on Linux
+        run: sudo apt-get update --yes && sudo apt-get install --yes musl-tools
+        if: contains(matrix.platform.os, 'ubuntu')
+      - name: Build binary (*nix)
+        shell: bash
+        run: |
+          ${{ matrix.platform.cargo_command }} build --locked --release --target ${{ matrix.platform.target }}
+        if: ${{ !contains(matrix.platform.os, 'windows') }}
+      - name: Build binary (Windows)
+        # We have to use the platform's native shell. If we use bash on
+        # Windows then OpenSSL complains that the Perl it finds doesn't use
+        # the platform's native paths and refuses to build.
+        shell: powershell
+        run: |
+          & ${{ matrix.platform.cargo_command }} build --locked --release --target ${{ matrix.platform.target }}
+        if: contains(matrix.platform.os, 'windows')
+      - name: Strip binary
+        shell: bash
+        run: |
+          strip target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
+        if: ${{ !( matrix.platform.target == 'aarch64-pc-windows-msvc') }}
+      - name: Package as archive
+        shell: bash
+        run: |
+          cd target/${{ matrix.platform.target }}/release
+          if [[ "${{ matrix.platform.os }}" == "windows-latest" ]]; then
+            7z a ../../../${{ matrix.platform.name }} ${{ matrix.platform.bin }}
+          else
+            tar czvf ../../../${{ matrix.platform.name }} ${{ matrix.platform.bin }}
+          fi
+          cd -
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v1
+        with:
+          draft: true
+          files: "coman*"
+          body_path: Changes.md
+        if: startsWith( github.ref, 'refs/tags/v' )

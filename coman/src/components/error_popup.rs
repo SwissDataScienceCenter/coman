@@ -19,17 +19,9 @@ impl ErrorPopup {
     pub fn new<S: Into<String>>(msg: S) -> Self {
         Self {
             component: Paragraph::default()
-                .borders(
-                    Borders::default()
-                        .modifiers(BorderType::Thick)
-                        .color(Color::Red),
-                )
+                .borders(Borders::default().modifiers(BorderType::Thick).color(Color::Red))
                 .title("Error", Alignment::Left)
-                .text(
-                    std::convert::Into::<String>::into(msg)
-                        .lines()
-                        .map(TextSpan::from),
-                ),
+                .text(std::convert::Into::<String>::into(msg).lines().map(TextSpan::from)),
         }
     }
 }
@@ -37,10 +29,9 @@ impl ErrorPopup {
 impl Component<Msg, UserEvent> for ErrorPopup {
     fn on(&mut self, ev: tuirealm::Event<UserEvent>) -> Option<Msg> {
         match ev {
-            Event::Keyboard(KeyEvent { code: Key::Esc, .. })
-            | Event::Keyboard(KeyEvent {
-                code: Key::Enter, ..
-            }) => Some(Msg::ErrorPopup(ErrorPopupMsg::Closed)),
+            Event::Keyboard(KeyEvent { code: Key::Esc, .. }) | Event::Keyboard(KeyEvent { code: Key::Enter, .. }) => {
+                Some(Msg::ErrorPopup(ErrorPopupMsg::Closed))
+            }
             _ => None,
         }
     }
