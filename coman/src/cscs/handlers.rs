@@ -95,6 +95,29 @@ pub async fn cscs_job_details(job_id: i64) -> Result<Option<JobDetail>> {
     }
 }
 
+pub async fn cscs_job_log(job_id: i64) -> Result<String> {
+    match get_access_token().await {
+        Ok(access_token) => {
+            let api_client = CscsApi::new(access_token.0).unwrap();
+            let config = Config::new().unwrap();
+            let job = api_client
+                .get_job(&config.cscs.current_system, job_id)
+                .await?;
+            if job.is_none() {
+                return Err(eyre!("couldn't find job {}", job_id));
+            }
+            api_client
+                .tail(
+                    &config.cscs.current_system,
+                    PathBuf::from(job.unwrap().stdout),
+                    100,
+                )
+                .await
+        }
+        Err(e) => Err(e),
+    }
+}
+
 pub async fn cscs_job_cancel(job_id: i64) -> Result<()> {
     match get_access_token().await {
         Ok(access_token) => {

@@ -4,6 +4,7 @@ use crate::cscs::api_client::{Job, System};
 pub enum CscsEvent {
     LoggedIn,
     GotWorkloadData(Vec<Job>),
+    GotJobLog(String),
     SelectSystemList(Vec<System>),
 }
 

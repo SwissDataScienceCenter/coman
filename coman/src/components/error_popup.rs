@@ -25,7 +25,11 @@ impl ErrorPopup {
                         .color(Color::Red),
                 )
                 .title("Error", Alignment::Left)
-                .text(vec![TextSpan::from(msg)]),
+                .text(
+                    std::convert::Into::<String>::into(msg)
+                        .lines()
+                        .map(TextSpan::from),
+                ),
         }
     }
 }

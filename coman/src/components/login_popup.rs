@@ -2,7 +2,7 @@ use tui_realm_stdlib::Input;
 use tuirealm::{
     Component, Event, Frame, MockComponent, State,
     command::{Cmd, CmdResult, Direction, Position},
-    event::{Key, KeyEvent, KeyModifiers},
+    event::{Key, KeyEvent},
     props::{
         Alignment, AttrValue, Attribute, BorderType, Borders, Color, InputType, Layout, Props,
         Style,

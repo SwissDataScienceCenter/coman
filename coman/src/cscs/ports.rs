@@ -10,7 +10,7 @@ use tuirealm::{
 use crate::{
     app::user_events::{CscsEvent, UserEvent},
     cscs::{
-        handlers::{cscs_job_list, cscs_system_list},
+        handlers::{cscs_job_list, cscs_job_log, cscs_system_list},
         oauth2::{ACCESS_TOKEN_SECRET_NAME, REFRESH_TOKEN_SECRET_NAME, finish_cscs_device_login},
     },
     trace_dbg,
@@ -100,12 +100,9 @@ impl AsyncFetchWorkloadsPort {
 impl PollAsync<UserEvent> for AsyncFetchWorkloadsPort {
     async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
         match cscs_job_list().await {
-            Ok(jobs) => {
-                let jobs = trace_dbg!(jobs);
-                Ok(Some(Event::User(UserEvent::Cscs(
-                    CscsEvent::GotWorkloadData(jobs),
-                ))))
-            }
+            Ok(jobs) => Ok(Some(Event::User(UserEvent::Cscs(
+                CscsEvent::GotWorkloadData(jobs),
+            )))),
             Err(e) => {
                 let _ = trace_dbg!(e);
                 Ok(Some(Event::User(UserEvent::Cscs(
@@ -115,6 +112,7 @@ impl PollAsync<UserEvent> for AsyncFetchWorkloadsPort {
         }
     }
 }
+
 pub(crate) struct AsyncSelectSystemPort {
     receiver: mpsc::Receiver<()>,
 }
@@ -128,7 +126,7 @@ impl AsyncSelectSystemPort {
 #[tuirealm::async_trait]
 impl PollAsync<UserEvent> for AsyncSelectSystemPort {
     async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
-        if let Some(_) = self.receiver.recv().await {
+        if self.receiver.recv().await.is_some() {
             match cscs_system_list().await {
                 Ok(systems) => Ok(Some(Event::User(UserEvent::Cscs(
                     CscsEvent::SelectSystemList(systems),
@@ -142,6 +140,50 @@ impl PollAsync<UserEvent> for AsyncSelectSystemPort {
             }
         } else {
             Ok(None)
+        }
+    }
+}
+
+pub(crate) struct AsyncJobLogPort {
+    receiver: mpsc::Receiver<Option<usize>>,
+    current_job: Option<usize>,
+}
+
+impl AsyncJobLogPort {
+    pub fn new(receiver: mpsc::Receiver<Option<usize>>) -> Self {
+        Self {
+            receiver,
+            current_job: None,
+        }
+    }
+}
+#[tuirealm::async_trait]
+impl PollAsync<UserEvent> for AsyncJobLogPort {
+    async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
+        if self.receiver.is_closed() {
+            return Ok(Some(Event::None));
+        }
+        if !self.receiver.is_empty() {
+            if let Some(val) = self.receiver.recv().await {
+                self.current_job = val;
+            }
+            Ok(Some(Event::None))
+        } else if let Some(job_id) = self.current_job {
+            match cscs_job_log(job_id as i64).await {
+                Ok(log) => {
+                    let log = trace_dbg!(log);
+                    Ok(Some(Event::User(UserEvent::Cscs(CscsEvent::GotJobLog(
+                        log,
+                    )))))
+                }
+                Err(e) => Ok(Some(Event::User(UserEvent::Error(format!(
+                    "{:?}",
+                    Err::<(), Report>(e).wrap_err("couldn't get log")
+                ))))),
+            }
+        } else {
+            trace_dbg!("nothing");
+            Ok(Some(Event::None))
         }
     }
 }

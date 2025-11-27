@@ -10,13 +10,15 @@ use crate::{
     app::{
         ids::Id,
         messages::{
-            CscsMsg, ErrorPopupMsg, InfoPopupMsg, LoginPopupMsg, MenuMsg, Msg, SystemSelectMsg,
+            CscsMsg, ErrorPopupMsg, InfoPopupMsg, JobMsg, LoginPopupMsg, MenuMsg, Msg,
+            SystemSelectMsg,
         },
         user_events::UserEvent,
     },
     components::{
         error_popup::ErrorPopup, info_popup::InfoPopup, login_popup::LoginPopup,
-        system_select_popup::SystemSelectPopup, workload_menu::WorkloadMenu,
+        system_select_popup::SystemSelectPopup, workload_list::WorkloadList,
+        workload_log::WorkloadLog, workload_menu::WorkloadMenu,
     },
     cscs::{cli::cscs_login, handlers::cscs_system_set},
     trace_dbg,
@@ -42,6 +44,10 @@ where
 
     /// Triggers async request to select current system
     pub select_system_tx: mpsc::Sender<()>,
+
+    /// Triggers watching job logs
+    /// sending None stops watching
+    pub job_log_tx: mpsc::Sender<Option<usize>>,
 }
 
 impl<T> Model<T>
@@ -53,6 +59,7 @@ where
         bridge: TerminalBridge<T>,
         error_tx: mpsc::Sender<String>,
         select_system_tx: mpsc::Sender<()>,
+        job_log_tx: mpsc::Sender<Option<usize>>,
     ) -> Self {
         Self {
             app,
@@ -61,6 +68,7 @@ where
             terminal: bridge,
             error_tx,
             select_system_tx,
+            job_log_tx,
         }
     }
 
@@ -79,7 +87,11 @@ where
                             .as_ref(),
                         )
                         .split(f.area());
-                    self.app.view(&Id::WorkloadList, f, chunks[0]);
+                    if self.app.mounted(&Id::WorkloadList) {
+                        self.app.view(&Id::WorkloadList, f, chunks[0]);
+                    } else if self.app.mounted(&Id::WorkloadLogs) {
+                        self.app.view(&Id::WorkloadLogs, f, chunks[0]);
+                    }
                     self.app.view(&Id::Toolbar, f, chunks[1]);
 
                     if self.app.mounted(&Id::Menu) {
@@ -157,6 +169,9 @@ where
     fn handle_error_popup_msg(&mut self, msg: ErrorPopupMsg) -> Option<Msg> {
         match msg {
             ErrorPopupMsg::Opened(error_msg) => {
+                if self.app.mounted(&Id::ErrorPopup) {
+                    assert!(self.app.umount(&Id::ErrorPopup).is_ok());
+                }
                 assert!(
                     self.app
                         .mount(Id::ErrorPopup, Box::new(ErrorPopup::new(error_msg)), vec![])
@@ -214,6 +229,47 @@ where
             MenuMsg::CscsSwitchSystem => {
                 assert!(self.app.umount(&Id::Menu).is_ok());
                 Some(Msg::Cscs(CscsMsg::SelectSystem))
+            }
+        }
+    }
+    fn handle_job_msg(&mut self, msg: JobMsg) -> Option<Msg> {
+        match msg {
+            JobMsg::ShowLog(jobid) => {
+                if self.app.mounted(&Id::WorkloadList) {
+                    assert!(self.app.umount(&Id::WorkloadList).is_ok());
+                }
+                if !self.app.mounted(&Id::WorkloadLogs) {
+                    assert!(
+                        self.app
+                            .mount(Id::WorkloadLogs, Box::new(WorkloadLog::new()), vec![])
+                            .is_ok()
+                    );
+                }
+                assert!(self.app.active(&Id::WorkloadLogs).is_ok());
+                let job_log_tx = self.job_log_tx.clone();
+                tokio::spawn(async move {
+                    job_log_tx.send(Some(jobid)).await.unwrap();
+                });
+                None
+            }
+            JobMsg::CloseLog => {
+                if self.app.mounted(&Id::WorkloadLogs) {
+                    assert!(self.app.umount(&Id::WorkloadLogs).is_ok());
+                }
+                if !self.app.mounted(&Id::WorkloadList) {
+                    assert!(
+                        self.app
+                            .mount(Id::WorkloadList, Box::new(WorkloadList::default()), vec![])
+                            .is_ok()
+                    );
+                }
+                assert!(self.app.active(&Id::WorkloadList).is_ok());
+                let job_log_tx = self.job_log_tx.clone();
+                tokio::spawn(async move {
+                    // stopp polling for logs
+                    job_log_tx.send(None).await.unwrap();
+                });
+                None
             }
         }
     }
@@ -284,6 +340,7 @@ where
                 }
                 Msg::LoginPopup(msg) => self.handle_login_popup_msg(msg),
                 Msg::SystemSelectPopup(msg) => self.handle_system_select_popup_msg(msg),
+                Msg::Job(msg) => self.handle_job_msg(msg),
                 Msg::None => None,
             }
         } else {

@@ -38,7 +38,11 @@ pub enum CscsMsg {
     SelectSystem,
     SystemSelected(String),
 }
-
+#[derive(Debug, PartialEq)]
+pub enum JobMsg {
+    ShowLog(usize),
+    CloseLog,
+}
 #[derive(Debug, PartialEq)]
 pub enum Msg {
     AppClose,
@@ -50,5 +54,6 @@ pub enum Msg {
     Error(String),
     Info(String),
     Cscs(CscsMsg),
+    Job(JobMsg),
     None,
 }
