@@ -65,7 +65,10 @@ pub enum CscsJobCommands {
 pub enum CscsSystemCommands {
     #[clap(alias("ls"), about = "List available compute systems")]
     List,
-    #[clap(alias("s"), about = "Set system to use")]
+    #[clap(
+        alias("s"),
+        about = "Set system to use (e.g. `daint`, see `coman cscs ls` for available systems)"
+    )]
     Set {
         #[clap(
             short,
