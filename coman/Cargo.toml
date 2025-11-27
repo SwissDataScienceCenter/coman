@@ -68,6 +68,7 @@ inquire = "0.9.1"
 oci-distribution = "0.11.0"
 docker_credential = "1.3.2"
 chrono = "0.4.42"
+openssl = { version = "0.10.75", features = ["vendored"] }
 
 [build-dependencies]
 anyhow = "1.0.90"
