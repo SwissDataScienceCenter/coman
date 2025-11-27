@@ -26,7 +26,7 @@ use crate::{
             cli_cscs_job_cancel, cli_cscs_job_detail, cli_cscs_job_list, cli_cscs_job_start, 
             cli_cscs_login, cli_cscs_set_system, cli_cscs_system_list,
         },
-        ports::AsyncFetchWorkloadsPort,
+        ports::{AsyncFetchWorkloadsPort, AsyncSelectSystemPort},
     },
     errors::AsyncErrorPort,
 };
@@ -90,6 +90,7 @@ fn run_tui() -> Result<()> {
     let bridge = TerminalBridge::init(adapter).expect("Cannot initialize terminal");
     let handle = Handle::current();
 
+    let (select_system_tx, select_system_rx) = mpsc::channel(100);
     let (error_tx, error_rx) = mpsc::channel(100);
     let event_listener = EventListenerCfg::default()
         .with_handle(handle)
@@ -102,6 +103,11 @@ fn run_tui() -> Result<()> {
         .add_async_port(
             Box::new(AsyncFetchWorkloadsPort::new()),
             Duration::from_secs(2),
+            1,
+        )
+        .add_async_port(
+            Box::new(AsyncSelectSystemPort::new(select_system_rx)),
+            Duration::default(),
             1,
         );
 
@@ -145,7 +151,6 @@ fn run_tui() -> Result<()> {
                     code: Key::Char('x'),
                     modifiers: KeyModifiers::NONE,
                 }),
-                SubClause::Not(Box::new(SubClause::AndMany(vec![
                 SubClause::Not(Box::new(SubClause::OrMany(vec![
                     SubClause::IsMounted(Id::Menu),
                     SubClause::IsMounted(Id::ErrorPopup),
@@ -157,7 +162,7 @@ fn run_tui() -> Result<()> {
 
     app.active(&Id::WorkloadList).expect("failed to active");
 
-    let mut model = Model::new(app, bridge, error_tx);
+    let mut model = Model::new(app, bridge, error_tx, select_system_tx);
     // Main loop
     // NOTE: loop until quit; quit is set in update if AppClose is received from counter
     while !model.quit {

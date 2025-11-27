@@ -1,53 +1,60 @@
 use tui_realm_stdlib::List;
 use tuirealm::{
-    Component, Event, MockComponent, State, StateValue,
+    Component, Event, Frame, MockComponent, State, StateValue,
     command::{Cmd, CmdResult, Direction, Position},
-    event::{Key, KeyEvent},
-    props::{Alignment, BorderType, Borders, Color, TableBuilder, TextSpan},
+    event::{Key, KeyEvent, KeyModifiers},
+    props::{
+        Alignment, AttrValue, Attribute, BorderType, Borders, Color, InputType, Layout, Props,
+        Style, TableBuilder, TextSpan,
+    },
+    ratatui::{
+        layout::{Constraint, Direction as LayoutDirection, Rect},
+        widgets::Block,
+    },
 };
 
-use crate::app::{
-    messages::{MenuMsg, Msg},
-    user_events::UserEvent,
+use crate::{
+    app::{
+        messages::{Msg, SystemSelectMsg},
+        user_events::UserEvent,
+    },
+    cscs::api_client::System,
 };
 
 #[derive(MockComponent)]
-pub struct WorkloadMenu {
+pub struct SystemSelectPopup {
     component: List,
+    systems: Vec<System>,
 }
 
-impl Default for WorkloadMenu {
-    fn default() -> Self {
+impl SystemSelectPopup {
+    pub fn new(systems: Vec<System>) -> Self {
+        let mut rows = TableBuilder::default();
+        for system in systems.clone() {
+            rows.add_col(TextSpan::from(system.name).fg(Color::Cyan))
+                .add_row();
+        }
         Self {
             component: List::default()
                 .borders(
                     Borders::default()
                         .modifiers(BorderType::Thick)
-                        .color(Color::Yellow),
+                        .color(Color::Green),
                 )
-                .title("Menu", Alignment::Left)
+                .title("Select System", Alignment::Left)
                 .scroll(true)
                 .highlighted_color(Color::LightYellow)
                 .highlighted_str("-")
                 .rewind(true)
                 .step(4)
-                .rows(
-                    TableBuilder::default()
-                        .add_col(TextSpan::from("Login to CSCS").fg(Color::Cyan))
-                        .add_row()
-                        .add_col(TextSpan::from("Switch System").fg(Color::Cyan))
-                        .add_row()
-                        .add_col(TextSpan::from("Quit").fg(Color::Cyan))
-                        .add_row()
-                        .build(),
-                )
-                .selected_line(0),
+                .rows(rows.build()),
+            systems,
         }
     }
 }
 
-impl Component<Msg, UserEvent> for WorkloadMenu {
-    fn on(&mut self, ev: tuirealm::Event<UserEvent>) -> Option<Msg> {
+impl Component<Msg, UserEvent> for SystemSelectPopup {
+    fn on(&mut self, ev: Event<UserEvent>) -> Option<Msg> {
         let _ = match ev {
             Event::Keyboard(KeyEvent {
                 code: Key::Down, ..
@@ -69,26 +76,24 @@ impl Component<Msg, UserEvent> for WorkloadMenu {
                 self.perform(Cmd::GoTo(Position::End))
             }
             Event::Keyboard(KeyEvent { code: Key::Esc, .. }) => {
-                return Some(Msg::Menu(MenuMsg::Closed));
+                return Some(Msg::SystemSelectPopup(SystemSelectMsg::Closed));
             }
             Event::Keyboard(KeyEvent {
                 code: Key::Char('x'),
                 ..
             }) => {
-                return Some(Msg::Menu(MenuMsg::Closed));
+                return Some(Msg::SystemSelectPopup(SystemSelectMsg::Closed));
             }
             Event::Keyboard(KeyEvent {
                 code: Key::Enter, ..
             }) => {
                 let msg = if let State::One(StateValue::Usize(index)) = self.state() {
-                    match index {
-                        0 => Some(Msg::Menu(MenuMsg::CscsLogin)),
-                        1 => Some(Msg::Menu(MenuMsg::CscsSwitchSystem)),
-                        2 => Some(Msg::AppClose),
-                        _ => Some(Msg::Menu(MenuMsg::Closed)),
-                    }
+                    let selected_system = self.systems[index].clone();
+                    Some(Msg::SystemSelectPopup(SystemSelectMsg::SystemSelected(
+                        selected_system.name,
+                    )))
                 } else {
-                    Some(Msg::Menu(MenuMsg::Closed))
+                    Some(Msg::SystemSelectPopup(SystemSelectMsg::Closed))
                 };
                 return msg;
             }

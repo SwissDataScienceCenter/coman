@@ -10,7 +10,7 @@ use tuirealm::{
 use crate::{
     app::user_events::{CscsEvent, UserEvent},
     cscs::{
-        handlers::cscs_job_list,
+        handlers::{cscs_job_list, cscs_system_list},
         oauth2::{ACCESS_TOKEN_SECRET_NAME, REFRESH_TOKEN_SECRET_NAME, finish_cscs_device_login},
     },
     trace_dbg,
@@ -108,8 +108,40 @@ impl PollAsync<UserEvent> for AsyncFetchWorkloadsPort {
             }
             Err(e) => {
                 let _ = trace_dbg!(e);
-                Ok(Some(Event::None))
+                Ok(Some(Event::User(UserEvent::Cscs(
+                    CscsEvent::GotWorkloadData(vec![]),
+                ))))
             }
+        }
+    }
+}
+pub(crate) struct AsyncSelectSystemPort {
+    receiver: mpsc::Receiver<()>,
+}
+
+impl AsyncSelectSystemPort {
+    pub fn new(receiver: mpsc::Receiver<()>) -> Self {
+        Self { receiver }
+    }
+}
+
+#[tuirealm::async_trait]
+impl PollAsync<UserEvent> for AsyncSelectSystemPort {
+    async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
+        if let Some(_) = self.receiver.recv().await {
+            match cscs_system_list().await {
+                Ok(systems) => Ok(Some(Event::User(UserEvent::Cscs(
+                    CscsEvent::SelectSystemList(systems),
+                )))),
+                Err(e) => Ok(Some(Event::User(UserEvent::Error(format!(
+                    "{:?}",
+                    Err::<(), Report>(e)
+                        .wrap_err("couldn't get available systems")
+                        .suggestion("are you logged in?")
+                ))))),
+            }
+        } else {
+            Ok(None)
         }
     }
 }
