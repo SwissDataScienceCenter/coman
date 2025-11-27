@@ -16,7 +16,16 @@ srun --environment={{environment_file}} {{command}}
 edf_file_template = """
 image = "{{edf_image}}"
 mounts = ["${SCRATCH}:/scratch"]
+workdir = "{{container_workdir}}"
+
+[env]
+{% for key, value in env %}
+{{key}} = "{{value}}"
+{% endfor %}
 """
+
+[cscs.env]
+
 
 [cscs.systems]
 
