@@ -37,6 +37,7 @@ fn main() -> Result<()> {
     std::fs::write("./src/types.rs", content)?;
     // format file
     std::process::Command::new("cargo")
+        .arg("+nightly")
         .arg("fmt")
         .arg("--")
         .arg("./src/types.rs")
