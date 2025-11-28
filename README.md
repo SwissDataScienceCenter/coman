@@ -66,8 +66,15 @@ Click on `Production Keys`
 Then click on `Generate Keys` at the bottom, without changing any settings.
 ![CSCS Dev Portal](/assets/cscs_app_4.jpg)
 
-You should now have a Consumer Key (`Client id` in Coman) and a Consumer Secret (`Client Secret` in Coman)
+You should now have a Consumer Key (`Client id` in Coman) and a Consumer Secret (`Client Secret` in Coman),
+keep note of this for later
 ![CSCS Dev Portal](/assets/cscs_app_5.jpg)
+
+We also need to enable Firecrest subscriptions for the CSCS API, go to `Subscriptions` and click `Subscribe APIS`
+![CSCS Dev Portal](/assets/cscs_app_6.jpg)
+
+Then search for `Firecrest` and subscribe to the `Firecrest v2` API
+![CSCS Dev Portal](/assets/cscs_app_7.jpg)
 
 Run `coman cscs login` and provide the Client id and Client secret when prompted. Both are securely stored in
 your operating systems secure storage and don't need to be entered again. You also don't need to repeat this
