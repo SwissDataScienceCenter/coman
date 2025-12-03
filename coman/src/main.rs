@@ -70,8 +70,12 @@ async fn main() -> Result<()> {
                 },
                 cli::CscsCommands::File { command } => match command {
                     cli::CscsFileCommands::List { path } => cli_cscs_file_list(path).await?,
-                    cli::CscsFileCommands::Download { remote, local } => cli_cscs_file_download(remote, local).await?,
-                    cli::CscsFileCommands::Upload { local, remote } => cli_cscs_file_upload(local, remote).await?,
+                    cli::CscsFileCommands::Download { remote, local, account } => {
+                        cli_cscs_file_download(remote, local, account).await?
+                    }
+                    cli::CscsFileCommands::Upload { local, remote, account } => {
+                        cli_cscs_file_upload(local, remote, account).await?
+                    }
                 },
                 cli::CscsCommands::System { command } => match command {
                     cli::CscsSystemCommands::List => cli_cscs_system_list().await?,

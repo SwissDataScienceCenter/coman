@@ -8,7 +8,7 @@ use crate::{
         DownloadFileResponse, DownloadFileResponseTransferDirectives, GetDirectoryLsResponse, GetFileStatResponse,
         GetFileTailResponse, PostFileDownloadRequest, PostFileDownloadRequestTransferDirectives, PostFileUploadRequest,
         PostMakeDirRequest, PostMkdirResponse, PutFileChmodRequest, PutFileChmodResponse, S3TransferRequest,
-        S3TransferResponse, StreamerTransferResponse, UploadFileResponse, WormholeTransferResponse,
+        S3TransferResponse, UploadFileResponse,
     },
 };
 
@@ -194,13 +194,14 @@ pub async fn get_filesystem_ops_download(client: &FirecrestClient, system_name: 
 pub async fn post_filesystem_transfer_download(
     client: &FirecrestClient,
     system_name: &str,
+    account: &str,
     path: PathBuf,
 ) -> Result<DownloadFileResponse> {
     let file_path = path.as_os_str().to_str().ok_or(eyre!("couldn't cast path to string"))?;
     let body = PostFileDownloadRequest {
         source_path: Some(file_path.to_owned()),
         transfer_directives: PostFileDownloadRequestTransferDirectives::S3(S3TransferRequest::default()),
-        ..Default::default()
+        account: Some(account.to_owned()),
     };
     let body_json = serde_json::to_string(&body)?;
     let response = client
@@ -211,6 +212,18 @@ pub async fn post_filesystem_transfer_download(
             None,
         )
         .await?;
-    let model: DownloadFileResponse = serde_json::from_str(response.as_str())?;
+    let mut model: DownloadFileResponse = serde_json::from_str(response.as_str())?;
+    let json_data: serde_json::Value = serde_json::from_str(response.as_str())?;
+    let transfer_json = json_data["transferDirectives"].clone();
+    let transfer_dir = DownloadFileResponseTransferDirectives::S3(S3TransferResponse {
+        complete_upload_url: transfer_json["complete_upload_url"].as_str().map(|s| s.to_owned()),
+        download_url: transfer_json["download_url"].as_str().map(|s| s.to_owned()),
+        max_part_size: transfer_json["max_part_size"].as_i64(),
+        parts_upload_urls: transfer_json["parts_upload_urls"]
+            .as_array()
+            .map(|v| v.iter().flat_map(|u| u.as_str().map(|s| s.to_owned())).collect()),
+        transfer_method: "s3".to_owned(),
+    });
+    model.transfer_directives = transfer_dir;
     Ok(model)
 }

@@ -18,9 +18,10 @@ use firecrest_client::{
     types::{
         DownloadFileResponseTransferDirectives, File as CSCSFile, FileStat as CSCSFileStat,
         FileSystem as CSCSFileSystem, FileSystemDataType, HPCCluster, HealthCheckType, JobMetadataModel, JobModel,
-        SchedulerServiceHealth, UserInfoResponse,
+        S3TransferResponse, SchedulerServiceHealth, UserInfoResponse,
     },
 };
+use reqwest::Url;
 use strum::Display;
 
 use crate::trace_dbg;
@@ -121,7 +122,7 @@ where
 
 impl From<CSCSFile> for PathEntry {
     fn from(value: CSCSFile) -> Self {
-        let size = match usize::from_str_radix(&value.size, 10) {
+        let size = match value.size.parse::<usize>() {
             Ok(size) => size,
             Err(err) => panic!("Couldn't parse file size {}: {:?}", value.size, err),
         };
@@ -334,6 +335,31 @@ fn display_health(h: &Option<Vec<ServicesHealth>>) -> String {
         .unwrap_or("".to_string())
 }
 
+#[derive(Debug, Clone)]
+pub struct S3Upload {
+    pub parts_upload_urls: Vec<Url>,
+    pub complete_upload_url: Url,
+    pub part_size: u64,
+    pub num_parts: u64,
+}
+
+impl S3Upload {
+    fn convert(value: S3TransferResponse, size: u64) -> Result<Self> {
+        let complete_url = value.complete_upload_url.ok_or(eyre!("no upload completion url set"))?;
+        let part_urls = value.parts_upload_urls.ok_or(eyre!("no part upload urls set"))?;
+        let part_size = value.max_part_size.ok_or(eyre!("couldn't parse size"))? as u64;
+        Ok(Self {
+            parts_upload_urls: part_urls
+                .iter()
+                .map(|u| Url::parse(u).wrap_err("couldn't parse url"))
+                .collect::<Result<Vec<Url>>>()?,
+            part_size,
+            complete_upload_url: Url::parse(&complete_url)?,
+            num_parts: (size.div_ceil(part_size)),
+        })
+    }
+}
+
 pub struct CscsApi {
     client: FirecrestClient,
 }
@@ -442,16 +468,17 @@ impl CscsApi {
         account: &str,
         path: PathBuf,
         size: i64,
-    ) -> Result<(i64, Vec<String>, i64)> {
+    ) -> Result<(i64, S3Upload)> {
+        if account.is_empty() {
+            return Err(eyre!(
+                "An account is required, set it in the config file or with the --account flag"
+            ));
+        }
         let job = post_filesystem_transfer_upload(&self.client, system_name, account, path, size)
             .await
             .wrap_err("couldn't upload file")?;
         if let DownloadFileResponseTransferDirectives::S3(directives) = job.transfer_directives {
-            Ok((
-                job.transfer_job.job_id,
-                directives.parts_upload_urls.unwrap(),
-                directives.max_part_size.unwrap(),
-            ))
+            Ok((job.transfer_job.job_id, S3Upload::convert(directives, size as u64)?))
         } else {
             trace_dbg!(job);
             Err(eyre!("didn't get S3 transfer directive"))
@@ -463,12 +490,18 @@ impl CscsApi {
             .wrap_err("couldn't download file")?;
         Ok(content)
     }
-    pub async fn transfer_download(&self, system_name: &str, path: PathBuf) -> Result<(i64, String)> {
-        let job = post_filesystem_transfer_download(&self.client, system_name, path)
+    pub async fn transfer_download(&self, system_name: &str, account: &str, path: PathBuf) -> Result<(i64, Url)> {
+        if account.is_empty() {
+            return Err(eyre!(
+                "An account is required, set it in the config file or with the --account flag"
+            ));
+        }
+        let job = post_filesystem_transfer_download(&self.client, system_name, account, path)
             .await
             .wrap_err("couldn't transfer file")?;
         if let DownloadFileResponseTransferDirectives::S3(directives) = job.transfer_directives {
-            Ok((job.transfer_job.job_id, directives.download_url.unwrap()))
+            let download_url = Url::parse(&directives.download_url.unwrap())?;
+            Ok((job.transfer_job.job_id, download_url))
         } else {
             Err(eyre!("didn't get S3 transfer directive"))
         }

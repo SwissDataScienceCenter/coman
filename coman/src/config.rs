@@ -8,7 +8,6 @@ use eyre::eyre;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
-use crate::trace_dbg;
 
 const DEFAULT_CONFIG_TOML: &str = include_str!("../.config/config.toml");
 

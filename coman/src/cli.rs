@@ -80,9 +80,19 @@ pub enum CscsFileCommands {
     #[clap(alias("ls"))]
     List { path: PathBuf },
     #[clap(alias("dl"))]
-    Download { remote: PathBuf, local: PathBuf },
+    Download {
+        #[clap(short, long, help = "account/project to use")]
+        account: Option<String>,
+        remote: PathBuf,
+        local: PathBuf,
+    },
     #[clap(alias("ul"))]
-    Upload { local: PathBuf, remote: PathBuf },
+    Upload {
+        #[clap(short, long, help = "account/project to use")]
+        account: Option<String>,
+        local: PathBuf,
+        remote: PathBuf,
+    },
 }
 
 #[derive(Subcommand, Debug)]

@@ -1,4 +1,3 @@
-use color_eyre::owo_colors::OwoColorize;
 use eyre::{Context, Report};
 use tokio::sync::mpsc;
 use tuirealm::{
@@ -19,7 +18,7 @@ use crate::{
     },
     components::{
         context_menu::ContextMenu, error_popup::ErrorPopup, info_popup::InfoPopup, login_popup::LoginPopup,
-        system_select_popup::SystemSelectPopup, toolbar::Toolbar, workload_list::WorkloadList,
+        system_select_popup::SystemSelectPopup, workload_list::WorkloadList,
         workload_log::WorkloadLog,
     },
     cscs::handlers::{cscs_login, cscs_system_set},

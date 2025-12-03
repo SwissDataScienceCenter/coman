@@ -81,7 +81,7 @@ impl FileTree {
 }
 impl Component<Msg, UserEvent> for FileTree {
     fn on(&mut self, ev: Event<UserEvent>) -> Option<Msg> {
-        let result = match ev {
+        match ev {
             Event::Keyboard(KeyEvent {
                 code: Key::Left,
                 modifiers: KeyModifiers::NONE,

@@ -1,11 +1,12 @@
 use std::{os::unix::fs::MetadataExt, path::PathBuf};
 
 use color_eyre::{Result, eyre::eyre};
+use reqwest::Url;
 
 use crate::{
     config::Config,
     cscs::{
-        api_client::{CscsApi, FileStat, FileSystemType, Job, JobDetail, PathEntry, System, UserInfo},
+        api_client::{CscsApi, FileStat, FileSystemType, Job, JobDetail, PathEntry, S3Upload, System, UserInfo},
         oauth2::{
             CLIENT_ID_SECRET_NAME, CLIENT_SECRET_SECRET_NAME, client_credentials_login, finish_cscs_device_login,
             start_cscs_device_login,
@@ -254,7 +255,11 @@ pub async fn cscs_file_list(path: PathBuf) -> Result<Vec<PathEntry>> {
     }
 }
 
-pub async fn cscs_file_download(remote: PathBuf, local: PathBuf) -> Result<Option<(i64, String)>> {
+pub async fn cscs_file_download(
+    remote: PathBuf,
+    local: PathBuf,
+    account: Option<String>,
+) -> Result<Option<(i64, Url, usize)>> {
     match get_access_token().await {
         Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0).unwrap();
@@ -266,9 +271,8 @@ pub async fn cscs_file_download(remote: PathBuf, local: PathBuf) -> Result<Optio
             if let crate::cscs::api_client::PathType::Directory = path.path_type {
                 return Err(eyre!("remote path must be a file, not directory"));
             }
-            if let Some(size) = path.size
-                && size < CSCS_MAX_DIRECT_SIZE
-            {
+            let size = path.size.ok_or(eyre!("couldn't determin download file size"))?;
+            if size < CSCS_MAX_DIRECT_SIZE {
                 // download directly
                 let contents = api_client.download(&config.cscs.current_system, remote).await?;
                 std::fs::write(local, contents)?;
@@ -276,15 +280,23 @@ pub async fn cscs_file_download(remote: PathBuf, local: PathBuf) -> Result<Optio
             } else {
                 // download via s3
                 let job_data = api_client
-                    .transfer_download(&config.cscs.current_system, remote)
+                    .transfer_download(
+                        &config.cscs.current_system,
+                        &account.unwrap_or(config.cscs.account),
+                        remote,
+                    )
                     .await?;
-                Ok(Some(job_data))
+                Ok(Some((job_data.0, job_data.1, size)))
             }
         }
         Err(e) => Err(e),
     }
 }
-pub async fn cscs_file_upload(local: PathBuf, remote: PathBuf) -> Result<Option<(i64, Vec<String>, i64)>> {
+pub async fn cscs_file_upload(
+    local: PathBuf,
+    remote: PathBuf,
+    account: Option<String>,
+) -> Result<Option<(i64, S3Upload)>> {
     match get_access_token().await {
         Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0).unwrap();
@@ -301,7 +313,7 @@ pub async fn cscs_file_upload(local: PathBuf, remote: PathBuf) -> Result<Option<
                 let transfer_data = api_client
                     .transfer_upload(
                         &config.cscs.current_system,
-                        &config.cscs.account,
+                        &account.unwrap_or(config.cscs.account),
                         remote,
                         file_meta.size() as i64,
                     )

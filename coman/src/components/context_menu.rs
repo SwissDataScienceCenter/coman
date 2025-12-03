@@ -8,7 +8,7 @@ use tuirealm::{
 
 use crate::app::{
     messages::{MenuMsg, Msg, View},
-    user_events::{FileEvent, UserEvent},
+    user_events::UserEvent,
 };
 
 #[derive(MockComponent)]
