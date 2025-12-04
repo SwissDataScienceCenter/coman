@@ -1,4 +1,5 @@
 pub(crate) mod context_menu;
+pub(crate) mod download_popup;
 pub(crate) mod error_popup;
 pub(crate) mod file_tree;
 pub(crate) mod global_listener;

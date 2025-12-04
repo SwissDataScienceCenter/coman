@@ -8,7 +8,6 @@ use eyre::eyre;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
-
 const DEFAULT_CONFIG_TOML: &str = include_str!("../.config/config.toml");
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]

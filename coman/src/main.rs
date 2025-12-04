@@ -139,19 +139,12 @@ fn run_tui() -> Result<()> {
         Box::new(WorkloadList::default()),
         vec![Sub::new(
             SubEventClause::Any,
-            SubClause::AndMany(vec![
-                SubClause::IsMounted(Id::WorkloadList),
-                SubClause::Not(Box::new(SubClause::OrMany(vec![
-                    SubClause::IsMounted(Id::Menu),
-                    SubClause::IsMounted(Id::ErrorPopup),
-                    SubClause::IsMounted(Id::LoginPopup),
-                ]))),
-            ]),
+            SubClause::AndMany(vec![SubClause::IsMounted(Id::WorkloadList), popup_exclusion_clause()]),
         )],
     )?;
     app.mount(
         Id::FileView,
-        Box::new(FileTree::new(file_tree_tx)),
+        Box::new(FileTree::new(file_tree_tx.clone())),
         vec![
             Sub::new(
                 SubEventClause::Discriminant(UserEvent::File(FileEvent::List("".to_owned(), vec![]))),
@@ -159,14 +152,7 @@ fn run_tui() -> Result<()> {
             ),
             Sub::new(
                 SubEventClause::Any,
-                SubClause::AndMany(vec![
-                    SubClause::IsMounted(Id::FileView),
-                    SubClause::Not(Box::new(SubClause::OrMany(vec![
-                        SubClause::IsMounted(Id::Menu),
-                        SubClause::IsMounted(Id::ErrorPopup),
-                        SubClause::IsMounted(Id::LoginPopup),
-                    ]))),
-                ]),
+                SubClause::AndMany(vec![SubClause::IsMounted(Id::FileView), popup_exclusion_clause()]),
             ),
         ],
     )?;
@@ -197,6 +183,10 @@ fn run_tui() -> Result<()> {
                 SubClause::Always,
             ),
             Sub::new(
+                SubEventClause::Discriminant(UserEvent::File(FileEvent::DownloadSuccessful)),
+                SubClause::Always,
+            ),
+            Sub::new(
                 SubEventClause::User(UserEvent::Cscs(CscsEvent::LoggedIn)),
                 SubClause::Always,
             ),
@@ -205,40 +195,36 @@ fn run_tui() -> Result<()> {
                     code: Key::Char('x'),
                     modifiers: KeyModifiers::NONE,
                 }),
-                SubClause::Not(Box::new(SubClause::OrMany(vec![
-                    SubClause::IsMounted(Id::Menu),
-                    SubClause::IsMounted(Id::ErrorPopup),
-                    SubClause::IsMounted(Id::LoginPopup),
-                ]))),
+                popup_exclusion_clause(),
             ),
             Sub::new(
                 SubEventClause::Keyboard(KeyEvent {
                     code: Key::Char('f'),
                     modifiers: KeyModifiers::NONE,
                 }),
-                SubClause::Not(Box::new(SubClause::OrMany(vec![
-                    SubClause::IsMounted(Id::Menu),
-                    SubClause::IsMounted(Id::ErrorPopup),
-                    SubClause::IsMounted(Id::LoginPopup),
-                ]))),
+                popup_exclusion_clause(),
             ),
             Sub::new(
                 SubEventClause::Keyboard(KeyEvent {
                     code: Key::Char('w'),
                     modifiers: KeyModifiers::NONE,
                 }),
-                SubClause::Not(Box::new(SubClause::OrMany(vec![
-                    SubClause::IsMounted(Id::Menu),
-                    SubClause::IsMounted(Id::ErrorPopup),
-                    SubClause::IsMounted(Id::LoginPopup),
-                ]))),
+                popup_exclusion_clause(),
             ),
         ],
     )?;
 
     app.active(&Id::WorkloadList).expect("failed to active");
 
-    let mut model = Model::new(app, bridge, error_tx, select_system_tx, job_log_tx, user_event_tx);
+    let mut model = Model::new(
+        app,
+        bridge,
+        error_tx,
+        select_system_tx,
+        job_log_tx,
+        user_event_tx,
+        file_tree_tx,
+    );
     // Main loop
     // NOTE: loop until quit; quit is set in update if AppClose is received from counter
     while !model.quit {
@@ -269,4 +255,13 @@ fn run_tui() -> Result<()> {
     model.terminal.restore()?;
 
     Ok(())
+}
+
+fn popup_exclusion_clause() -> SubClause<Id> {
+    SubClause::Not(Box::new(SubClause::OrMany(vec![
+        SubClause::IsMounted(Id::Menu),
+        SubClause::IsMounted(Id::ErrorPopup),
+        SubClause::IsMounted(Id::LoginPopup),
+        SubClause::IsMounted(Id::DownloadPopup),
+    ])))
 }

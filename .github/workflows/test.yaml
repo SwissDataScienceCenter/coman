@@ -28,7 +28,7 @@ jobs:
         with:
           prefix-key: "v0-rust"
       - name: install tooling
-        run: cargo install oas3-gen
+        run: cargo install oas3-gen@0.21.1
       - name: Build
         run: cargo build --verbose
       - name: Check formatting

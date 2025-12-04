@@ -8,6 +8,7 @@ pub enum Id {
     InfoPopup,
     ErrorPopup,
     LoginPopup,
+    DownloadPopup,
     SystemSelectPopup,
     FileView,
 }

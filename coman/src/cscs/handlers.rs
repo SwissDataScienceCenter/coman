@@ -337,17 +337,6 @@ pub async fn cscs_stat_path(path: PathBuf) -> Result<Option<FileStat>> {
     }
 }
 
-pub async fn cscs_download_path(path: PathBuf) -> Result<String> {
-    match get_access_token().await {
-        Ok(access_token) => {
-            let api_client = CscsApi::new(access_token.0).unwrap();
-            let config = Config::new().unwrap();
-            api_client.download(&config.cscs.current_system, path).await
-        }
-        Err(e) => Err(e),
-    }
-}
-
 pub async fn cscs_user_info() -> Result<UserInfo> {
     match get_access_token().await {
         Ok(access_token) => {

@@ -8,7 +8,7 @@ use tuirealm::{
 
 use crate::app::{
     messages::{MenuMsg, Msg, View},
-    user_events::UserEvent,
+    user_events::{FileEvent, UserEvent},
 };
 
 #[derive(MockComponent)]
@@ -42,9 +42,8 @@ impl ContextMenu {
             .add_row()
             .add_col(TextSpan::from("Switch System").fg(Color::Cyan))
             .add_row()
-            // TODO: removed until we add a popup to set the target path for downloads
-            // .add_col(TextSpan::from("Download").fg(Color::Cyan))
-            // .add_row()
+            .add_col(TextSpan::from("Download").fg(Color::Cyan))
+            .add_row()
             .add_col(TextSpan::from("Quit").fg(Color::Cyan))
             .add_row()
             .build()
@@ -53,10 +52,10 @@ impl ContextMenu {
         match index {
             0 => Some(Msg::Menu(MenuMsg::CscsLogin)),
             1 => Some(Msg::Menu(MenuMsg::CscsSwitchSystem)),
-            // 2 => Some(Msg::Menu(MenuMsg::Event(UserEvent::File(
-            //     FileEvent::DownloadCurrentFile,
-            // )))),
-            2 => Some(Msg::AppClose),
+            2 => Some(Msg::Menu(MenuMsg::Event(UserEvent::File(
+                FileEvent::DownloadCurrentFile,
+            )))),
+            3 => Some(Msg::AppClose),
             _ => Some(Msg::Menu(MenuMsg::Closed)),
         }
     }

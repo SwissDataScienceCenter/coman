@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::{app::user_events::UserEvent, cscs::api_client::System};
 
 #[derive(Debug, PartialEq)]
@@ -25,6 +27,12 @@ pub enum LoginPopupMsg {
     Opened,
     Closed,
     LoginDone(String, String),
+}
+#[derive(Debug, PartialEq)]
+pub enum DownloadPopupMsg {
+    Opened(PathBuf),
+    PathSet(PathBuf, PathBuf),
+    Closed,
 }
 #[derive(Debug, PartialEq)]
 pub enum SystemSelectMsg {
@@ -57,6 +65,7 @@ pub enum Msg {
     InfoPopup(InfoPopupMsg),
     ErrorPopup(ErrorPopupMsg),
     LoginPopup(LoginPopupMsg),
+    DownloadPopup(DownloadPopupMsg),
     SystemSelectPopup(SystemSelectMsg),
     Error(String),
     Info(String),

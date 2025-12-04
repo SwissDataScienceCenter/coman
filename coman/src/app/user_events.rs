@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use crate::{
     app::messages::View,
     cscs::api_client::{Job, PathEntry, System},
@@ -16,8 +14,8 @@ pub enum CscsEvent {
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord)]
 pub enum FileEvent {
     List(String, Vec<PathEntry>), // Id, Subpaths
-    DownloadFile(PathBuf),
     DownloadCurrentFile,
+    DownloadSuccessful,
 }
 #[derive(Debug, Eq, Clone, PartialOrd, Ord)]
 pub enum UserEvent {

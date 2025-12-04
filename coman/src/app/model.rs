@@ -13,17 +13,23 @@ use tuirealm::{
 use crate::{
     app::{
         ids::Id,
-        messages::{CscsMsg, ErrorPopupMsg, InfoPopupMsg, JobMsg, LoginPopupMsg, MenuMsg, Msg, SystemSelectMsg, View},
+        messages::{
+            CscsMsg, DownloadPopupMsg, ErrorPopupMsg, InfoPopupMsg, JobMsg, LoginPopupMsg, MenuMsg, Msg,
+            SystemSelectMsg, View,
+        },
         user_events::{CscsEvent, UserEvent},
     },
     components::{
-        context_menu::ContextMenu, error_popup::ErrorPopup, info_popup::InfoPopup, login_popup::LoginPopup,
-        system_select_popup::SystemSelectPopup, workload_list::WorkloadList,
+        context_menu::ContextMenu, download_popup::DownloadTargetInput, error_popup::ErrorPopup, info_popup::InfoPopup,
+        login_popup::LoginPopup, system_select_popup::SystemSelectPopup, workload_list::WorkloadList,
         workload_log::WorkloadLog,
     },
-    cscs::handlers::{cscs_login, cscs_system_set},
+    cscs::{
+        handlers::{cscs_login, cscs_system_set},
+        ports::TreeAction,
+    },
     trace_dbg,
-    util::ui::draw_area_in_absolute,
+    util::ui::{draw_area_in_absolute, draw_area_in_absolute_fixed_height},
 };
 
 pub struct Model<T>
@@ -54,6 +60,9 @@ where
 
     /// Allows creating user events based on messages
     pub user_event_tx: mpsc::Sender<UserEvent>,
+
+    /// Allows interacting with the file Api
+    pub file_tree_tx: mpsc::Sender<TreeAction>,
 }
 
 impl<T> Model<T>
@@ -67,6 +76,7 @@ where
         select_system_tx: mpsc::Sender<()>,
         job_log_tx: mpsc::Sender<Option<usize>>,
         user_event_tx: mpsc::Sender<UserEvent>,
+        file_tree_tx: mpsc::Sender<TreeAction>,
     ) -> Self {
         Self {
             app,
@@ -78,6 +88,7 @@ where
             select_system_tx,
             job_log_tx,
             user_event_tx,
+            file_tree_tx,
         }
     }
 
@@ -125,6 +136,10 @@ where
                         let popup = draw_area_in_absolute(f.area(), 10);
                         f.render_widget(Clear, popup);
                         app.view(&Id::SystemSelectPopup, f, popup);
+                    } else if app.mounted(&Id::DownloadPopup) {
+                        let popup = draw_area_in_absolute_fixed_height(f.area(), 10, 3);
+                        f.render_widget(Clear, popup);
+                        app.view(&Id::DownloadPopup, f, popup);
                     }
                 })
                 .is_ok()
@@ -223,6 +238,38 @@ where
             }
             InfoPopupMsg::Closed => {
                 assert!(self.app.umount(&Id::InfoPopup).is_ok());
+                None
+            }
+        }
+    }
+    fn handle_download_popup_msg(&mut self, msg: DownloadPopupMsg) -> Option<Msg> {
+        match msg {
+            DownloadPopupMsg::Opened(remote_path) => {
+                if self.app.mounted(&Id::DownloadPopup) {
+                    assert!(self.app.umount(&Id::DownloadPopup).is_ok());
+                }
+                assert!(
+                    self.app
+                        .mount(
+                            Id::DownloadPopup,
+                            Box::new(DownloadTargetInput::new(remote_path)),
+                            vec![]
+                        )
+                        .is_ok()
+                );
+                assert!(self.app.active(&Id::DownloadPopup).is_ok());
+                None
+            }
+            DownloadPopupMsg::PathSet(remote, local) => {
+                assert!(self.app.umount(&Id::DownloadPopup).is_ok());
+                let file_tx = self.file_tree_tx.clone();
+                tokio::spawn(async move {
+                    file_tx.send(TreeAction::Download(remote, local)).await.unwrap();
+                });
+                None
+            }
+            DownloadPopupMsg::Closed => {
+                assert!(self.app.umount(&Id::DownloadPopup).is_ok());
                 None
             }
         }
@@ -328,6 +375,7 @@ where
                 Msg::Menu(menu_msg) => self.handle_menu_msg(menu_msg),
                 Msg::ErrorPopup(popup_msg) => self.handle_error_popup_msg(popup_msg),
                 Msg::InfoPopup(popup_msg) => self.handle_info_popup_msg(popup_msg),
+                Msg::DownloadPopup(popup_msg) => self.handle_download_popup_msg(popup_msg),
                 Msg::Cscs(CscsMsg::Login(client_id, client_secret)) => {
                     let event_tx = self.user_event_tx.clone();
                     let error_tx = self.error_tx.clone();

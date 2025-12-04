@@ -14,3 +14,12 @@ pub fn draw_area_in_absolute(parent: Rect, padding: u16) -> Rect {
     ])
     .split(new_area[1])[1]
 }
+pub fn draw_area_in_absolute_fixed_height(parent: Rect, padding: u16, height: u16) -> Rect {
+    let new_area = Layout::vertical([Constraint::Min(1), Constraint::Length(height), Constraint::Min(1)]).split(parent);
+    Layout::horizontal([
+        Constraint::Length(padding),
+        Constraint::Min(1),
+        Constraint::Length(padding),
+    ])
+    .split(new_area[1])[1]
+}

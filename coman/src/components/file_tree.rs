@@ -1,4 +1,4 @@
-use std::iter;
+use std::{iter, path::PathBuf};
 
 use tokio::sync::mpsc;
 use tui_realm_treeview::{Node, NodeValue, TREE_CMD_CLOSE, TREE_CMD_OPEN, Tree, TreeView};
@@ -11,11 +11,10 @@ use tuirealm::{
 
 use crate::{
     app::{
-        messages::Msg,
+        messages::{DownloadPopupMsg, Msg},
         user_events::{FileEvent, UserEvent},
     },
     cscs::{api_client::PathType, ports::TreeAction},
-    trace_dbg,
 };
 
 #[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Clone)]
@@ -57,7 +56,7 @@ impl FileTree {
 
         // Load root node
         let tree_tx = file_tree_tx.clone();
-        tokio::spawn(async move { tree_tx.send(TreeAction::List("/".to_owned())).await.unwrap() });
+        tokio::spawn(async move { tree_tx.send(TreeAction::List(PathBuf::from("/"))).await.unwrap() });
 
         Self {
             component: TreeView::default()
@@ -98,7 +97,7 @@ impl Component<Msg, UserEvent> for FileTree {
                             // try loading children if there are none
                             let tree_tx = self.file_tree_tx.clone();
                             tokio::spawn(async move {
-                                tree_tx.send(TreeAction::List(current_id)).await.unwrap();
+                                tree_tx.send(TreeAction::List(PathBuf::from(current_id))).await.unwrap();
                             });
                             CmdResult::None
                         } else {
@@ -149,11 +148,8 @@ impl Component<Msg, UserEvent> for FileTree {
             }
             Event::User(UserEvent::File(FileEvent::DownloadCurrentFile)) => {
                 if let State::One(StateValue::String(id)) = self.state() {
-                    trace_dbg!("download current file");
-                    let tree_tx = self.file_tree_tx.clone();
-                    tokio::spawn(async move {
-                        tree_tx.send(TreeAction::Download(id)).await.unwrap();
-                    });
+                    let path = PathBuf::from(id);
+                    return Some(Msg::DownloadPopup(DownloadPopupMsg::Opened(path)));
                 }
                 CmdResult::None
             }
