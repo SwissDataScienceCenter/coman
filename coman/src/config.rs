@@ -7,6 +7,7 @@ use directories::ProjectDirs;
 use eyre::eyre;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
+use strum_macros::{EnumString, VariantNames};
 
 const DEFAULT_CONFIG_TOML: &str = include_str!("../.config/config.toml");
 
@@ -23,10 +24,22 @@ pub struct AppConfig {
     pub config_dir: PathBuf,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, Default, strum::Display, EnumString, VariantNames)]
+#[strum(serialize_all = "lowercase")]
+#[allow(clippy::upper_case_acronyms)]
+pub enum ComputePlatform {
+    #[default]
+    HPC,
+    ML,
+    CW,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct CscsConfig {
     #[serde(default)]
     pub current_system: String,
+    #[serde(default)]
+    pub current_platform: ComputePlatform,
     #[serde(default)]
     pub account: String,
     #[serde(default)]

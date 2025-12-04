@@ -1,5 +1,6 @@
 [cscs]
 current_system = "daint"
+current_platform = "HPC"
 
 image = "ubuntu"
 

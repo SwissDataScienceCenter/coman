@@ -4,7 +4,7 @@ use color_eyre::{Result, eyre::eyre};
 use reqwest::Url;
 
 use crate::{
-    config::Config,
+    config::{ComputePlatform, Config},
     cscs::{
         api_client::{CscsApi, FileStat, FileSystemType, Job, JobDetail, PathEntry, S3Upload, System, UserInfo},
         oauth2::{
@@ -58,10 +58,10 @@ pub async fn cscs_login_device_code() -> Result<(Secret, Option<Secret>)> {
     finish_cscs_device_login(details).await
 }
 
-pub async fn cscs_system_list() -> Result<Vec<System>> {
+pub async fn cscs_system_list(platform: Option<ComputePlatform>) -> Result<Vec<System>> {
     match get_access_token().await {
         Ok(access_token) => {
-            let api_client = CscsApi::new(access_token.0).unwrap();
+            let api_client = CscsApi::new(access_token.0, platform).unwrap();
             api_client.list_systems().await
         }
         Err(e) => Err(e),
@@ -81,51 +81,62 @@ pub async fn cscs_system_set(system_name: String, global: bool) -> Result<()> {
     Ok(())
 }
 
-pub async fn cscs_job_list() -> Result<Vec<Job>> {
+pub async fn cscs_job_list(system: Option<String>, platform: Option<ComputePlatform>) -> Result<Vec<Job>> {
     match get_access_token().await {
         Ok(access_token) => {
-            let api_client = CscsApi::new(access_token.0).unwrap();
+            let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
-            api_client.list_jobs(&config.cscs.current_system, Some(true)).await
-        }
-        Err(e) => Err(e),
-    }
-}
-
-pub async fn cscs_job_details(job_id: i64) -> Result<Option<JobDetail>> {
-    match get_access_token().await {
-        Ok(access_token) => {
-            let api_client = CscsApi::new(access_token.0).unwrap();
-            let config = Config::new().unwrap();
-            api_client.get_job(&config.cscs.current_system, job_id).await
-        }
-        Err(e) => Err(e),
-    }
-}
-
-pub async fn cscs_job_log(job_id: i64) -> Result<String> {
-    match get_access_token().await {
-        Ok(access_token) => {
-            let api_client = CscsApi::new(access_token.0).unwrap();
-            let config = Config::new().unwrap();
-            let job = api_client.get_job(&config.cscs.current_system, job_id).await?;
-            if job.is_none() {
-                return Err(eyre!("couldn't find job {}", job_id));
-            }
             api_client
-                .tail(&config.cscs.current_system, PathBuf::from(job.unwrap().stdout), 100)
+                .list_jobs(&system.unwrap_or(config.cscs.current_system), Some(true))
                 .await
         }
         Err(e) => Err(e),
     }
 }
 
-pub async fn cscs_job_cancel(job_id: i64) -> Result<()> {
+pub async fn cscs_job_details(
+    job_id: i64,
+    system: Option<String>,
+    platform: Option<ComputePlatform>,
+) -> Result<Option<JobDetail>> {
     match get_access_token().await {
         Ok(access_token) => {
-            let api_client = CscsApi::new(access_token.0).unwrap();
+            let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
-            api_client.cancel_job(&config.cscs.current_system, job_id).await
+            api_client
+                .get_job(&system.unwrap_or(config.cscs.current_system), job_id)
+                .await
+        }
+        Err(e) => Err(e),
+    }
+}
+
+pub async fn cscs_job_log(job_id: i64, system: Option<String>, platform: Option<ComputePlatform>) -> Result<String> {
+    match get_access_token().await {
+        Ok(access_token) => {
+            let api_client = CscsApi::new(access_token.0, platform).unwrap();
+            let config = Config::new().unwrap();
+            let current_system = &system.unwrap_or(config.cscs.current_system);
+            let job = api_client.get_job(current_system, job_id).await?;
+            if job.is_none() {
+                return Err(eyre!("couldn't find job {}", job_id));
+            }
+            api_client
+                .tail(current_system, PathBuf::from(job.unwrap().stdout), 100)
+                .await
+        }
+        Err(e) => Err(e),
+    }
+}
+
+pub async fn cscs_job_cancel(job_id: i64, system: Option<String>, platform: Option<ComputePlatform>) -> Result<()> {
+    match get_access_token().await {
+        Ok(access_token) => {
+            let api_client = CscsApi::new(access_token.0, platform).unwrap();
+            let config = Config::new().unwrap();
+            api_client
+                .cancel_job(&system.unwrap_or(config.cscs.current_system), job_id)
+                .await
         }
         Err(e) => Err(e),
     }
@@ -137,14 +148,17 @@ pub async fn cscs_start_job(
     command: Option<Vec<String>>,
     container_workdir: Option<String>,
     env: Vec<(String, String)>,
+    system: Option<String>,
+    platform: Option<ComputePlatform>,
 ) -> Result<()> {
     match get_access_token().await {
         Ok(access_token) => {
-            let api_client = CscsApi::new(access_token.0).unwrap();
+            let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
-            let user_info = api_client.get_userinfo(&config.cscs.current_system).await?;
-            let current_system = api_client.get_system(&config.cscs.current_system).await?;
-            let scratch = match current_system {
+            let current_system = &system.unwrap_or(config.cscs.current_system);
+            let user_info = api_client.get_userinfo(current_system).await?;
+            let current_system_info = api_client.get_system(current_system).await?;
+            let scratch = match current_system_info {
                 Some(system) => PathBuf::from(
                     system
                         .file_systems
@@ -155,10 +169,7 @@ pub async fn cscs_start_job(
                         .clone(),
                 ),
                 None => {
-                    return Err(eyre!(
-                        "couldn't get system description for {}",
-                        config.cscs.current_system
-                    ));
+                    return Err(eyre!("couldn't get system description for {}", current_system));
                 }
             };
             let container_workdir = container_workdir.unwrap_or(config.cscs.workdir.unwrap_or("/scratch".to_owned()));
@@ -177,7 +188,7 @@ pub async fn cscs_start_job(
 
             let docker_image = image.unwrap_or(config.cscs.image.try_into()?);
             let meta = docker_image.inspect().await?;
-            if let Some(system_info) = config.cscs.systems.get(&config.cscs.current_system) {
+            if let Some(system_info) = config.cscs.systems.get(current_system) {
                 let mut compatible = false;
                 for sys_platform in system_info.architecture.iter() {
                     if meta.platforms.contains(&sys_platform.clone().into()) {
@@ -188,7 +199,7 @@ pub async fn cscs_start_job(
                 if !compatible {
                     return Err(eyre!(
                         "System {} only supports images with architecture(s) '{}' but the supplied image is for architecture(s) '{}'",
-                        config.cscs.current_system,
+                        current_system,
                         system_info.architecture.join(","),
                         meta.platforms
                             .iter()
@@ -205,16 +216,10 @@ pub async fn cscs_start_job(
             context.insert("env", &envvars);
 
             let environment_file = tera.render("environment.toml", &context)?;
-            api_client.mkdir(&config.cscs.current_system, base_path.clone()).await?;
+            api_client.mkdir(current_system, base_path.clone()).await?;
+            api_client.chmod(current_system, base_path.clone(), "700").await?;
             api_client
-                .chmod(&config.cscs.current_system, base_path.clone(), "700")
-                .await?;
-            api_client
-                .upload(
-                    &config.cscs.current_system,
-                    environment_path.clone(),
-                    environment_file.into_bytes(),
-                )
+                .upload(current_system, environment_path.clone(), environment_file.into_bytes())
                 .await?;
 
             // upload script
@@ -231,12 +236,12 @@ pub async fn cscs_start_job(
             context.insert("container_workdir", &container_workdir);
             let script = tera.render("script.sh", &context)?;
             api_client
-                .upload(&config.cscs.current_system, script_path.clone(), script.into_bytes())
+                .upload(current_system, script_path.clone(), script.into_bytes())
                 .await?;
 
             // start job
             api_client
-                .start_job(&config.cscs.current_system, &name, script_path, envvars)
+                .start_job(current_system, &name, script_path, envvars)
                 .await?;
             Ok(())
         }
@@ -244,12 +249,18 @@ pub async fn cscs_start_job(
     }
 }
 
-pub async fn cscs_file_list(path: PathBuf) -> Result<Vec<PathEntry>> {
+pub async fn cscs_file_list(
+    path: PathBuf,
+    system: Option<String>,
+    platform: Option<ComputePlatform>,
+) -> Result<Vec<PathEntry>> {
     match get_access_token().await {
         Ok(access_token) => {
-            let api_client = CscsApi::new(access_token.0).unwrap();
+            let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
-            api_client.list_path(&config.cscs.current_system, path).await
+            api_client
+                .list_path(&system.unwrap_or(config.cscs.current_system), path)
+                .await
         }
         Err(e) => Err(e),
     }
@@ -259,14 +270,15 @@ pub async fn cscs_file_download(
     remote: PathBuf,
     local: PathBuf,
     account: Option<String>,
+    system: Option<String>,
+    platform: Option<ComputePlatform>,
 ) -> Result<Option<(i64, Url, usize)>> {
     match get_access_token().await {
         Ok(access_token) => {
-            let api_client = CscsApi::new(access_token.0).unwrap();
+            let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
-            let paths = api_client
-                .list_path(&config.cscs.current_system, remote.clone())
-                .await?;
+            let current_system = &system.unwrap_or(config.cscs.current_system);
+            let paths = api_client.list_path(current_system, remote.clone()).await?;
             let path = paths.first().ok_or(eyre!("remote path doesn't exist"))?;
             if let crate::cscs::api_client::PathType::Directory = path.path_type {
                 return Err(eyre!("remote path must be a file, not directory"));
@@ -274,17 +286,13 @@ pub async fn cscs_file_download(
             let size = path.size.ok_or(eyre!("couldn't determin download file size"))?;
             if size < CSCS_MAX_DIRECT_SIZE {
                 // download directly
-                let contents = api_client.download(&config.cscs.current_system, remote).await?;
+                let contents = api_client.download(current_system, remote).await?;
                 std::fs::write(local, contents)?;
                 Ok(None)
             } else {
                 // download via s3
                 let job_data = api_client
-                    .transfer_download(
-                        &config.cscs.current_system,
-                        &account.unwrap_or(config.cscs.account),
-                        remote,
-                    )
+                    .transfer_download(current_system, &account.unwrap_or(config.cscs.account), remote)
                     .await?;
                 Ok(Some((job_data.0, job_data.1, size)))
             }
@@ -296,17 +304,21 @@ pub async fn cscs_file_upload(
     local: PathBuf,
     remote: PathBuf,
     account: Option<String>,
+    system: Option<String>,
+    platform: Option<ComputePlatform>,
 ) -> Result<Option<(i64, S3Upload)>> {
     match get_access_token().await {
         Ok(access_token) => {
-            let api_client = CscsApi::new(access_token.0).unwrap();
+            let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
 
             let file_meta = std::fs::metadata(local.clone())?;
             if (file_meta.size() as usize) < CSCS_MAX_DIRECT_SIZE {
                 // upload directly
                 let contents = std::fs::read(local)?;
-                api_client.upload(&config.cscs.current_system, remote, contents).await?;
+                api_client
+                    .upload(&system.unwrap_or(config.cscs.current_system), remote, contents)
+                    .await?;
                 Ok(None)
             } else {
                 // upload via s3
@@ -326,23 +338,31 @@ pub async fn cscs_file_upload(
     }
 }
 
-pub async fn cscs_stat_path(path: PathBuf) -> Result<Option<FileStat>> {
+pub async fn cscs_stat_path(
+    path: PathBuf,
+    system: Option<String>,
+    platform: Option<ComputePlatform>,
+) -> Result<Option<FileStat>> {
     match get_access_token().await {
         Ok(access_token) => {
-            let api_client = CscsApi::new(access_token.0).unwrap();
+            let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
-            api_client.stat_path(&config.cscs.current_system, path).await
+            api_client
+                .stat_path(&system.unwrap_or(config.cscs.current_system), path)
+                .await
         }
         Err(e) => Err(e),
     }
 }
 
-pub async fn cscs_user_info() -> Result<UserInfo> {
+pub async fn cscs_user_info(system: Option<String>, platform: Option<ComputePlatform>) -> Result<UserInfo> {
     match get_access_token().await {
         Ok(access_token) => {
-            let api_client = CscsApi::new(access_token.0).unwrap();
+            let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
-            api_client.get_userinfo(&config.cscs.current_system).await
+            api_client
+                .get_userinfo(&system.unwrap_or(config.cscs.current_system))
+                .await
         }
         Err(e) => Err(e),
     }
