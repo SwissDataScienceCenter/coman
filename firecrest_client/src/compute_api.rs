@@ -11,9 +11,11 @@ use crate::{
     },
 };
 
+#[allow(clippy::too_many_arguments)]
 pub async fn post_compute_system_job(
     client: &FirecrestClient,
     system_name: &str,
+    account: Option<String>,
     name: &str,
     script: Option<&str>,
     script_path: Option<PathBuf>,
@@ -37,6 +39,7 @@ pub async fn post_compute_system_job(
                 .map_err(|_| eyre!("couldn't convert working dir path"))?
                 .unwrap_or("/".to_owned()),
             env: Some(JobDescriptionModelEnv::Object(json!(envvars))),
+            account,
             ..Default::default()
         },
     };

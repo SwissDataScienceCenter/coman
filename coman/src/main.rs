@@ -57,6 +57,7 @@ async fn main() -> Result<()> {
                 command: cscs_command,
                 system,
                 platform,
+                account,
             } => match cscs_command {
                 cli::CscsCommands::Login => cli_cscs_login().await?,
                 cli::CscsCommands::Job { command } => match command {
@@ -69,15 +70,17 @@ async fn main() -> Result<()> {
                         command,
                         workdir,
                         env,
-                    } => cli_cscs_job_start(script_file, image, command, workdir, env, system, platform).await?,
+                    } => {
+                        cli_cscs_job_start(script_file, image, command, workdir, env, system, platform, account).await?
+                    }
                     cli::CscsJobCommands::Cancel { job_id } => cli_cscs_job_cancel(job_id, system, platform).await?,
                 },
                 cli::CscsCommands::File { command } => match command {
                     cli::CscsFileCommands::List { path } => cli_cscs_file_list(path, system, platform).await?,
-                    cli::CscsFileCommands::Download { remote, local, account } => {
+                    cli::CscsFileCommands::Download { remote, local } => {
                         cli_cscs_file_download(remote, local, account, system, platform).await?
                     }
-                    cli::CscsFileCommands::Upload { local, remote, account } => {
+                    cli::CscsFileCommands::Upload { local, remote } => {
                         cli_cscs_file_upload(local, remote, account, system, platform).await?
                     }
                 },

@@ -41,7 +41,7 @@ pub struct CscsConfig {
     #[serde(default)]
     pub current_platform: ComputePlatform,
     #[serde(default)]
-    pub account: String,
+    pub account: Option<String>,
     #[serde(default)]
     pub sbatch_script_template: String,
     #[serde(default)]

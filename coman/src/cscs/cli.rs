@@ -99,6 +99,7 @@ pub(crate) async fn cli_cscs_job_log(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn cli_cscs_job_start(
     script_file: Option<PathBuf>,
     image: Option<DockerImageUrl>,
@@ -107,8 +108,9 @@ pub(crate) async fn cli_cscs_job_start(
     env: Vec<(String, String)>,
     system: Option<String>,
     platform: Option<ComputePlatform>,
+    account: Option<String>,
 ) -> Result<()> {
-    cscs_start_job(script_file, image, command, workdir, env, system, platform).await
+    cscs_start_job(script_file, image, command, workdir, env, system, platform, account).await
 }
 
 pub(crate) async fn cli_cscs_job_cancel(

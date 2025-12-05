@@ -381,6 +381,7 @@ impl CscsApi {
     pub async fn start_job(
         &self,
         system_name: &str,
+        account: Option<String>,
         name: &str,
         script_path: PathBuf,
         envvars: HashMap<String, String>,
@@ -390,6 +391,7 @@ impl CscsApi {
         let result = post_compute_system_job(
             &self.client,
             system_name,
+            account,
             name,
             None,
             Some(script_path),
@@ -472,15 +474,10 @@ impl CscsApi {
     pub async fn transfer_upload(
         &self,
         system_name: &str,
-        account: &str,
+        account: Option<String>,
         path: PathBuf,
         size: i64,
     ) -> Result<(i64, S3Upload)> {
-        if account.is_empty() {
-            return Err(eyre!(
-                "An account is required, set it in the config file or with the --account flag"
-            ));
-        }
         let job = post_filesystem_transfer_upload(&self.client, system_name, account, path, size)
             .await
             .wrap_err("couldn't upload file")?;
@@ -497,12 +494,12 @@ impl CscsApi {
             .wrap_err("couldn't download file")?;
         Ok(content)
     }
-    pub async fn transfer_download(&self, system_name: &str, account: &str, path: PathBuf) -> Result<(i64, Url)> {
-        if account.is_empty() {
-            return Err(eyre!(
-                "An account is required, set it in the config file or with the --account flag"
-            ));
-        }
+    pub async fn transfer_download(
+        &self,
+        system_name: &str,
+        account: Option<String>,
+        path: PathBuf,
+    ) -> Result<(i64, Url)> {
         let job = post_filesystem_transfer_download(&self.client, system_name, account, path)
             .await
             .wrap_err("couldn't transfer file")?;
