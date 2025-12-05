@@ -3,7 +3,8 @@ use tokio::sync::mpsc;
 use tuirealm::{
     Application, Update,
     ratatui::{
-        layout::{Constraint, Direction, Layout},
+        Frame,
+        layout::{Constraint, Direction, Layout, Rect},
         widgets::Clear,
     },
     terminal::{TerminalAdapter, TerminalBridge},
@@ -12,17 +13,23 @@ use tuirealm::{
 use crate::{
     app::{
         ids::Id,
-        messages::{CscsMsg, ErrorPopupMsg, InfoPopupMsg, JobMsg, LoginPopupMsg, MenuMsg, Msg, SystemSelectMsg},
-        user_events::UserEvent,
+        messages::{
+            CscsMsg, DownloadPopupMsg, ErrorPopupMsg, InfoPopupMsg, JobMsg, LoginPopupMsg, MenuMsg, Msg,
+            SystemSelectMsg, View,
+        },
+        user_events::{CscsEvent, UserEvent},
     },
     components::{
-        error_popup::ErrorPopup, info_popup::InfoPopup, login_popup::LoginPopup,
-        system_select_popup::SystemSelectPopup, workload_list::WorkloadList, workload_log::WorkloadLog,
-        workload_menu::WorkloadMenu,
+        context_menu::ContextMenu, download_popup::DownloadTargetInput, error_popup::ErrorPopup, info_popup::InfoPopup,
+        login_popup::LoginPopup, system_select_popup::SystemSelectPopup, workload_list::WorkloadList,
+        workload_log::WorkloadLog,
     },
-    cscs::handlers::{cscs_login, cscs_system_set},
+    cscs::{
+        handlers::{cscs_login, cscs_system_set},
+        ports::TreeAction,
+    },
     trace_dbg,
-    util::ui::draw_area_in_absolute,
+    util::ui::{draw_area_in_absolute, draw_area_in_absolute_fixed_height},
 };
 
 pub struct Model<T>
@@ -35,6 +42,9 @@ where
     pub quit: bool,
     /// Tells whether to redraw interface
     pub redraw: bool,
+
+    /// Determines what view is display
+    pub current_view: View,
     /// Used to draw to terminal
     pub terminal: TerminalBridge<T>,
 
@@ -47,6 +57,12 @@ where
     /// Triggers watching job logs
     /// sending None stops watching
     pub job_log_tx: mpsc::Sender<Option<usize>>,
+
+    /// Allows creating user events based on messages
+    pub user_event_tx: mpsc::Sender<UserEvent>,
+
+    /// Allows interacting with the file Api
+    pub file_tree_tx: mpsc::Sender<TreeAction>,
 }
 
 impl<T> Model<T>
@@ -59,64 +75,88 @@ where
         error_tx: mpsc::Sender<String>,
         select_system_tx: mpsc::Sender<()>,
         job_log_tx: mpsc::Sender<Option<usize>>,
+        user_event_tx: mpsc::Sender<UserEvent>,
+        file_tree_tx: mpsc::Sender<TreeAction>,
     ) -> Self {
         Self {
             app,
             quit: false,
             redraw: true,
             terminal: bridge,
+            current_view: View::default(),
             error_tx,
             select_system_tx,
             job_log_tx,
+            user_event_tx,
+            file_tree_tx,
         }
     }
 
     pub fn view(&mut self) {
+        let terminal = &mut self.terminal;
+        let app = &mut self.app;
+        let current_view = &self.current_view;
         assert!(
-            self.terminal
+            terminal
                 .draw(|f| {
                     let chunks = Layout::default()
                         .direction(Direction::Vertical)
                         .margin(1)
                         .constraints(
                             [
-                                Constraint::Min(10), //WorkloadList
+                                Constraint::Min(10), //content
                                 Constraint::Max(1),  //Toolbar
                             ]
                             .as_ref(),
                         )
                         .split(f.area());
-                    if self.app.mounted(&Id::WorkloadList) {
-                        self.app.view(&Id::WorkloadList, f, chunks[0]);
-                    } else if self.app.mounted(&Id::WorkloadLogs) {
-                        self.app.view(&Id::WorkloadLogs, f, chunks[0]);
+                    match current_view {
+                        View::Workloads => Self::view_workloads(app, f, chunks[0]),
+                        View::Files => Self::view_files(app, f, chunks[0]),
                     }
-                    self.app.view(&Id::Toolbar, f, chunks[1]);
+                    app.view(&Id::Toolbar, f, chunks[1]);
 
-                    if self.app.mounted(&Id::Menu) {
+                    if app.mounted(&Id::Menu) {
                         let popup = draw_area_in_absolute(f.area(), 10);
                         f.render_widget(Clear, popup);
-                        self.app.view(&Id::Menu, f, popup);
-                    } else if self.app.mounted(&Id::ErrorPopup) {
+                        app.view(&Id::Menu, f, popup);
+                    } else if app.mounted(&Id::ErrorPopup) {
                         let popup = draw_area_in_absolute(f.area(), 10);
                         f.render_widget(Clear, popup);
-                        self.app.view(&Id::ErrorPopup, f, popup);
-                    } else if self.app.mounted(&Id::InfoPopup) {
+                        app.view(&Id::ErrorPopup, f, popup);
+                    } else if app.mounted(&Id::InfoPopup) {
                         let popup = draw_area_in_absolute(f.area(), 10);
                         f.render_widget(Clear, popup);
-                        self.app.view(&Id::InfoPopup, f, popup);
-                    } else if self.app.mounted(&Id::LoginPopup) {
+                        app.view(&Id::InfoPopup, f, popup);
+                    } else if app.mounted(&Id::LoginPopup) {
                         let popup = draw_area_in_absolute(f.area(), 10);
                         f.render_widget(Clear, popup);
-                        self.app.view(&Id::LoginPopup, f, popup);
-                    } else if self.app.mounted(&Id::SystemSelectPopup) {
+                        app.view(&Id::LoginPopup, f, popup);
+                    } else if app.mounted(&Id::SystemSelectPopup) {
                         let popup = draw_area_in_absolute(f.area(), 10);
                         f.render_widget(Clear, popup);
-                        self.app.view(&Id::SystemSelectPopup, f, popup);
+                        app.view(&Id::SystemSelectPopup, f, popup);
+                    } else if app.mounted(&Id::DownloadPopup) {
+                        let popup = draw_area_in_absolute_fixed_height(f.area(), 10, 3);
+                        f.render_widget(Clear, popup);
+                        app.view(&Id::DownloadPopup, f, popup);
                     }
                 })
                 .is_ok()
         );
+    }
+
+    fn view_workloads(app: &mut Application<Id, Msg, UserEvent>, frame: &mut Frame, area: Rect) {
+        if app.mounted(&Id::WorkloadList) {
+            app.view(&Id::WorkloadList, frame, area);
+        } else if app.mounted(&Id::WorkloadLogs) {
+            app.view(&Id::WorkloadLogs, frame, area);
+        }
+    }
+    fn view_files(app: &mut Application<Id, Msg, UserEvent>, frame: &mut Frame, area: Rect) {
+        if app.mounted(&Id::FileView) {
+            app.view(&Id::FileView, frame, area);
+        }
     }
     fn handle_login_popup_msg(&mut self, msg: LoginPopupMsg) -> Option<Msg> {
         match msg {
@@ -202,12 +242,44 @@ where
             }
         }
     }
+    fn handle_download_popup_msg(&mut self, msg: DownloadPopupMsg) -> Option<Msg> {
+        match msg {
+            DownloadPopupMsg::Opened(remote_path) => {
+                if self.app.mounted(&Id::DownloadPopup) {
+                    assert!(self.app.umount(&Id::DownloadPopup).is_ok());
+                }
+                assert!(
+                    self.app
+                        .mount(
+                            Id::DownloadPopup,
+                            Box::new(DownloadTargetInput::new(remote_path)),
+                            vec![]
+                        )
+                        .is_ok()
+                );
+                assert!(self.app.active(&Id::DownloadPopup).is_ok());
+                None
+            }
+            DownloadPopupMsg::PathSet(remote, local) => {
+                assert!(self.app.umount(&Id::DownloadPopup).is_ok());
+                let file_tx = self.file_tree_tx.clone();
+                tokio::spawn(async move {
+                    file_tx.send(TreeAction::Download(remote, local)).await.unwrap();
+                });
+                None
+            }
+            DownloadPopupMsg::Closed => {
+                assert!(self.app.umount(&Id::DownloadPopup).is_ok());
+                None
+            }
+        }
+    }
     fn handle_menu_msg(&mut self, msg: MenuMsg) -> Option<Msg> {
         match msg {
             MenuMsg::Opened => {
                 assert!(
                     self.app
-                        .mount(Id::Menu, Box::new(WorkloadMenu::default()), vec![])
+                        .mount(Id::Menu, Box::new(ContextMenu::new(self.current_view)), vec![])
                         .is_ok()
                 );
                 assert!(self.app.active(&Id::Menu).is_ok());
@@ -224,6 +296,10 @@ where
             MenuMsg::CscsSwitchSystem => {
                 assert!(self.app.umount(&Id::Menu).is_ok());
                 Some(Msg::Cscs(CscsMsg::SelectSystem))
+            }
+            MenuMsg::Event(event) => {
+                assert!(self.app.umount(&Id::Menu).is_ok());
+                Some(Msg::CreateEvent(event))
             }
         }
     }
@@ -268,6 +344,9 @@ where
             }
         }
     }
+    fn change_view(&mut self, view: View) {
+        self.current_view = view;
+    }
 }
 
 // Let's implement Update for model
@@ -279,7 +358,10 @@ where
     fn update(&mut self, msg: Option<Msg>) -> Option<Msg> {
         if let Some(msg) = msg {
             // log messages in debug mode
-            let msg = trace_dbg!(msg);
+            let msg = match msg {
+                Msg::None => msg,
+                _ => trace_dbg!(msg),
+            };
             // Set redraw
             self.redraw = true;
             // Match message
@@ -293,11 +375,13 @@ where
                 Msg::Menu(menu_msg) => self.handle_menu_msg(menu_msg),
                 Msg::ErrorPopup(popup_msg) => self.handle_error_popup_msg(popup_msg),
                 Msg::InfoPopup(popup_msg) => self.handle_info_popup_msg(popup_msg),
+                Msg::DownloadPopup(popup_msg) => self.handle_download_popup_msg(popup_msg),
                 Msg::Cscs(CscsMsg::Login(client_id, client_secret)) => {
+                    let event_tx = self.user_event_tx.clone();
                     let error_tx = self.error_tx.clone();
                     tokio::spawn(async move {
                         match cscs_login(client_id, client_secret).await {
-                            Ok(_) => {}
+                            Ok(_) => event_tx.send(UserEvent::Cscs(CscsEvent::LoggedIn)).await.unwrap(),
                             Err(e) => error_tx
                                 .send(format!(
                                     "{:?}",
@@ -335,6 +419,21 @@ where
                 Msg::LoginPopup(msg) => self.handle_login_popup_msg(msg),
                 Msg::SystemSelectPopup(msg) => self.handle_system_select_popup_msg(msg),
                 Msg::Job(msg) => self.handle_job_msg(msg),
+                Msg::ChangeView(view) => {
+                    self.change_view(view);
+                    let event_tx = self.user_event_tx.clone();
+                    tokio::spawn(async move {
+                        event_tx.send(UserEvent::SwitchedToView(view)).await.unwrap();
+                    });
+                    None
+                }
+                Msg::CreateEvent(event) => {
+                    let event_tx = self.user_event_tx.clone();
+                    tokio::spawn(async move {
+                        event_tx.send(event).await.unwrap();
+                    });
+                    None
+                }
                 Msg::None => None,
             }
         } else {

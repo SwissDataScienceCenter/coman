@@ -1,4 +1,7 @@
-use crate::cscs::api_client::{Job, System};
+use crate::{
+    app::messages::View,
+    cscs::api_client::{Job, PathEntry, System},
+};
 
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord)]
 pub enum CscsEvent {
@@ -8,11 +11,19 @@ pub enum CscsEvent {
     SelectSystemList(Vec<System>),
 }
 
+#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord)]
+pub enum FileEvent {
+    List(String, Vec<PathEntry>), // Id, Subpaths
+    DownloadCurrentFile,
+    DownloadSuccessful,
+}
 #[derive(Debug, Eq, Clone, PartialOrd, Ord)]
 pub enum UserEvent {
     Cscs(CscsEvent),
+    File(FileEvent),
     Error(String),
     Info(String),
+    SwitchedToView(View),
 }
 
 impl PartialEq for UserEvent {

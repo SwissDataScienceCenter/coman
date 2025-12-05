@@ -1,22 +1,33 @@
-use color_eyre::{Section, eyre::Context};
-use eyre::Report;
+use std::{path::PathBuf, time::Duration};
+
+use color_eyre::{
+    Section,
+    eyre::{Context, Report, Result, eyre},
+};
+use futures::StreamExt;
 use openidconnect::core::CoreDeviceAuthorizationResponse;
-use tokio::sync::mpsc;
+use tokio::{fs::File, io::AsyncWriteExt, sync::mpsc};
 use tuirealm::{
     Event,
     listener::{ListenerResult, PollAsync},
 };
 
 use crate::{
-    app::user_events::{CscsEvent, UserEvent},
+    app::user_events::{CscsEvent, FileEvent, UserEvent},
+    config::Config,
     cscs::{
-        handlers::{cscs_job_list, cscs_job_log, cscs_system_list},
+        api_client::{JobStatus, PathEntry, PathType},
+        handlers::{
+            cscs_file_download, cscs_file_list, cscs_job_details, cscs_job_list, cscs_job_log, cscs_stat_path,
+            cscs_system_list, cscs_user_info,
+        },
         oauth2::{ACCESS_TOKEN_SECRET_NAME, REFRESH_TOKEN_SECRET_NAME, finish_cscs_device_login},
     },
     trace_dbg,
     util::keyring::store_secret,
 };
 
+/// This port does the polling of the token for finishing the device code oauth2 flow
 #[allow(dead_code)]
 pub(crate) struct AsyncDeviceFlowPort {
     receiver: mpsc::Receiver<(CoreDeviceAuthorizationResponse, String)>,
@@ -90,6 +101,8 @@ impl PollAsync<UserEvent> for AsyncDeviceFlowPort {
         }
     }
 }
+
+/// This port periodically fetches jobs from CSCS
 pub(crate) struct AsyncFetchWorkloadsPort {}
 
 impl AsyncFetchWorkloadsPort {
@@ -111,6 +124,7 @@ impl PollAsync<UserEvent> for AsyncFetchWorkloadsPort {
     }
 }
 
+/// This port handles getting available compute systems from CSCS
 pub(crate) struct AsyncSelectSystemPort {
     receiver: mpsc::Receiver<()>,
 }
@@ -140,6 +154,7 @@ impl PollAsync<UserEvent> for AsyncSelectSystemPort {
     }
 }
 
+/// This port handles polling the logs of a CSCS job
 pub(crate) struct AsyncJobLogPort {
     receiver: mpsc::Receiver<Option<usize>>,
     current_job: Option<usize>,
@@ -177,6 +192,159 @@ impl PollAsync<UserEvent> for AsyncJobLogPort {
             }
         } else {
             trace_dbg!("nothing");
+            Ok(Some(Event::None))
+        }
+    }
+}
+
+pub enum TreeAction {
+    List(PathBuf),
+    Download(PathBuf, PathBuf),
+}
+
+/// This port handles asynchronous file operations on CSCS
+pub(crate) struct AsyncFileTreePort {
+    receiver: mpsc::Receiver<TreeAction>,
+}
+
+impl AsyncFileTreePort {
+    pub fn new(receiver: mpsc::Receiver<TreeAction>) -> Self {
+        Self { receiver }
+    }
+}
+async fn list_files(id: PathBuf) -> Result<Option<Event<UserEvent>>> {
+    let id_str = id
+        .clone()
+        .into_os_string()
+        .into_string()
+        .map_err(|_| eyre!("couldn't convert id to string".to_owned()))?;
+    if id_str == "/" {
+        // load file system roots
+        let config = Config::new().expect("couldn't load config");
+        let user_info = cscs_user_info().await?;
+        let systems = cscs_system_list().await?;
+        let system = systems
+            .iter()
+            .find(|s| s.name == config.cscs.current_system)
+            .unwrap_or_else(|| panic!("couldn't get info for system {}", config.cscs.current_system));
+        // listing big directories fails in the api and we might not actually be allowed to
+        // access the roots of the storage.
+        // So we try to append the user name to the paths and use that, if it works
+        let mut subpaths = vec![];
+        for fs in system.file_systems.clone() {
+            let entry = match cscs_stat_path(PathBuf::from(fs.path.clone()).join(user_info.name.clone())).await {
+                Ok(Some(_)) => PathEntry {
+                    name: format!("{}/{}", fs.path.clone(), user_info.name),
+                    path_type: PathType::Directory,
+                    permissions: None,
+                    size: None,
+                },
+                _ => PathEntry {
+                    name: fs.path.clone(),
+                    path_type: PathType::Directory,
+                    permissions: None,
+                    size: None,
+                },
+            };
+            subpaths.push(entry);
+        }
+        Ok(Some(Event::User(UserEvent::File(FileEvent::List(id_str, subpaths)))))
+    } else {
+        let subpaths = cscs_file_list(id).await?;
+        Ok(Some(Event::User(UserEvent::File(FileEvent::List(id_str, subpaths)))))
+    }
+}
+async fn download_file(remote: PathBuf, local: PathBuf) -> Result<Option<Event<UserEvent>>> {
+    match cscs_file_download(remote, local.clone(), None).await {
+        Ok(None) => Ok(Some(Event::User(UserEvent::File(FileEvent::DownloadSuccessful)))),
+        Ok(Some(job_data)) => {
+            // file is large, so we created a transfer job to s3 that we need to wait on
+            // then we can download from s3
+            // TODO: add status updates once we have some sort of status line update functionality
+            let mut transfer_done = false;
+            while !transfer_done {
+                if let Some(job) = cscs_job_details(job_data.0).await? {
+                    match job.status {
+                        JobStatus::Pending | JobStatus::Running => {}
+                        JobStatus::Finished => transfer_done = true,
+                        JobStatus::Cancelled | JobStatus::Failed => {
+                            return Ok(Some(Event::User(UserEvent::Error(
+                                "file download job failed".to_string(),
+                            ))));
+                        }
+                        JobStatus::Timeout => {
+                            return Ok(Some(Event::User(UserEvent::Error(
+                                "file download job timed out".to_string(),
+                            ))));
+                        }
+                    }
+                }
+                tokio::time::sleep(Duration::from_secs(2)).await;
+            }
+
+            // download from s3
+
+            let mut output = File::create(local).await?;
+            let mut stream = reqwest::get(job_data.1).await?.bytes_stream();
+            while let Some(chunk_result) = stream.next().await {
+                let chunk = chunk_result?;
+                output.write_all(&chunk).await?;
+            }
+            output.flush().await?;
+            Ok(Some(Event::User(UserEvent::File(FileEvent::DownloadSuccessful))))
+        }
+        Err(e) => Ok(Some(Event::User(UserEvent::Error(format!(
+            "{:?}",
+            Err::<(), Report>(e).wrap_err("couldn't download path")
+        ))))),
+    }
+}
+#[tuirealm::async_trait]
+impl PollAsync<UserEvent> for AsyncFileTreePort {
+    async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
+        if self.receiver.is_closed() {
+            return Ok(None);
+        }
+        if let Some(action) = self.receiver.recv().await {
+            match action {
+                TreeAction::List(id) => match list_files(id).await {
+                    Ok(event) => Ok(event),
+                    Err(e) => Ok(Some(Event::User(UserEvent::Error(format!(
+                        "{:?}",
+                        Err::<(), Report>(e).wrap_err("couldn't list subpaths")
+                    ))))),
+                },
+                TreeAction::Download(remote, local) => match download_file(remote, local).await {
+                    Ok(event) => Ok(event),
+                    Err(e) => Ok(Some(Event::User(UserEvent::Error(format!(
+                        "{:?}",
+                        Err::<(), Report>(e).wrap_err("couldn't download file")
+                    ))))),
+                },
+            }
+        } else {
+            return Ok(Some(Event::None));
+        }
+    }
+}
+
+/// This is a convenience class to create new user events from the model
+pub(crate) struct AsyncUserEventPort {
+    receiver: mpsc::Receiver<UserEvent>,
+}
+
+impl AsyncUserEventPort {
+    pub fn new(receiver: mpsc::Receiver<UserEvent>) -> Self {
+        Self { receiver }
+    }
+}
+#[tuirealm::async_trait]
+impl PollAsync<UserEvent> for AsyncUserEventPort {
+    async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
+        if let Some(event) = self.receiver.recv().await {
+            let event = trace_dbg!(event);
+            Ok(Some(Event::User(event)))
+        } else {
             Ok(Some(Event::None))
         }
     }

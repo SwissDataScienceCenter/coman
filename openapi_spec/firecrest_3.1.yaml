@@ -170,42 +170,20 @@ components:
         - transferJob
       title: CopyResponse
       type: object
-    DataOperation-Input:
+    DataOperation:
       properties:
         data_transfer:
           anyOf:
             - discriminator:
                 mapping:
-                  s3: "#/components/schemas/S3DataTransfer-Input"
-                  wormhole: "#/components/schemas/WormholeDataTransfer-Input"
+                  s3: "#/components/schemas/S3DataTransfer"
+                  streamer: "#/components/schemas/StreamerDataTransfer"
+                  wormhole: "#/components/schemas/WormholeDataTransfer"
                 propertyName: serviceType
               oneOf:
-                - $ref: "#/components/schemas/S3DataTransfer-Input"
-                - $ref: "#/components/schemas/WormholeDataTransfer-Input"
-            - type: "null"
-          description: Data transfer service configuration
-          title: Data Transfer
-        max_ops_file_size:
-          default: 5242880
-          description:
-            Maximum file size (in bytes) allowed for direct upload and
-            download. Larger files will go through the staging area.
-          title: Max Ops File Size
-          type: integer
-      title: DataOperation
-      type: object
-    DataOperation-Output:
-      properties:
-        data_transfer:
-          anyOf:
-            - discriminator:
-                mapping:
-                  s3: "#/components/schemas/S3DataTransfer-Output"
-                  wormhole: "#/components/schemas/WormholeDataTransfer-Output"
-                propertyName: serviceType
-              oneOf:
-                - $ref: "#/components/schemas/S3DataTransfer-Output"
-                - $ref: "#/components/schemas/WormholeDataTransfer-Output"
+                - $ref: "#/components/schemas/S3DataTransfer"
+                - $ref: "#/components/schemas/WormholeDataTransfer"
+                - $ref: "#/components/schemas/StreamerDataTransfer"
             - type: "null"
           description: Data transfer service configuration
           title: Data Transfer
@@ -229,20 +207,17 @@ components:
     DownloadFileResponse:
       properties:
         transferDirectives:
-          description: Provide method specific transfer directives
-          discriminator:
-            mapping:
-              s3: "#/components/schemas/S3DataTransferDirective"
-              wormhole: "#/components/schemas/WormholeDataTransferDirective"
-            propertyName: transferMethod
-          oneOf:
-            - $ref: "#/components/schemas/S3DataTransferDirective"
-            - $ref: "#/components/schemas/WormholeDataTransferDirective"
+          anyOf:
+            - $ref: "#/components/schemas/WormholeTransferResponse"
+            - $ref: "#/components/schemas/S3TransferResponse"
+            - $ref: "#/components/schemas/StreamerTransferResponse"
+          description: Data transfer parameters specific to the transfer method
           title: Transferdirectives
         transferJob:
           $ref: "#/components/schemas/firecrest__filesystem__transfer__models__TransferJob"
       required:
         - transferJob
+        - transferDirectives
       title: DownloadFileResponse
       type: object
     ExtractRequest:
@@ -560,7 +535,7 @@ components:
         jobs:
           anyOf:
             - items:
-                $ref: "#/components/schemas/JobModel-Output"
+                $ref: "#/components/schemas/JobModel"
               type: array
             - type: "null"
           title: Jobs
@@ -616,11 +591,11 @@ components:
       properties:
         dataOperation:
           anyOf:
-            - $ref: "#/components/schemas/DataOperation-Output"
+            - $ref: "#/components/schemas/DataOperation"
             - type: "null"
         systems:
           items:
-            $ref: "#/components/schemas/HPCCluster-Output"
+            $ref: "#/components/schemas/HPCCluster"
           title: Systems
           type: array
       required:
@@ -638,7 +613,7 @@ components:
         - output
       title: GetViewFileResponse
       type: object
-    HPCCluster-Input:
+    HPCCluster:
       description:
         "Definition of an HPC cluster, including SSH access, scheduling,
         and
@@ -668,68 +643,9 @@ components:
           title: Name
           type: string
         probing:
-          $ref: "#/components/schemas/Probing"
-          description: Probing configuration for monitoring the cluster.
-        scheduler:
-          $ref: "#/components/schemas/Scheduler"
-          description: Job scheduler configuration.
-        serviceAccount:
-          $ref: "#/components/schemas/ServiceAccount"
-          description: Service credentials for internal APIs.
-        servicesHealth:
           anyOf:
-            - items:
-                anyOf:
-                  - $ref: "#/components/schemas/SchedulerServiceHealth"
-                  - $ref: "#/components/schemas/FilesystemServiceHealth"
-                  - $ref: "#/components/schemas/SSHServiceHealth"
-                  - $ref: "#/components/schemas/HealthCheckException"
-              type: array
+            - $ref: "#/components/schemas/Probing"
             - type: "null"
-          description: Optional health information for different services in the cluster.
-          title: Serviceshealth
-        ssh:
-          $ref: "#/components/schemas/SSHClientPool"
-          description: SSH configuration for accessing the cluster nodes.
-      required:
-        - name
-        - ssh
-        - scheduler
-        - serviceAccount
-        - probing
-      title: HPCCluster
-      type: object
-    HPCCluster-Output:
-      description:
-        "Definition of an HPC cluster, including SSH access, scheduling,
-        and
-
-        filesystem layout. More info in
-
-        [the systems' section](../arch/systems//README.md)."
-      properties:
-        datatransferJobsDirectives:
-          description:
-            Custom scheduler flags passed to data transfer jobs (e.g. `-pxfer`
-            for a dedicated partition).
-          items:
-            type: string
-          title: Datatransferjobsdirectives
-          type: array
-        fileSystems:
-          description:
-            List of mounted file systems on the cluster, such as scratch
-            or home directories.
-          items:
-            $ref: "#/components/schemas/FileSystem"
-          title: Filesystems
-          type: array
-        name:
-          description: Unique name for the cluster. This field is case insensitive.
-          title: Name
-          type: string
-        probing:
-          $ref: "#/components/schemas/Probing"
           description: Probing configuration for monitoring the cluster.
         scheduler:
           $ref: "#/components/schemas/Scheduler"
@@ -753,7 +669,6 @@ components:
         - name
         - ssh
         - scheduler
-        - probing
       title: HPCCluster
       type: object
     HealthCheckException:
@@ -898,79 +813,7 @@ components:
         - jobId
       title: JobMetadataModel
       type: object
-    JobModel-Input:
-      properties:
-        account:
-          anyOf:
-            - type: string
-            - type: "null"
-          title: Account
-        allocationNodes:
-          title: Allocationnodes
-          type: integer
-        cluster:
-          title: Cluster
-          type: string
-        group:
-          anyOf:
-            - type: string
-            - type: "null"
-          title: Group
-        jobId:
-          title: Jobid
-          type: integer
-        killRequestUser:
-          anyOf:
-            - type: string
-            - type: "null"
-          title: Killrequestuser
-        name:
-          title: Name
-          type: string
-        nodes:
-          title: Nodes
-          type: string
-        partition:
-          title: Partition
-          type: string
-        priority:
-          anyOf:
-            - type: integer
-            - type: "null"
-          title: Priority
-        status:
-          $ref: "#/components/schemas/JobStatus"
-        tasks:
-          anyOf:
-            - items:
-                $ref: "#/components/schemas/JobTask"
-              type: array
-            - type: "null"
-          title: Tasks
-        time:
-          $ref: "#/components/schemas/JobTime"
-        user:
-          anyOf:
-            - type: string
-            - type: "null"
-          title: User
-        workingDirectory:
-          title: Workingdirectory
-          type: string
-      required:
-        - jobId
-        - name
-        - status
-        - time
-        - allocationNodes
-        - cluster
-        - nodes
-        - partition
-        - user
-        - workingDirectory
-      title: JobModel
-      type: object
-    JobModel-Output:
+    JobModel:
       properties:
         account:
           anyOf:
@@ -1401,8 +1244,16 @@ components:
             - type: "null"
           example: /home/user/dir
           title: Sourcepath
+        transferDirectives:
+          anyOf:
+            - $ref: "#/components/schemas/WormholeTransferRequest"
+            - $ref: "#/components/schemas/S3TransferRequest"
+            - $ref: "#/components/schemas/StreamerTransferRequest"
+          description: Data transfer parameters specific to the transfer method
+          title: Transferdirectives
       required:
         - sourcePath
+        - transferDirectives
       title: PostFileDownloadRequest
       type: object
     PostFileSymlinkRequest:
@@ -1457,8 +1308,9 @@ components:
           title: Sourcepath
         transferDirectives:
           anyOf:
-            - $ref: "#/components/schemas/WormholeDataTransferDirective"
-            - $ref: "#/components/schemas/S3DataTransferDirective"
+            - $ref: "#/components/schemas/WormholeTransferRequest"
+            - $ref: "#/components/schemas/S3TransferRequest"
+            - $ref: "#/components/schemas/StreamerTransferRequest"
           description: Data transfer parameters specific to the transfer method
           title: Transferdirectives
       required:
@@ -1674,7 +1526,7 @@ components:
         - startTime
       title: ReservationModel
       type: object
-    S3DataTransfer-Input:
+    S3DataTransfer:
       description:
         Object storage configuration, including credentials, endpoints,
         and upload behavior.
@@ -1758,129 +1610,6 @@ components:
         - region
         - ttl
       title: S3DataTransfer
-      type: object
-    S3DataTransfer-Output:
-      description:
-        Object storage configuration, including credentials, endpoints,
-        and upload behavior.
-      properties:
-        accessKeyId:
-          description: Access key ID for S3-compatible storage.
-          format: password
-          title: Accesskeyid
-          type: string
-          writeOnly: true
-        bucketLifecycleConfiguration:
-          $ref: "#/components/schemas/BucketLifecycleConfiguration"
-          description:
-            Lifecycle policy settings for auto-deleting files after a given
-            number of days.
-        multipart:
-          $ref: "#/components/schemas/MultipartUpload"
-          description: Settings for multipart upload, including chunk size and concurrency.
-        name:
-          description: Name identifier for the storage.
-          title: Name
-          type: string
-        privateUrl:
-          description: Private/internal endpoint URL for the storage.
-          format: password
-          title: Privateurl
-          type: string
-          writeOnly: true
-        probing:
-          anyOf:
-            - $ref: "#/components/schemas/Probing"
-            - type: "null"
-          description: Configuration for probing storage availability.
-        publicUrl:
-          description: Public/external URL for the storage.
-          title: Publicurl
-          type: string
-        region:
-          description: Region of the storage bucket.
-          title: Region
-          type: string
-        secretAccessKey:
-          description:
-            Secret access key for storage. You can give directly the content
-            or the file path using `'secret_file:/path/to/file'`.
-          format: password
-          title: Secretaccesskey
-          type: string
-          writeOnly: true
-        serviceType:
-          const: s3
-          title: Servicetype
-          type: string
-        servicesHealth:
-          anyOf:
-            - items:
-                anyOf:
-                  - $ref: "#/components/schemas/S3ServiceHealth"
-                  - $ref: "#/components/schemas/HealthCheckException"
-              type: array
-            - type: "null"
-          description: Optional health information for different services in the cluster.
-          title: Serviceshealth
-        tenant:
-          anyOf:
-            - type: string
-            - type: "null"
-          description: Optional tenant identifier for multi-tenant setups.
-          title: Tenant
-        ttl:
-          description: Time-to-live (in seconds) for generated URLs.
-          title: Ttl
-          type: integer
-      required:
-        - serviceType
-        - name
-        - privateUrl
-        - publicUrl
-        - accessKeyId
-        - secretAccessKey
-        - region
-        - ttl
-      title: S3DataTransfer
-      type: object
-    S3DataTransferDirective:
-      properties:
-        completeUploadUrl:
-          anyOf:
-            - type: string
-            - type: "null"
-          title: Completeuploadurl
-        downloadUrl:
-          anyOf:
-            - type: string
-            - type: "null"
-          title: Downloadurl
-        fileSize:
-          anyOf:
-            - type: integer
-            - type: "null"
-          description: Size of the file to upload in bytes
-          title: Filesize
-        maxPartSize:
-          anyOf:
-            - type: integer
-            - type: "null"
-          title: Maxpartsize
-        partsUploadUrls:
-          anyOf:
-            - items:
-                type: string
-              type: array
-            - type: "null"
-          title: Partsuploadurls
-        transferMethod:
-          const: s3
-          title: Transfermethod
-          type: string
-      required:
-        - transferMethod
-      title: S3DataTransferDirective
       type: object
     S3ServiceHealth:
       description: Health status of S3-compatible storage.
@@ -1917,6 +1646,54 @@ components:
       required:
         - serviceType
       title: S3ServiceHealth
+      type: object
+    S3TransferRequest:
+      properties:
+        fileSize:
+          anyOf:
+            - type: integer
+            - type: "null"
+          description: Size of the file to upload in bytes
+          title: Filesize
+        transferMethod:
+          const: s3
+          title: Transfermethod
+          type: string
+      required:
+        - transferMethod
+      title: S3TransferRequest
+      type: object
+    S3TransferResponse:
+      properties:
+        completeUploadUrl:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Completeuploadurl
+        downloadUrl:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Downloadurl
+        maxPartSize:
+          anyOf:
+            - type: integer
+            - type: "null"
+          title: Maxpartsize
+        partsUploadUrls:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: "null"
+          title: Partsuploadurls
+        transferMethod:
+          const: s3
+          title: Transfermethod
+          type: string
+      required:
+        - transferMethod
+      title: S3TransferResponse
       type: object
     SSHClientPool:
       description: SSH connection pool configuration for remote execution.
@@ -2117,23 +1894,116 @@ components:
         - secret
       title: ServiceAccount
       type: object
+    StreamerDataTransfer:
+      properties:
+        host:
+          anyOf:
+            - type: string
+            - type: "null"
+          description: The interface to use for listening incoming connections
+          title: Host
+        inboundTransferLimit:
+          anyOf:
+            - type: integer
+            - type: "null"
+          default: 5368709120
+          description: Limit how much data can be received (in bytes)
+          title: Inboundtransferlimit
+        portRange:
+          default:
+            - 5665
+            - 5675
+          description: Port range for establishing connections.
+          maxItems: 2
+          minItems: 2
+          prefixItems:
+            - type: integer
+            - type: integer
+          title: Portrange
+          type: array
+        probing:
+          anyOf:
+            - $ref: "#/components/schemas/Probing"
+            - type: "null"
+          description: Configuration for probing storage availability.
+        publicIps:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: "null"
+          description: List of public IP addresses where server can be reached.
+          title: Publicips
+        pypiIndexUrl:
+          anyOf:
+            - type: string
+            - type: "null"
+          description: Optional local PyPI index URL for installing dependencies.
+          title: Pypiindexurl
+        serviceType:
+          const: streamer
+          title: Servicetype
+          type: string
+        servicesHealth:
+          anyOf:
+            - items:
+                anyOf:
+                  - $ref: "#/components/schemas/S3ServiceHealth"
+                  - $ref: "#/components/schemas/HealthCheckException"
+              type: array
+            - type: "null"
+          description: Optional health information for different services in the cluster.
+          title: Serviceshealth
+        waitTimeout:
+          anyOf:
+            - type: integer
+            - type: "null"
+          default: 86400
+          description: How long to wait for a connection before exiting (in seconds)
+          title: Waittimeout
+      required:
+        - serviceType
+      title: StreamerDataTransfer
+      type: object
+    StreamerTransferRequest:
+      properties:
+        transferMethod:
+          const: streamer
+          title: Transfermethod
+          type: string
+      required:
+        - transferMethod
+      title: StreamerTransferRequest
+      type: object
+    StreamerTransferResponse:
+      properties:
+        coordinates:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Coordinates
+        transferMethod:
+          const: streamer
+          title: Transfermethod
+          type: string
+      required:
+        - transferMethod
+      title: StreamerTransferResponse
+      type: object
     UploadFileResponse:
       properties:
         transferDirectives:
-          description: Provide method specific transfer directives
-          discriminator:
-            mapping:
-              s3: "#/components/schemas/S3DataTransferDirective"
-              wormhole: "#/components/schemas/WormholeDataTransferDirective"
-            propertyName: transferMethod
-          oneOf:
-            - $ref: "#/components/schemas/S3DataTransferDirective"
-            - $ref: "#/components/schemas/WormholeDataTransferDirective"
+          anyOf:
+            - $ref: "#/components/schemas/WormholeTransferResponse"
+            - $ref: "#/components/schemas/S3TransferResponse"
+            - $ref: "#/components/schemas/StreamerTransferResponse"
+          description: Data transfer parameters specific to the transfer method
           title: Transferdirectives
         transferJob:
           $ref: "#/components/schemas/firecrest__filesystem__transfer__models__TransferJob"
       required:
         - transferJob
+        - transferDirectives
       title: UploadFileResponse
       type: object
     UserInfoResponse:
@@ -2153,13 +2023,19 @@ components:
         - groups
       title: UserInfoResponse
       type: object
-    WormholeDataTransfer-Input:
+    WormholeDataTransfer:
       properties:
         probing:
           anyOf:
             - $ref: "#/components/schemas/Probing"
             - type: "null"
           description: Configuration for probing storage availability.
+        pypiIndexUrl:
+          anyOf:
+            - type: string
+            - type: "null"
+          description: Optional local PyPI index URL for installing dependencies.
+          title: Pypiindexurl
         serviceType:
           const: wormhole
           title: Servicetype
@@ -2178,32 +2054,17 @@ components:
         - serviceType
       title: WormholeDataTransfer
       type: object
-    WormholeDataTransfer-Output:
+    WormholeTransferRequest:
       properties:
-        probing:
-          anyOf:
-            - $ref: "#/components/schemas/Probing"
-            - type: "null"
-          description: Configuration for probing storage availability.
-        serviceType:
+        transferMethod:
           const: wormhole
-          title: Servicetype
+          title: Transfermethod
           type: string
-        servicesHealth:
-          anyOf:
-            - items:
-                anyOf:
-                  - $ref: "#/components/schemas/S3ServiceHealth"
-                  - $ref: "#/components/schemas/HealthCheckException"
-              type: array
-            - type: "null"
-          description: Optional health information for different services in the cluster.
-          title: Serviceshealth
       required:
-        - serviceType
-      title: WormholeDataTransfer
+        - transferMethod
+      title: WormholeTransferRequest
       type: object
-    WormholeDataTransferDirective:
+    WormholeTransferResponse:
       properties:
         transferMethod:
           const: wormhole
@@ -2216,7 +2077,7 @@ components:
           title: Wormholecode
       required:
         - transferMethod
-      title: WormholeDataTransferDirective
+      title: WormholeTransferResponse
       type: object
     firecrest__filesystem__transfer__models__TransferJob:
       properties:
@@ -2224,7 +2085,7 @@ components:
           title: Jobid
           type: integer
         logs:
-          $ref: "#/components/schemas/lib__datatransfers__datatransfer_base__TransferJobLogs"
+          $ref: "#/components/schemas/firecrest__filesystem__transfer__models__TransferJobLogs"
         system:
           title: System
           type: string
@@ -2238,7 +2099,7 @@ components:
         - logs
       title: TransferJob
       type: object
-    lib__datatransfers__datatransfer_base__TransferJobLogs:
+    firecrest__filesystem__transfer__models__TransferJobLogs:
       properties:
         errorLog:
           title: Errorlog
@@ -2263,7 +2124,7 @@ components:
       type: http
 info:
   title: FirecREST
-  version: 2.4.0
+  version: 2.4.1
 openapi: 3.1.0
 paths:
   /compute/{system_name}/jobs:

@@ -14,12 +14,13 @@ fn main() -> Result<()> {
     let o = std::fs::File::create(outpath)?;
     serde_json::to_writer_pretty(o, &json_value)?;
     std::process::Command::new("oas3-gen")
+        .arg("generate")
         .arg("-i")
         .arg(outpath.to_str().unwrap())
         .arg("-o")
         .arg("./src/types.rs")
         .spawn()
-        .expect("oas3-gen failed to run, if it's missing please install with 'cargo install oas3-gen'")
+        .expect("oas3-gen failed to run, if it's missing please install with 'cargo install oas3-gen@0.21.1'")
         .wait()?;
     // we need to add an into clause because the defaults in the openapi spec are weird
     let content = std::fs::read_to_string("./src/types.rs")?;

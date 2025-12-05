@@ -2,6 +2,7 @@ use std::{collections::HashMap, path::PathBuf};
 
 use chrono::prelude::*;
 use color_eyre::eyre::{Context, Result};
+use eyre::eyre;
 use firecrest_client::{
     client::FirecrestClient,
     compute_api::{
@@ -9,14 +10,18 @@ use firecrest_client::{
         post_compute_system_job,
     },
     filesystem_api::{
-        get_filesystem_ops_tail, post_filesystem_ops_mkdir, post_filesystem_ops_upload, put_filesystem_ops_chmod,
+        get_filesystem_ops_download, get_filesystem_ops_ls, get_filesystem_ops_stat, get_filesystem_ops_tail,
+        post_filesystem_ops_mkdir, post_filesystem_ops_upload, post_filesystem_transfer_download,
+        post_filesystem_transfer_upload, put_filesystem_ops_chmod,
     },
     status_api::{get_status_systems, get_status_userinfo},
     types::{
-        FileSystem as CSCSFileSystem, FileSystemDataType, HealthCheckType, HpcclusterOutput, JobMetadataModel,
-        JobModelOutput, SchedulerServiceHealth, UserInfoResponse,
+        DownloadFileResponseTransferDirectives, File as CSCSFile, FileStat as CSCSFileStat,
+        FileSystem as CSCSFileSystem, FileSystemDataType, HPCCluster, HealthCheckType, JobMetadataModel, JobModel,
+        S3TransferResponse, SchedulerServiceHealth, UserInfoResponse,
     },
 };
+use reqwest::Url;
 use strum::Display;
 
 use crate::trace_dbg;
@@ -58,6 +63,19 @@ impl From<FileSystemDataType> for FileSystemType {
         }
     }
 }
+impl From<String> for FileSystemType {
+    fn from(value: String) -> Self {
+        match value.as_str() {
+            "users" => Self::Users,
+            "store" => Self::Store,
+            "archive" => Self::Archive,
+            "apps" => Self::Apps,
+            "scratch" => Self::Scratch,
+            "project" => Self::Project,
+            _ => panic!("unknown file system type: {}", value),
+        }
+    }
+}
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, tabled::Tabled)]
 pub struct FileSystem {
     pub data_type: FileSystemType,
@@ -75,12 +93,70 @@ impl From<CSCSFileSystem> for FileSystem {
 }
 
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, Display)]
+pub enum PathType {
+    Directory,
+    File,
+}
+
+#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, tabled::Tabled)]
+pub struct PathEntry {
+    #[tabled(order = 3)]
+    pub name: String,
+    #[tabled(order = 1)]
+    pub path_type: PathType,
+    #[tabled(display("display_option"), order = 0)]
+    pub permissions: Option<String>,
+    #[tabled(display("display_option"), order = 2)]
+    pub size: Option<usize>,
+}
+
+fn display_option<V>(value: &Option<V>) -> String
+where
+    V: ToString,
+{
+    match value {
+        Some(s) => s.to_string(),
+        None => "".to_owned(),
+    }
+}
+
+impl From<CSCSFile> for PathEntry {
+    fn from(value: CSCSFile) -> Self {
+        let size = match value.size.parse::<usize>() {
+            Ok(size) => size,
+            Err(err) => panic!("Couldn't parse file size {}: {:?}", value.size, err),
+        };
+        Self {
+            name: value.name,
+            path_type: match value.r#type.as_str() {
+                "d" => PathType::Directory,
+                "-" => PathType::File,
+                _ => panic!("Unknown file type: {}", value.r#type),
+            },
+            permissions: Some(value.permissions),
+            size: Some(size),
+        }
+    }
+}
+
+#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord)]
+pub struct FileStat {
+    pub size: i64,
+}
+impl From<CSCSFileStat> for FileStat {
+    fn from(value: CSCSFileStat) -> Self {
+        Self { size: value.size }
+    }
+}
+
+#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, Display)]
 pub enum JobStatus {
     Pending,
     Running,
     Finished,
     Cancelled,
     Failed,
+    Timeout,
 }
 impl From<String> for JobStatus {
     fn from(value: String) -> Self {
@@ -90,6 +166,7 @@ impl From<String> for JobStatus {
             "COMPLETED" => JobStatus::Finished,
             "CANCELLED" => JobStatus::Cancelled,
             "PENDING" => JobStatus::Pending,
+            "TIMEOUT" => JobStatus::Timeout,
             other => panic!("got job status: {}", other),
         }
     }
@@ -105,8 +182,8 @@ pub struct Job {
     #[tabled(display("display_option_datetime"))]
     pub end_date: Option<DateTime<Local>>,
 }
-impl From<JobModelOutput> for Job {
-    fn from(value: JobModelOutput) -> Self {
+impl From<JobModel> for Job {
+    fn from(value: JobModel) -> Self {
         Self {
             id: value.job_id as usize,
             name: value.name,
@@ -146,8 +223,8 @@ fn display_option_datetime(value: &Option<DateTime<Local>>) -> String {
         None => "".to_owned(),
     }
 }
-impl From<(JobModelOutput, JobMetadataModel)> for JobDetail {
-    fn from(value: (JobModelOutput, JobMetadataModel)) -> Self {
+impl From<(JobModel, JobMetadataModel)> for JobDetail {
+    fn from(value: (JobModel, JobMetadataModel)) -> Self {
         Self {
             id: value.0.job_id as usize,
             name: value.0.name,
@@ -192,6 +269,18 @@ impl From<HealthCheckType> for ServiceType {
         }
     }
 }
+impl From<String> for ServiceType {
+    fn from(value: String) -> Self {
+        match value.as_str() {
+            "scheduler" => ServiceType::Scheduler,
+            "filesystem" => ServiceType::Filesystem,
+            "ssh" => ServiceType::Ssh,
+            "s3" => ServiceType::S3,
+            "exception" => ServiceType::Exception,
+            _ => panic!("unknown service type: {}", value),
+        }
+    }
+}
 
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, tabled::Tabled)]
 pub struct ServicesHealth {
@@ -222,8 +311,8 @@ pub struct System {
     #[tabled(display = "display_health")]
     pub services_health: Option<Vec<ServicesHealth>>,
 }
-impl From<HpcclusterOutput> for System {
-    fn from(value: HpcclusterOutput) -> Self {
+impl From<HPCCluster> for System {
+    fn from(value: HPCCluster) -> Self {
         Self {
             name: value.name,
             file_systems: value
@@ -244,6 +333,31 @@ fn display_health(h: &Option<Vec<ServicesHealth>>) -> String {
                 .to_string()
         })
         .unwrap_or("".to_string())
+}
+
+#[derive(Debug, Clone)]
+pub struct S3Upload {
+    pub parts_upload_urls: Vec<Url>,
+    pub complete_upload_url: Url,
+    pub part_size: u64,
+    pub num_parts: u64,
+}
+
+impl S3Upload {
+    fn convert(value: S3TransferResponse, size: u64) -> Result<Self> {
+        let complete_url = value.complete_upload_url.ok_or(eyre!("no upload completion url set"))?;
+        let part_urls = value.parts_upload_urls.ok_or(eyre!("no part upload urls set"))?;
+        let part_size = value.max_part_size.ok_or(eyre!("couldn't parse size"))? as u64;
+        Ok(Self {
+            parts_upload_urls: part_urls
+                .iter()
+                .map(|u| Url::parse(u).wrap_err("couldn't parse url"))
+                .collect::<Result<Vec<Url>>>()?,
+            part_size,
+            complete_upload_url: Url::parse(&complete_url)?,
+            num_parts: (size.div_ceil(part_size)),
+        })
+    }
 }
 
 pub struct CscsApi {
@@ -348,6 +462,50 @@ impl CscsApi {
             .wrap_err("couldn't upload file")?;
         Ok(())
     }
+    pub async fn transfer_upload(
+        &self,
+        system_name: &str,
+        account: &str,
+        path: PathBuf,
+        size: i64,
+    ) -> Result<(i64, S3Upload)> {
+        if account.is_empty() {
+            return Err(eyre!(
+                "An account is required, set it in the config file or with the --account flag"
+            ));
+        }
+        let job = post_filesystem_transfer_upload(&self.client, system_name, account, path, size)
+            .await
+            .wrap_err("couldn't upload file")?;
+        if let DownloadFileResponseTransferDirectives::S3(directives) = job.transfer_directives {
+            Ok((job.transfer_job.job_id, S3Upload::convert(directives, size as u64)?))
+        } else {
+            trace_dbg!(job);
+            Err(eyre!("didn't get S3 transfer directive"))
+        }
+    }
+    pub async fn download(&self, system_name: &str, path: PathBuf) -> Result<String> {
+        let content = get_filesystem_ops_download(&self.client, system_name, path)
+            .await
+            .wrap_err("couldn't download file")?;
+        Ok(content)
+    }
+    pub async fn transfer_download(&self, system_name: &str, account: &str, path: PathBuf) -> Result<(i64, Url)> {
+        if account.is_empty() {
+            return Err(eyre!(
+                "An account is required, set it in the config file or with the --account flag"
+            ));
+        }
+        let job = post_filesystem_transfer_download(&self.client, system_name, account, path)
+            .await
+            .wrap_err("couldn't transfer file")?;
+        if let DownloadFileResponseTransferDirectives::S3(directives) = job.transfer_directives {
+            let download_url = Url::parse(&directives.download_url.unwrap())?;
+            Ok((job.transfer_job.job_id, download_url))
+        } else {
+            Err(eyre!("didn't get S3 transfer directive"))
+        }
+    }
     pub async fn tail(&self, system_name: &str, path: PathBuf, lines: usize) -> Result<String> {
         let result = get_filesystem_ops_tail(&self.client, system_name, path, lines)
             .await
@@ -356,6 +514,22 @@ impl CscsApi {
             Some(output) => Ok(output.content),
             None => Ok("".to_string()),
         }
+    }
+    pub async fn list_path(&self, system_name: &str, path: PathBuf) -> Result<Vec<PathEntry>> {
+        let result = get_filesystem_ops_ls(&self.client, system_name, path)
+            .await
+            .wrap_err("couldn't list path")?;
+        let result = trace_dbg!(result);
+        match result.output {
+            Some(entries) => Ok(entries.into_iter().map(|e| e.into()).collect()),
+            None => Ok(vec![]),
+        }
+    }
+    pub async fn stat_path(&self, system_name: &str, path: PathBuf) -> Result<Option<FileStat>> {
+        let result = get_filesystem_ops_stat(&self.client, system_name, path)
+            .await
+            .wrap_err("couldn't stat file")?;
+        Ok(result.output.map(|f| f.into()))
     }
     pub async fn get_userinfo(&self, system_name: &str) -> Result<UserInfo> {
         let result = get_status_userinfo(&self.client, system_name)

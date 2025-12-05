@@ -5,13 +5,14 @@ use tuirealm::{
 };
 
 use crate::app::{
-    messages::{MenuMsg, Msg, SystemSelectMsg},
-    user_events::{CscsEvent, UserEvent},
+    messages::{InfoPopupMsg, MenuMsg, Msg, SystemSelectMsg, View},
+    user_events::{CscsEvent, FileEvent, UserEvent},
 };
 
 #[derive(Default, MockComponent)]
 pub struct GlobalListener {
     component: Phantom,
+    current_view: View,
 }
 
 impl Component<Msg, UserEvent> for GlobalListener {
@@ -27,12 +28,27 @@ impl Component<Msg, UserEvent> for GlobalListener {
             Event::Keyboard(KeyEvent {
                 code: Key::Char('x'), ..
             }) => Some(Msg::Menu(MenuMsg::Opened)),
+            Event::Keyboard(KeyEvent {
+                code: Key::Char('f'), ..
+            }) => {
+                self.current_view = View::Files;
+                Some(Msg::ChangeView(View::Files))
+            }
+            Event::Keyboard(KeyEvent {
+                code: Key::Char('w'), ..
+            }) => {
+                self.current_view = View::Workloads;
+                Some(Msg::ChangeView(View::Workloads))
+            }
             Event::User(UserEvent::Error(msg)) => Some(Msg::Error(msg)),
             Event::User(UserEvent::Info(msg)) => Some(Msg::Info(msg)),
             Event::User(UserEvent::Cscs(CscsEvent::LoggedIn)) => Some(Msg::Info("Successfully logged in".to_string())),
             Event::User(UserEvent::Cscs(CscsEvent::SelectSystemList(systems))) => {
                 Some(Msg::SystemSelectPopup(SystemSelectMsg::Opened(systems)))
             }
+            Event::User(UserEvent::File(FileEvent::DownloadSuccessful)) => Some(Msg::InfoPopup(InfoPopupMsg::Opened(
+                "File successfully downloaded".to_owned(),
+            ))),
             _ => None,
         }
     }
