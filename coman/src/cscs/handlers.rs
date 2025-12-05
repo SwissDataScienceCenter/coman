@@ -1,4 +1,8 @@
-use std::{os::unix::fs::MetadataExt, path::PathBuf};
+#[cfg(target_family = "unix")]
+use std::os::unix::fs::MetadataExt;
+#[cfg(target_family = "windows")]
+use std::os::windows::fs::MetadataExt;
+use std::path::PathBuf;
 
 use color_eyre::{Result, eyre::eyre};
 use reqwest::Url;
@@ -313,7 +317,14 @@ pub async fn cscs_file_upload(
             let config = Config::new().unwrap();
 
             let file_meta = std::fs::metadata(local.clone())?;
-            if (file_meta.size() as usize) < CSCS_MAX_DIRECT_SIZE {
+
+            #[cfg(target_family = "unix")]
+            let size = file_meta.size() as usize;
+
+            #[cfg(target_family = "windows")]
+            let size = file_meta.file_size() as usize;
+
+            if size < CSCS_MAX_DIRECT_SIZE {
                 // upload directly
                 let contents = std::fs::read(local)?;
                 api_client

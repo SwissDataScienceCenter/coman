@@ -10,7 +10,9 @@ use crate::{
 
 #[derive(Subcommand, Debug)]
 pub enum CliCommands {
+    #[clap(about = "Show version and config file locations")]
     Version,
+    #[clap(about = "Subcommands related to CSCS")]
     Cscs {
         #[command(subcommand)]
         command: CscsCommands,
@@ -28,18 +30,22 @@ pub enum CliCommands {
 
 #[derive(Subcommand, Debug)]
 pub enum CscsCommands {
+    #[clap(about = "Log in to CSCS")]
     Login,
-    #[clap(alias("j"))]
+    #[clap(alias("j"), about = "Job subcommands [aliases: j]")]
     Job {
         #[command(subcommand)]
         command: CscsJobCommands,
     },
-    #[clap(alias("f"))]
+    #[clap(alias("f"), about = "File management subcommands [aliases: f]")]
     File {
         #[command(subcommand)]
         command: CscsFileCommands,
     },
-    #[clap(alias("s"))]
+    #[clap(
+        alias("s"),
+        about = "Subcommands for managing for interacting with the compute system config (e.g. 'daint') [aliases: s]"
+    )]
     System {
         #[command(subcommand)]
         command: CscsSystemCommands,
@@ -47,17 +53,14 @@ pub enum CscsCommands {
 }
 #[derive(Subcommand, Debug)]
 pub enum CscsJobCommands {
-    #[clap(alias("ls"))]
+    #[clap(alias("ls"), about = "List all jobs [aliases: ls]")]
     List,
-    #[clap(alias("g"))]
-    Get {
-        job_id: i64,
-    },
-    Log {
-        job_id: i64,
-    },
+    #[clap(alias("g"), about = "Get metadata for a specific job [aliases: g]")]
+    Get { job_id: i64 },
+    #[clap(about = "Get the stdout of a job")]
+    Log { job_id: i64 },
 
-    #[clap(alias("s"))]
+    #[clap(alias("s"), about = "Submit a new compute job [aliases: s]")]
     Submit {
         #[clap(short, long, help = "the path to the srun script file to use")]
         script_file: Option<PathBuf>,
@@ -74,24 +77,25 @@ pub enum CscsJobCommands {
         #[clap(trailing_var_arg = true, help = "The command to run in the container")]
         command: Option<Vec<String>>,
     },
-    #[clap(alias("c"))]
-    Cancel {
-        job_id: i64,
-    },
+    #[clap(
+        alias("c"),
+        about = "Cancel a running job, fails if the job isn't running [aliases: c]"
+    )]
+    Cancel { job_id: i64 },
 }
 
 #[derive(Subcommand, Debug)]
 pub enum CscsFileCommands {
-    #[clap(alias("ls"))]
+    #[clap(alias("ls"), about = "List folders and files in a remote path [aliases: ls]")]
     List { path: PathBuf },
-    #[clap(alias("dl"))]
+    #[clap(alias("dl"), about = "Download a remote file [aliases: dl]")]
     Download {
         #[clap(short, long, help = "account/project to use")]
         account: Option<String>,
         remote: PathBuf,
         local: PathBuf,
     },
-    #[clap(alias("ul"))]
+    #[clap(alias("ul"), about = "Upload a file to remote storage [aliases: ul]")]
     Upload {
         #[clap(short, long, help = "account/project to use")]
         account: Option<String>,
@@ -102,11 +106,11 @@ pub enum CscsFileCommands {
 
 #[derive(Subcommand, Debug)]
 pub enum CscsSystemCommands {
-    #[clap(alias("ls"), about = "List available compute systems")]
+    #[clap(alias("ls"), about = "List available compute systems [aliases: ls]")]
     List,
     #[clap(
         alias("s"),
-        about = "Set system to use (e.g. `daint`, see `coman cscs ls` for available systems)"
+        about = "Set system to use (e.g. `daint`, see `coman cscs ls` for available systems) [aliases: s]"
     )]
     Set {
         #[clap(short, long, action, help = "set in global config instead of project-local one")]
