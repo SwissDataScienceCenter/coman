@@ -338,7 +338,7 @@ pub async fn cscs_file_upload(
                         &config.cscs.current_system,
                         &account.unwrap_or(config.cscs.account),
                         remote,
-                        file_meta.size() as i64,
+                        size as i64,
                     )
                     .await?;
 
