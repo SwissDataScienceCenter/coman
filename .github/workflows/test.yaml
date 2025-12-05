@@ -12,28 +12,56 @@ env:
   RUSTFLAGS: "-Dwarnings"
 
 jobs:
-  check-linux:
-    name: check-linux
-    runs-on: ubuntu-latest
+  lint-and-test:
+    name: Run linters and tests
+    strategy:
+      matrix:
+        platform:
+          - os_name: Linux-x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            bin: coman
+            name: coman-Linux-x86_64-musl.tar.gz
+            cargo_command: cargo
+
+          - os_name: Windows-aarch64
+            os: windows-latest
+            target: aarch64-pc-windows-msvc
+            bin: coman.exe
+            name: coman-Windows-aarch64.zip
+            cargo_command: cargo
+
+          # enable this if there's ever a case where something works on linux but not on macos
+          # - os_name: macOS-x86_64
+          #   os: macOS-latest
+          #   target: x86_64-apple-darwin
+          #   bin: coman
+          #   name: coman-Darwin-x86_64.tar.gz
+          #   cargo_command: cargo
+    runs-on: ${{ matrix.platform.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-      - name: setup rust
-        run: |
-          rustup update stable
-          rustup default stable
-          rustup component add --toolchain nightly-x86_64-unknown-linux-gnu rustfmt
+      - name: Install toolchain
+        # nightly needed for cargo fmt
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: ${{ matrix.platform.target }}
+          components: clippy rustfmt
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
           prefix-key: "v0-rust"
+          cache-workspace-crates: "true"
       - name: install tooling
         run: cargo install oas3-gen@0.21.1
       - name: Build
         run: cargo build --verbose
       - name: Check formatting
+        if: contains(matrix.platform.os, 'ubuntu')
         run: cargo +nightly fmt --check
       - name: Lint
+        if: contains(matrix.platform.os, 'ubuntu')
         run: cargo clippy --all-targets --all-features -p coman
       - name: Test
         run: cargo test --verbose

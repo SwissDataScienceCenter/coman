@@ -76,3 +76,6 @@ aws-sdk-s3 = "1.115.0"
 [build-dependencies]
 anyhow = "1.0.90"
 vergen-gix = { version = "1.0.2", features = ["build", "cargo"] }
+
+[dev-dependencies]
+rstest = "0.26.1"
