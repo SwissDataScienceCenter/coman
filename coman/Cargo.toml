@@ -1,6 +1,6 @@
 [package]
 name = "coman"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2024"
 description = "Compute Manager for managing HPC compute"
 authors = ["Ralf Grubenmann <ralf.grubenmann@sdsc.ethz.ch>"]
