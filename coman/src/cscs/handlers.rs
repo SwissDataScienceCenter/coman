@@ -146,6 +146,7 @@ pub async fn cscs_job_cancel(job_id: i64, system: Option<String>, platform: Opti
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn cscs_start_job(
     script_file: Option<PathBuf>,
     image: Option<DockerImageUrl>,
@@ -154,12 +155,14 @@ pub async fn cscs_start_job(
     env: Vec<(String, String)>,
     system: Option<String>,
     platform: Option<ComputePlatform>,
+    account: Option<String>,
 ) -> Result<()> {
     match get_access_token().await {
         Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
             let current_system = &system.unwrap_or(config.cscs.current_system);
+            let account = account.or(config.cscs.account);
             let user_info = api_client.get_userinfo(current_system).await?;
             let current_system_info = api_client.get_system(current_system).await?;
             let scratch = match current_system_info {
@@ -245,7 +248,7 @@ pub async fn cscs_start_job(
 
             // start job
             api_client
-                .start_job(current_system, &name, script_path, envvars)
+                .start_job(current_system, account, &name, script_path, envvars)
                 .await?;
             Ok(())
         }
@@ -295,9 +298,8 @@ pub async fn cscs_file_download(
                 Ok(None)
             } else {
                 // download via s3
-                let job_data = api_client
-                    .transfer_download(current_system, &account.unwrap_or(config.cscs.account), remote)
-                    .await?;
+                let account = account.or(config.cscs.account);
+                let job_data = api_client.transfer_download(current_system, account, remote).await?;
                 Ok(Some((job_data.0, job_data.1, size)))
             }
         }
@@ -333,13 +335,9 @@ pub async fn cscs_file_upload(
                 Ok(None)
             } else {
                 // upload via s3
+                let account = account.or(config.cscs.account);
                 let transfer_data = api_client
-                    .transfer_upload(
-                        &config.cscs.current_system,
-                        &account.unwrap_or(config.cscs.account),
-                        remote,
-                        size as i64,
-                    )
+                    .transfer_upload(&config.cscs.current_system, account, remote, size as i64)
                     .await?;
 
                 Ok(Some(transfer_data))

@@ -139,7 +139,7 @@ pub async fn post_filesystem_ops_upload(
 pub async fn post_filesystem_transfer_upload(
     client: &FirecrestClient,
     system_name: &str,
-    account: &str,
+    account: Option<String>,
     path: PathBuf,
     size: i64,
 ) -> Result<UploadFileResponse> {
@@ -150,7 +150,7 @@ pub async fn post_filesystem_transfer_upload(
             file_size: Some(size),
             ..Default::default()
         }),
-        account: Some(account.to_owned()),
+        account,
     };
     let body_json = serde_json::to_string(&body)?;
     let response = client
@@ -194,14 +194,14 @@ pub async fn get_filesystem_ops_download(client: &FirecrestClient, system_name: 
 pub async fn post_filesystem_transfer_download(
     client: &FirecrestClient,
     system_name: &str,
-    account: &str,
+    account: Option<String>,
     path: PathBuf,
 ) -> Result<DownloadFileResponse> {
     let file_path = path.as_os_str().to_str().ok_or(eyre!("couldn't cast path to string"))?;
     let body = PostFileDownloadRequest {
         source_path: Some(file_path.to_owned()),
         transfer_directives: PostFileDownloadRequestTransferDirectives::S3(S3TransferRequest::default()),
-        account: Some(account.to_owned()),
+        account,
     };
     let body_json = serde_json::to_string(&body)?;
     let response = client

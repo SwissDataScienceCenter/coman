@@ -9,6 +9,7 @@ use crate::{
 };
 
 #[derive(Subcommand, Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum CliCommands {
     #[clap(about = "Show version and config file locations")]
     Version,
@@ -20,6 +21,8 @@ pub enum CliCommands {
         system: Option<String>,
         #[clap(short, long, ignore_case=true, value_parser=clap::builder::PossibleValuesParser::new(ComputePlatform::VARIANTS).map(|s|s.parse::<ComputePlatform>().unwrap()),help = "override compute platform (one of 'hpc', 'ml' or 'cw')")]
         platform: Option<ComputePlatform>,
+        #[clap(short, long, help = "override compute account to use (project or user)")]
+        account: Option<String>,
     },
     #[clap(about = "Create a new project configuration file")]
     Init {
@@ -90,16 +93,17 @@ pub enum CscsFileCommands {
     List { path: PathBuf },
     #[clap(alias("dl"), about = "Download a remote file [aliases: dl]")]
     Download {
-        #[clap(short, long, help = "account/project to use")]
-        account: Option<String>,
+        #[clap(help = "The path in the cluster to download")]
         remote: PathBuf,
+        #[clap(help = "The local path to download the file to")]
         local: PathBuf,
     },
     #[clap(alias("ul"), about = "Upload a file to remote storage [aliases: ul]")]
     Upload {
-        #[clap(short, long, help = "account/project to use")]
-        account: Option<String>,
+        #[clap(help = "The local path to upload to the cluster")]
         local: PathBuf,
+
+        #[clap(help = "the path in the cluster to upload to")]
         remote: PathBuf,
     },
 }
