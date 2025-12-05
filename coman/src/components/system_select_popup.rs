@@ -11,7 +11,7 @@ use crate::{
         messages::{Msg, SystemSelectMsg},
         user_events::UserEvent,
     },
-    cscs::api_client::System,
+    cscs::api_client::types::System,
 };
 
 #[derive(MockComponent)]

@@ -14,7 +14,7 @@ use crate::{
         messages::{DownloadPopupMsg, Msg},
         user_events::{FileEvent, UserEvent},
     },
-    cscs::{api_client::PathType, ports::BackgroundTask},
+    cscs::{api_client::types::PathType, ports::BackgroundTask},
 };
 
 #[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Clone)]
