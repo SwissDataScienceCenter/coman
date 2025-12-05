@@ -1,9 +1,10 @@
 use std::{error::Error, path::PathBuf};
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, builder::TypedValueParser};
+use strum::VariantNames;
 
 use crate::{
-    config::{get_config_dir, get_data_dir},
+    config::{ComputePlatform, get_config_dir, get_data_dir},
     util::types::DockerImageUrl,
 };
 
@@ -13,6 +14,10 @@ pub enum CliCommands {
     Cscs {
         #[command(subcommand)]
         command: CscsCommands,
+        #[clap(short, long, help = "override compute system (e.g. 'eiger', 'daint')")]
+        system: Option<String>,
+        #[clap(short, long, ignore_case=true, value_parser=clap::builder::PossibleValuesParser::new(ComputePlatform::VARIANTS).map(|s|s.parse::<ComputePlatform>().unwrap()),help = "override compute platform (one of 'hpc', 'ml' or 'cw')")]
+        platform: Option<ComputePlatform>,
     },
     #[clap(about = "Create a new project configuration file")]
     Init {

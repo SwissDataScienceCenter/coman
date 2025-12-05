@@ -53,32 +53,36 @@ async fn main() -> Result<()> {
     match args.command {
         Some(command) => match command {
             cli::CliCommands::Version => println!("{}", version()),
-            cli::CliCommands::Cscs { command: cscs_command } => match cscs_command {
+            cli::CliCommands::Cscs {
+                command: cscs_command,
+                system,
+                platform,
+            } => match cscs_command {
                 cli::CscsCommands::Login => cli_cscs_login().await?,
                 cli::CscsCommands::Job { command } => match command {
-                    cli::CscsJobCommands::List => cli_cscs_job_list().await?,
-                    cli::CscsJobCommands::Get { job_id } => cli_cscs_job_detail(job_id).await?,
-                    cli::CscsJobCommands::Log { job_id } => cli_cscs_job_log(job_id).await?,
+                    cli::CscsJobCommands::List => cli_cscs_job_list(system, platform).await?,
+                    cli::CscsJobCommands::Get { job_id } => cli_cscs_job_detail(job_id, system, platform).await?,
+                    cli::CscsJobCommands::Log { job_id } => cli_cscs_job_log(job_id, system, platform).await?,
                     cli::CscsJobCommands::Submit {
                         script_file,
                         image,
                         command,
                         workdir,
                         env,
-                    } => cli_cscs_job_start(script_file, image, command, workdir, env).await?,
-                    cli::CscsJobCommands::Cancel { job_id } => cli_cscs_job_cancel(job_id).await?,
+                    } => cli_cscs_job_start(script_file, image, command, workdir, env, system, platform).await?,
+                    cli::CscsJobCommands::Cancel { job_id } => cli_cscs_job_cancel(job_id, system, platform).await?,
                 },
                 cli::CscsCommands::File { command } => match command {
-                    cli::CscsFileCommands::List { path } => cli_cscs_file_list(path).await?,
+                    cli::CscsFileCommands::List { path } => cli_cscs_file_list(path, system, platform).await?,
                     cli::CscsFileCommands::Download { remote, local, account } => {
-                        cli_cscs_file_download(remote, local, account).await?
+                        cli_cscs_file_download(remote, local, account, system, platform).await?
                     }
                     cli::CscsFileCommands::Upload { local, remote, account } => {
-                        cli_cscs_file_upload(local, remote, account).await?
+                        cli_cscs_file_upload(local, remote, account, system, platform).await?
                     }
                 },
                 cli::CscsCommands::System { command } => match command {
-                    cli::CscsSystemCommands::List => cli_cscs_system_list().await?,
+                    cli::CscsSystemCommands::List => cli_cscs_system_list(platform).await?,
                     cli::CscsSystemCommands::Set { system_name, global } => {
                         cli_cscs_set_system(system_name, global).await?
                     }

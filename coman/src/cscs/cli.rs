@@ -16,6 +16,7 @@ use tokio::{
 };
 
 use crate::{
+    config::ComputePlatform,
     cscs::{
         api_client::JobStatus,
         handlers::{
@@ -38,8 +39,8 @@ pub(crate) async fn cli_cscs_login() -> Result<()> {
     };
     Ok(())
 }
-pub(crate) async fn cli_cscs_job_list() -> Result<()> {
-    match cscs_job_list().await {
+pub(crate) async fn cli_cscs_job_list(system: Option<String>, platform: Option<ComputePlatform>) -> Result<()> {
+    match cscs_job_list(system, platform).await {
         Ok(jobs) => {
             let mut table = tabled::Table::new(jobs);
             table.with(tabled::settings::Style::modern());
@@ -49,8 +50,12 @@ pub(crate) async fn cli_cscs_job_list() -> Result<()> {
         Err(e) => Err(e),
     }
 }
-pub(crate) async fn cli_cscs_job_detail(job_id: i64) -> Result<()> {
-    match cscs_job_details(job_id).await {
+pub(crate) async fn cli_cscs_job_detail(
+    job_id: i64,
+    system: Option<String>,
+    platform: Option<ComputePlatform>,
+) -> Result<()> {
+    match cscs_job_details(job_id, system, platform).await {
         Ok(Some(job)) => {
             let data = &[
                 ("Id", job.id.to_string()),
@@ -80,8 +85,12 @@ pub(crate) async fn cli_cscs_job_detail(job_id: i64) -> Result<()> {
     }
 }
 
-pub(crate) async fn cli_cscs_job_log(job_id: i64) -> Result<()> {
-    match cscs_job_log(job_id).await {
+pub(crate) async fn cli_cscs_job_log(
+    job_id: i64,
+    system: Option<String>,
+    platform: Option<ComputePlatform>,
+) -> Result<()> {
+    match cscs_job_log(job_id, system, platform).await {
         Ok(content) => {
             println!("{}", content);
             Ok(())
@@ -96,16 +105,22 @@ pub(crate) async fn cli_cscs_job_start(
     command: Option<Vec<String>>,
     workdir: Option<String>,
     env: Vec<(String, String)>,
+    system: Option<String>,
+    platform: Option<ComputePlatform>,
 ) -> Result<()> {
-    cscs_start_job(script_file, image, command, workdir, env).await
+    cscs_start_job(script_file, image, command, workdir, env, system, platform).await
 }
 
-pub(crate) async fn cli_cscs_job_cancel(job_id: i64) -> Result<()> {
-    cscs_job_cancel(job_id).await
+pub(crate) async fn cli_cscs_job_cancel(
+    job_id: i64,
+    system: Option<String>,
+    platform: Option<ComputePlatform>,
+) -> Result<()> {
+    cscs_job_cancel(job_id, system, platform).await
 }
 
-pub(crate) async fn cli_cscs_system_list() -> Result<()> {
-    match cscs_system_list().await {
+pub(crate) async fn cli_cscs_system_list(platform: Option<ComputePlatform>) -> Result<()> {
+    match cscs_system_list(platform).await {
         Ok(systems) => {
             let mut table = tabled::Table::new(systems);
             table.with(tabled::settings::Style::modern());
@@ -119,8 +134,12 @@ pub(crate) async fn cli_cscs_set_system(system_name: String, global: bool) -> Re
     cscs_system_set(system_name, global).await
 }
 
-pub(crate) async fn cli_cscs_file_list(path: PathBuf) -> Result<()> {
-    match cscs_file_list(path).await {
+pub(crate) async fn cli_cscs_file_list(
+    path: PathBuf,
+    system: Option<String>,
+    platform: Option<ComputePlatform>,
+) -> Result<()> {
+    match cscs_file_list(path, system, platform).await {
         Ok(path_entries) => {
             let mut table = tabled::Table::new(path_entries);
             table.with(tabled::settings::Style::empty());
@@ -131,8 +150,14 @@ pub(crate) async fn cli_cscs_file_list(path: PathBuf) -> Result<()> {
     }
 }
 
-pub(crate) async fn cli_cscs_file_download(remote: PathBuf, local: PathBuf, account: Option<String>) -> Result<()> {
-    match cscs_file_download(remote, local.clone(), account).await {
+pub(crate) async fn cli_cscs_file_download(
+    remote: PathBuf,
+    local: PathBuf,
+    account: Option<String>,
+    system: Option<String>,
+    platform: Option<ComputePlatform>,
+) -> Result<()> {
+    match cscs_file_download(remote, local.clone(), account, system.clone(), platform.clone()).await {
         Ok(None) => {
             println!("File successfully downloaded");
             Ok(())
@@ -143,7 +168,7 @@ pub(crate) async fn cli_cscs_file_download(remote: PathBuf, local: PathBuf, acco
             println!("started s3 transfer job {}", job_data.0);
             let mut transfer_done = false;
             while !transfer_done {
-                if let Some(job) = cscs_job_details(job_data.0).await? {
+                if let Some(job) = cscs_job_details(job_data.0, system.clone(), platform.clone()).await? {
                     match job.status {
                         JobStatus::Pending | JobStatus::Running => {}
                         JobStatus::Finished => transfer_done = true,
@@ -182,8 +207,14 @@ pub(crate) async fn cli_cscs_file_download(remote: PathBuf, local: PathBuf, acco
     }
 }
 
-pub(crate) async fn cli_cscs_file_upload(local: PathBuf, remote: PathBuf, account: Option<String>) -> Result<()> {
-    match cscs_file_upload(local.clone(), remote, account).await {
+pub(crate) async fn cli_cscs_file_upload(
+    local: PathBuf,
+    remote: PathBuf,
+    account: Option<String>,
+    system: Option<String>,
+    platform: Option<ComputePlatform>,
+) -> Result<()> {
+    match cscs_file_upload(local.clone(), remote, account, system, platform).await {
         Ok(None) => {
             println!("File successfully uploaded");
             Ok(())

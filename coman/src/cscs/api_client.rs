@@ -24,7 +24,10 @@ use firecrest_client::{
 use reqwest::Url;
 use strum::Display;
 
-use crate::trace_dbg;
+use crate::{
+    config::{ComputePlatform, Config},
+    trace_dbg,
+};
 
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, tabled::Tabled)]
 pub struct UserInfo {
@@ -365,9 +368,13 @@ pub struct CscsApi {
 }
 
 impl CscsApi {
-    pub fn new(token: String) -> Result<Self> {
+    pub fn new(token: String, platform: Option<ComputePlatform>) -> Result<Self> {
+        let config = Config::new()?;
         let client = FirecrestClient::default()
-            .base_path("https://api.cscs.ch/hpc/firecrest/v2/".to_owned())?
+            .base_path(format!(
+                "https://api.cscs.ch/{}/firecrest/v2/",
+                platform.unwrap_or(config.cscs.current_platform)
+            ))?
             .token(token);
         Ok(Self { client })
     }

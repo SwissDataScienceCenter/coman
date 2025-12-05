@@ -114,7 +114,7 @@ impl AsyncFetchWorkloadsPort {
 #[tuirealm::async_trait]
 impl PollAsync<UserEvent> for AsyncFetchWorkloadsPort {
     async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
-        match cscs_job_list().await {
+        match cscs_job_list(None, None).await {
             Ok(jobs) => Ok(Some(Event::User(UserEvent::Cscs(CscsEvent::GotWorkloadData(jobs))))),
             Err(e) => {
                 let _ = trace_dbg!(e);
@@ -139,7 +139,7 @@ impl AsyncSelectSystemPort {
 impl PollAsync<UserEvent> for AsyncSelectSystemPort {
     async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
         if self.receiver.recv().await.is_some() {
-            match cscs_system_list().await {
+            match cscs_system_list(None).await {
                 Ok(systems) => Ok(Some(Event::User(UserEvent::Cscs(CscsEvent::SelectSystemList(systems))))),
                 Err(e) => Ok(Some(Event::User(UserEvent::Error(format!(
                     "{:?}",
@@ -180,7 +180,7 @@ impl PollAsync<UserEvent> for AsyncJobLogPort {
             }
             Ok(Some(Event::None))
         } else if let Some(job_id) = self.current_job {
-            match cscs_job_log(job_id as i64).await {
+            match cscs_job_log(job_id as i64, None, None).await {
                 Ok(log) => {
                     let log = trace_dbg!(log);
                     Ok(Some(Event::User(UserEvent::Cscs(CscsEvent::GotJobLog(log)))))
@@ -221,8 +221,8 @@ async fn list_files(id: PathBuf) -> Result<Option<Event<UserEvent>>> {
     if id_str == "/" {
         // load file system roots
         let config = Config::new().expect("couldn't load config");
-        let user_info = cscs_user_info().await?;
-        let systems = cscs_system_list().await?;
+        let user_info = cscs_user_info(None, None).await?;
+        let systems = cscs_system_list(None).await?;
         let system = systems
             .iter()
             .find(|s| s.name == config.cscs.current_system)
@@ -232,30 +232,31 @@ async fn list_files(id: PathBuf) -> Result<Option<Event<UserEvent>>> {
         // So we try to append the user name to the paths and use that, if it works
         let mut subpaths = vec![];
         for fs in system.file_systems.clone() {
-            let entry = match cscs_stat_path(PathBuf::from(fs.path.clone()).join(user_info.name.clone())).await {
-                Ok(Some(_)) => PathEntry {
-                    name: format!("{}/{}", fs.path.clone(), user_info.name),
-                    path_type: PathType::Directory,
-                    permissions: None,
-                    size: None,
-                },
-                _ => PathEntry {
-                    name: fs.path.clone(),
-                    path_type: PathType::Directory,
-                    permissions: None,
-                    size: None,
-                },
-            };
+            let entry =
+                match cscs_stat_path(PathBuf::from(fs.path.clone()).join(user_info.name.clone()), None, None).await {
+                    Ok(Some(_)) => PathEntry {
+                        name: format!("{}/{}", fs.path.clone(), user_info.name),
+                        path_type: PathType::Directory,
+                        permissions: None,
+                        size: None,
+                    },
+                    _ => PathEntry {
+                        name: fs.path.clone(),
+                        path_type: PathType::Directory,
+                        permissions: None,
+                        size: None,
+                    },
+                };
             subpaths.push(entry);
         }
         Ok(Some(Event::User(UserEvent::File(FileEvent::List(id_str, subpaths)))))
     } else {
-        let subpaths = cscs_file_list(id).await?;
+        let subpaths = cscs_file_list(id, None, None).await?;
         Ok(Some(Event::User(UserEvent::File(FileEvent::List(id_str, subpaths)))))
     }
 }
 async fn download_file(remote: PathBuf, local: PathBuf) -> Result<Option<Event<UserEvent>>> {
-    match cscs_file_download(remote, local.clone(), None).await {
+    match cscs_file_download(remote, local.clone(), None, None, None).await {
         Ok(None) => Ok(Some(Event::User(UserEvent::File(FileEvent::DownloadSuccessful)))),
         Ok(Some(job_data)) => {
             // file is large, so we created a transfer job to s3 that we need to wait on
@@ -263,7 +264,7 @@ async fn download_file(remote: PathBuf, local: PathBuf) -> Result<Option<Event<U
             // TODO: add status updates once we have some sort of status line update functionality
             let mut transfer_done = false;
             while !transfer_done {
-                if let Some(job) = cscs_job_details(job_data.0).await? {
+                if let Some(job) = cscs_job_details(job_data.0, None, None).await? {
                     match job.status {
                         JobStatus::Pending | JobStatus::Running => {}
                         JobStatus::Finished => transfer_done = true,
