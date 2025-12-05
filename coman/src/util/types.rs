@@ -9,7 +9,7 @@ use nom::{
     bytes::tag,
     character::complete::{alphanumeric1, digit1},
     combinator::{complete, opt, recognize},
-    multi::separated_list1,
+    multi::{many_m_n, many1, separated_list0, separated_list1},
     sequence::{preceded, terminated},
 };
 use oci_distribution::{
@@ -127,18 +127,31 @@ impl FromStr for DockerImageUrl {
     type Err = Report;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut parser = complete((
-            opt(terminated(
-                alt((
-                    recognize((separated_list1(tag("."), alphanumeric1), tag(":"), digit1)),
-                    recognize(separated_list1(tag("."), alphanumeric1)),
-                )),
-                tag("/"),
+        // see https://ktomk.github.io/pipelines/doc/DOCKER-NAME-TAG.html#syntax
+        let host = opt(terminated(
+            alt((
+                recognize((separated_list1(tag("."), alphanumeric1), tag(":"), digit1)),
+                recognize(separated_list1(tag("."), alphanumeric1)),
             )),
-            alt((recognize((alphanumeric1, tag("/"), alphanumeric1)), alphanumeric1)),
-            opt(preceded(tag(":"), alphanumeric1)),
-            opt(preceded(tag("@sha256:"), alphanumeric1)),
+            tag("/"),
         ));
+        let image = recognize(separated_list0(
+            tag("/"),
+            separated_list0(
+                alt((
+                    tag("."),
+                    recognize(many_m_n(1, 2, tag("_"))),
+                    recognize(many1(tag("-"))),
+                )),
+                alphanumeric1,
+            ),
+        ));
+        let docker_tag = opt(preceded(
+            tag(":"),
+            recognize(separated_list0(alt((tag("."), tag("-"))), alphanumeric1)),
+        ));
+        let digest = opt(preceded(tag("@sha256:"), alphanumeric1));
+        let mut parser = complete((host, image, docker_tag, digest));
         let parsed: DockerParseType = parser.parse(s);
         match parsed {
             Ok(result) => Ok(DockerImageUrl {
@@ -176,5 +189,28 @@ impl Display for DockerImageUrl {
             write!(f, "@sha256:{}", digest)?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use super::*;
+
+    #[rstest]
+    #[case("ubuntu",(None,"ubuntu",None,None))]
+    #[case("docker.io/library/hello-world:latest@sha256:deadbeef",(Some("docker.io"),"library/hello-world",Some("latest"),Some("deadbeef")))]
+    #[case("ghcr.io/swissdatasciencecenter/renku-frontend-buildpacks/run-image:0.2.1",(Some("ghcr.io"),"swissdatasciencecenter/renku-frontend-buildpacks/run-image",Some("0.2.1"),None))]
+    #[case("test.ghcr.io/a/b/c/d/e:a-1.f-2", (Some("test.ghcr.io"), "a/b/c/d/e", Some("a-1.f-2"), None))]
+    fn test_docker_parsing(
+        #[case] docker_url: &str,
+        #[case] expected: (Option<&str>, &str, Option<&str>, Option<&str>),
+    ) {
+        let image = DockerImageUrl::from_str(docker_url).expect("couldn't parse image");
+        assert_eq!(image.registry, expected.0.map(|s| s.to_owned()));
+        assert_eq!(image.image.as_str(), expected.1);
+        assert_eq!(image.tag, expected.2.map(|s| s.to_owned()));
+        assert_eq!(image.digest, expected.3.map(|s| s.to_owned()));
     }
 }
