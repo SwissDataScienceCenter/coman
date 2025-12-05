@@ -11,17 +11,17 @@ Compute Manager for managing HPC compute
 ### Linux
 
 ```shell
-$ curl -LO https://github.com/SwissDataScienceCenter/coman/releases/latest/download/coman-Linux-x86_64-musl.tar.gz
-# tar -xzf coman-Linux-x86_64-musl.tar.gz -C /usr/local/bin/
-# chmod +x /usr/local/bin/coman
+curl -LO https://github.com/SwissDataScienceCenter/coman/releases/latest/download/coman-Linux-x86_64-musl.tar.gz
+sudo tar -xzf coman-Linux-x86_64-musl.tar.gz -C /usr/local/bin/
+sudo chmod +x /usr/local/bin/coman
 ```
 
 ### Macos
 
 ```shell
-$ curl -LO https://github.com/SwissDataScienceCenter/coman/releases/latest/download/coman-Darwin-x86_64.tar.gz
-# tar -xzf coman-Darwin-x86_64.tar.gz -C /usr/local/bin/
-# chmod +x /usr/local/bin/coman
+curl -LO https://github.com/SwissDataScienceCenter/coman/releases/latest/download/coman-Darwin-x86_64.tar.gz
+sudo tar -xzf coman-Darwin-x86_64.tar.gz -C /usr/local/bin/
+sudo chmod +x /usr/local/bin/coman
 ```
 
 ### Windows
@@ -86,7 +86,7 @@ step unless your keys change.
 To create a Coman config for a project/folder, run
 
 ```shell
-$ coman init <folder>
+coman init <folder>
 ```
 
 This creates a `coman.toml` file that you can customize with settings if you wish.
@@ -94,7 +94,7 @@ This creates a `coman.toml` file that you can customize with settings if you wis
 Select what system you want to run on
 
 ```shell
-$ coman cscs system ls # this lists systems you can see.
+coman cscs system ls # this lists systems you can see.
 ┌───────┬────────────────────────────┐
 │ name  │ services_health            │
 ├───────┼────────────────────────────┤
@@ -130,13 +130,17 @@ $ coman cscs system ls # this lists systems you can see.
 │       │ ║ Filesystem   ║ true    ║ │
 │       │ ╚══════════════╩═════════╝ │
 └───────┴────────────────────────────┘
-$ coman cscs system set daint
+```
+
+Then set the system (e.g. `daint`) with 
+```
+coman cscs system set daint
 ```
 
 To execute a job on CSCS, run a command like
 
 ```shell
-$ coman cscs job submit -i ubuntu:latest -- echo test
+coman cscs job submit -i ubuntu:latest -- echo test
 ```
 This will run the command `echo test` using the `ubuntu:latest` docker image and default settings.
 See `coman cscs job submit -h` for more options.
@@ -144,7 +148,7 @@ See `coman cscs job submit -h` for more options.
 You can list your jobs using
 
 ```shell
-$ coman cscs job list
+coman cscs job list
 ┌─────────┬────────────────┬──────────┬──────────┬────────────────────────────┬────────────────────────────┐
 │ id      │ name           │ status   │ user     │ start_date                 │ end_date                   │
 ├─────────┼────────────────┼──────────┼──────────┼────────────────────────────┼────────────────────────────┤
@@ -154,7 +158,7 @@ $ coman cscs job list
 
 Get details for a job with
 ```shell
-$ coman cscs job get <id>
+coman cscs job get <id>
 ┌───────────────┬────────────────────────────────────────────────────────┐
 │ Id            │ 2127021                                                │
 ├───────────────┼────────────────────────────────────────────────────────┤
@@ -181,7 +185,7 @@ $ coman cscs job get <id>
 Get the logs from a job
 
 ```shell
-$ coman cscs job log <id>
+coman cscs job log <id>
 ```
 
 
@@ -194,3 +198,41 @@ To run the TUI, simply run `coman` without any arguments:
 The TUI should be pretty self-explanatory. It gives an overview of your jobs on the selected system,
 refreshed every couple of seconds, lets you see the logs and all the other functionality of the CLI,
 just in an interactive way.
+
+
+
+## Development
+
+### Prerequisites
+
+Make sure you have:
+
+- Rust and Cargo installed (get from https://rustup.rs/)
+- OpenSSL development headers
+- oas3-gen (install with `cargo install oas3-gen@0.21.1`)
+
+
+```
+cargo build
+cargo run
+```
+
+
+### Install binaries
+
+Build the binaries and
+```
+cargo build --release
+```
+
+Then copy it to the bin folder
+```
+sudo cp target/release/coman /usr/local/bin/
+sudo chmod +x /usr/local/bin/coman
+```
+
+If you want to use cargo to install `coman`, make sure to remove any version of coman from `/usr/local/bin/` and run
+
+```
+cargo install --path ./coman
+```
