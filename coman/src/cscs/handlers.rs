@@ -10,7 +10,9 @@ use reqwest::Url;
 use crate::{
     config::{ComputePlatform, Config},
     cscs::{
-        api_client::{CscsApi, FileStat, FileSystemType, Job, JobDetail, PathEntry, S3Upload, System, UserInfo},
+        api_client::{
+            CscsApi, FileStat, FileSystemType, Job, JobDetail, PathEntry, PathType, S3Upload, System, UserInfo,
+        },
         oauth2::{
             CLIENT_ID_SECRET_NAME, CLIENT_SECRET_SECRET_NAME, client_credentials_login, finish_cscs_device_login,
             start_cscs_device_login,
@@ -321,6 +323,16 @@ pub async fn cscs_file_upload(
         Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
+            let current_system = &system.unwrap_or(config.cscs.current_system);
+            let existing = api_client.list_path(current_system, remote.clone()).await?;
+            let remote = if !existing.is_empty() {
+                if existing.len() == 1 && existing[0].path_type == PathType::File {
+                    return Err(eyre!("remote file already exists"));
+                }
+                remote.join(local.file_name().ok_or(eyre!("couldn't get filename for local file"))?)
+            } else {
+                remote
+            };
 
             let file_meta = std::fs::metadata(local.clone())?;
 
@@ -333,15 +345,13 @@ pub async fn cscs_file_upload(
             if size < CSCS_MAX_DIRECT_SIZE {
                 // upload directly
                 let contents = std::fs::read(local)?;
-                api_client
-                    .upload(&system.unwrap_or(config.cscs.current_system), remote, contents)
-                    .await?;
+                api_client.upload(current_system, remote, contents).await?;
                 Ok(None)
             } else {
                 // upload via s3
                 let account = account.or(config.cscs.account);
                 let transfer_data = api_client
-                    .transfer_upload(&config.cscs.current_system, account, remote, size as i64)
+                    .transfer_upload(current_system, account, remote, size as i64)
                     .await?;
 
                 Ok(Some(transfer_data))
