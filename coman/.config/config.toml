@@ -16,7 +16,7 @@ srun --environment={{environment_file}} {{command}}
 
 edf_file_template = """
 image = "{{edf_image}}"
-mounts = ["${SCRATCH}:/scratch"]
+mounts = [{% for source, target in mount %}"{{source}}:{{target}}",{% endfor %}]
 workdir = "{{container_workdir}}"
 
 [env]
