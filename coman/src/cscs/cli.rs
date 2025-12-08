@@ -171,6 +171,11 @@ pub(crate) async fn cli_cscs_file_download(
     system: Option<String>,
     platform: Option<ComputePlatform>,
 ) -> Result<()> {
+    let local = if local.is_dir() {
+        local.join(remote.file_name().ok_or(eyre!("couldn't get name of remote file"))?)
+    } else {
+        local
+    };
     match cscs_file_download(remote, local.clone(), account, system.clone(), platform.clone()).await {
         Ok(None) => {
             println!("File successfully downloaded");
