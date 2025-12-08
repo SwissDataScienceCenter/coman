@@ -55,7 +55,7 @@ impl DockerImageUrl {
     pub fn to_edf(&self) -> String {
         format!(
             "{}{}{}{}",
-            self.registry.clone().map(|r| format!("{r}/")).unwrap_or_default(),
+            self.registry.clone().map(|r| format!("{r}#")).unwrap_or_default(),
             self.image,
             self.tag.clone().map(|t| format!(":{}", t)).unwrap_or_default(),
             self.digest
@@ -212,5 +212,18 @@ mod tests {
         assert_eq!(image.image.as_str(), expected.1);
         assert_eq!(image.tag, expected.2.map(|s| s.to_owned()));
         assert_eq!(image.digest, expected.3.map(|s| s.to_owned()));
+    }
+
+    #[rstest]
+    #[case((None, "ubuntu", None, None), "ubuntu")]
+    #[case((Some("ghcr.io"), "test/ubuntu",Some("latest"),Some("deadbeef")), "ghcr.io#test/ubuntu:latest@sha256:deadbeef")]
+    fn test_edf(#[case] values: (Option<&str>, &str, Option<&str>, Option<&str>), #[case] expected_edf: &str) {
+        let image = DockerImageUrl {
+            registry: values.0.map(|s| s.to_owned()),
+            image: values.1.to_owned(),
+            tag: values.2.map(|s| s.to_owned()),
+            digest: values.3.map(|s| s.to_owned()),
+        };
+        assert_eq!(image.to_edf(), expected_edf);
     }
 }
