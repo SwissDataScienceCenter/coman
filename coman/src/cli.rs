@@ -63,7 +63,11 @@ pub enum CscsJobCommands {
     #[clap(alias("g"), about = "Get metadata for a specific job [aliases: g]")]
     Get { job_id: i64 },
     #[clap(about = "Get the stdout of a job")]
-    Log { job_id: i64 },
+    Log {
+        #[clap(short, long, action, help = "whether to get stderr instead of stdout")]
+        stderr: bool,
+        job_id: i64,
+    },
 
     #[clap(alias("s"), about = "Submit a new compute job [aliases: s]")]
     Submit {

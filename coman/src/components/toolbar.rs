@@ -8,7 +8,7 @@ use crate::{
     },
     trace_dbg,
 };
-const WORKLOAD_TOOLTIP: &str = "q: quit, Esc: close/back, l: logs, f: File view, x: menu, ?: help";
+const WORKLOAD_TOOLTIP: &str = "q: quit, Esc: close/back, l: logs, f: File view, x: menu, tab: switch view, ?: help";
 const FILETREE_TOOLTIP: &str = "q: quit, ↑↓: navigate,←→: collapse/expand, x: menu, ?: help";
 
 #[derive(MockComponent)]

@@ -77,7 +77,7 @@ impl Component<Msg, UserEvent> for WorkloadList {
                     && !self.jobs.is_empty()
                 {
                     let job = self.jobs[index].clone();
-                    return Some(Msg::Job(JobMsg::ShowLog(job.id)));
+                    return Some(Msg::Job(JobMsg::Show(job.id)));
                 }
                 CmdResult::None
             }

@@ -6,17 +6,15 @@ use tuirealm::{
     props::{Alignment, BorderType, Borders, Color, PropPayload, PropValue, TextSpan},
 };
 
-use crate::{
-    app::{
-        messages::{JobMsg, Msg},
-        user_events::{CscsEvent, UserEvent},
-    },
-    trace_dbg,
+use crate::app::{
+    messages::{JobMsg, Msg},
+    user_events::{CscsEvent, UserEvent},
 };
 
 #[derive(MockComponent)]
 pub struct WorkloadLog {
     component: Textarea,
+    stderr: bool,
 }
 
 impl WorkloadLog {
@@ -24,8 +22,9 @@ impl WorkloadLog {
         Self {
             component: Textarea::default()
                 .borders(Borders::default().modifiers(BorderType::Rounded).color(Color::Yellow))
-                .title("Workload Log", Alignment::Center)
+                .title("Workload Log (stdout)", Alignment::Center)
                 .step(4),
+            stderr: false,
         }
     }
 }
@@ -33,8 +32,6 @@ impl Component<Msg, UserEvent> for WorkloadLog {
     fn on(&mut self, ev: tuirealm::Event<UserEvent>) -> Option<Msg> {
         let _ = match ev {
             Event::User(UserEvent::Cscs(CscsEvent::GotJobLog(log))) => {
-                let _ = trace_dbg!("got log component");
-                let log = trace_dbg!(log);
                 self.attr(
                     Attribute::Text,
                     AttrValue::Payload(PropPayload::Vec(
@@ -51,8 +48,25 @@ impl Component<Msg, UserEvent> for WorkloadLog {
             Event::Keyboard(KeyEvent { code: Key::PageUp, .. }) => self.perform(Cmd::Scroll(Direction::Up)),
             Event::Keyboard(KeyEvent { code: Key::Home, .. }) => self.perform(Cmd::GoTo(Position::Begin)),
             Event::Keyboard(KeyEvent { code: Key::End, .. }) => self.perform(Cmd::GoTo(Position::End)),
+            Event::Keyboard(KeyEvent { code: Key::Tab, .. }) => {
+                self.stderr = !self.stderr;
+                if self.stderr {
+                    self.attr(
+                        Attribute::Title,
+                        AttrValue::Title(("Workload Log (stderr)".to_owned(), Alignment::Center)),
+                    );
+                } else {
+                    self.attr(
+                        Attribute::Title,
+                        AttrValue::Title(("Workload Log (stdout)".to_owned(), Alignment::Center)),
+                    );
+                }
+                // empty log view
+                self.attr(Attribute::Text, AttrValue::Payload(PropPayload::Vec(vec![])));
+                return Some(Msg::Job(JobMsg::Switch));
+            }
             Event::Keyboard(KeyEvent { code: Key::Esc, .. }) => {
-                return Some(Msg::Job(JobMsg::CloseLog));
+                return Some(Msg::Job(JobMsg::Close));
             }
             _ => CmdResult::None,
         };

@@ -154,17 +154,25 @@ impl PollAsync<UserEvent> for AsyncSelectSystemPort {
     }
 }
 
+pub enum JobLogAction {
+    Job(usize),
+    SwitchLog,
+    Stop,
+}
+
 /// This port handles polling the logs of a CSCS job
 pub(crate) struct AsyncJobLogPort {
-    receiver: mpsc::Receiver<Option<usize>>,
+    receiver: mpsc::Receiver<JobLogAction>,
     current_job: Option<usize>,
+    stderr: bool,
 }
 
 impl AsyncJobLogPort {
-    pub fn new(receiver: mpsc::Receiver<Option<usize>>) -> Self {
+    pub fn new(receiver: mpsc::Receiver<JobLogAction>) -> Self {
         Self {
             receiver,
             current_job: None,
+            stderr: false,
         }
     }
 }
@@ -176,11 +184,21 @@ impl PollAsync<UserEvent> for AsyncJobLogPort {
         }
         if !self.receiver.is_empty() {
             if let Some(val) = self.receiver.recv().await {
-                self.current_job = val;
+                match val {
+                    JobLogAction::Job(jobid) => {
+                        self.current_job = Some(jobid);
+                    }
+                    JobLogAction::SwitchLog => {
+                        self.stderr = !self.stderr;
+                    }
+                    JobLogAction::Stop => {
+                        self.current_job = None;
+                    }
+                }
             }
             Ok(Some(Event::None))
         } else if let Some(job_id) = self.current_job {
-            match cscs_job_log(job_id as i64, None, None).await {
+            match cscs_job_log(job_id as i64, self.stderr, None, None).await {
                 Ok(log) => {
                     let log = trace_dbg!(log);
                     Ok(Some(Event::User(UserEvent::Cscs(CscsEvent::GotJobLog(log)))))

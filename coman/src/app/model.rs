@@ -26,7 +26,7 @@ use crate::{
     },
     cscs::{
         handlers::{cscs_login, cscs_system_set},
-        ports::TreeAction,
+        ports::{JobLogAction, TreeAction},
     },
     trace_dbg,
     util::ui::{draw_area_in_absolute, draw_area_in_absolute_fixed_height},
@@ -56,7 +56,7 @@ where
 
     /// Triggers watching job logs
     /// sending None stops watching
-    pub job_log_tx: mpsc::Sender<Option<usize>>,
+    pub job_log_tx: mpsc::Sender<JobLogAction>,
 
     /// Allows creating user events based on messages
     pub user_event_tx: mpsc::Sender<UserEvent>,
@@ -74,7 +74,7 @@ where
         bridge: TerminalBridge<T>,
         error_tx: mpsc::Sender<String>,
         select_system_tx: mpsc::Sender<()>,
-        job_log_tx: mpsc::Sender<Option<usize>>,
+        job_log_tx: mpsc::Sender<JobLogAction>,
         user_event_tx: mpsc::Sender<UserEvent>,
         file_tree_tx: mpsc::Sender<TreeAction>,
     ) -> Self {
@@ -305,7 +305,7 @@ where
     }
     fn handle_job_msg(&mut self, msg: JobMsg) -> Option<Msg> {
         match msg {
-            JobMsg::ShowLog(jobid) => {
+            JobMsg::Show(jobid) => {
                 if self.app.mounted(&Id::WorkloadList) {
                     assert!(self.app.umount(&Id::WorkloadList).is_ok());
                 }
@@ -319,11 +319,18 @@ where
                 assert!(self.app.active(&Id::WorkloadLogs).is_ok());
                 let job_log_tx = self.job_log_tx.clone();
                 tokio::spawn(async move {
-                    job_log_tx.send(Some(jobid)).await.unwrap();
+                    job_log_tx.send(JobLogAction::Job(jobid)).await.unwrap();
                 });
                 None
             }
-            JobMsg::CloseLog => {
+            JobMsg::Switch => {
+                let job_log_tx = self.job_log_tx.clone();
+                tokio::spawn(async move {
+                    job_log_tx.send(JobLogAction::SwitchLog).await.unwrap();
+                });
+                None
+            }
+            JobMsg::Close => {
                 if self.app.mounted(&Id::WorkloadLogs) {
                     assert!(self.app.umount(&Id::WorkloadLogs).is_ok());
                 }
@@ -338,7 +345,7 @@ where
                 let job_log_tx = self.job_log_tx.clone();
                 tokio::spawn(async move {
                     // stopp polling for logs
-                    job_log_tx.send(None).await.unwrap();
+                    job_log_tx.send(JobLogAction::Stop).await.unwrap();
                 });
                 None
             }

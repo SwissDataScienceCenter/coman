@@ -117,7 +117,12 @@ pub async fn cscs_job_details(
     }
 }
 
-pub async fn cscs_job_log(job_id: i64, system: Option<String>, platform: Option<ComputePlatform>) -> Result<String> {
+pub async fn cscs_job_log(
+    job_id: i64,
+    stderr: bool,
+    system: Option<String>,
+    platform: Option<ComputePlatform>,
+) -> Result<String> {
     match get_access_token().await {
         Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
@@ -127,9 +132,12 @@ pub async fn cscs_job_log(job_id: i64, system: Option<String>, platform: Option<
             if job.is_none() {
                 return Err(eyre!("couldn't find job {}", job_id));
             }
-            api_client
-                .tail(current_system, PathBuf::from(job.unwrap().stdout), 100)
-                .await
+            let path = if stderr {
+                PathBuf::from(job.unwrap().stderr)
+            } else {
+                PathBuf::from(job.unwrap().stdout)
+            };
+            api_client.tail(current_system, path, 100).await
         }
         Err(e) => Err(e),
     }

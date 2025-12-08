@@ -87,10 +87,11 @@ pub(crate) async fn cli_cscs_job_detail(
 
 pub(crate) async fn cli_cscs_job_log(
     job_id: i64,
+    stderr: bool,
     system: Option<String>,
     platform: Option<ComputePlatform>,
 ) -> Result<()> {
-    match cscs_job_log(job_id, system, platform).await {
+    match cscs_job_log(job_id, stderr, system, platform).await {
         Ok(content) => {
             println!("{}", content);
             Ok(())

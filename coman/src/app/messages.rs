@@ -49,8 +49,9 @@ pub enum CscsMsg {
 }
 #[derive(Debug, PartialEq)]
 pub enum JobMsg {
-    ShowLog(usize),
-    CloseLog,
+    Show(usize),
+    Switch,
+    Close,
 }
 #[derive(Debug, Clone, Copy, Default, PartialEq, PartialOrd, Eq, Ord, strum::Display)]
 pub enum View {
