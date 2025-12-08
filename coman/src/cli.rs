@@ -54,6 +54,8 @@ pub enum CscsCommands {
         command: CscsSystemCommands,
     },
 }
+
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand, Debug)]
 pub enum CscsJobCommands {
     #[clap(alias("ls"), about = "List all jobs [aliases: ls]")]
@@ -75,6 +77,8 @@ pub enum CscsJobCommands {
         workdir: Option<String>,
         #[clap(short='E', value_name="KEY=VALUE", value_parser=parse_key_val::<String,String>, help="Environment variables to set in the container")]
         env: Vec<(String, String)>,
+        #[clap(short='M', value_name="PATH:CONTAINER_PATH", value_parser=parse_key_val_colon::<String,String>, help="Paths to mount inside container")]
+        mount: Vec<(String, String)>,
         #[clap(short, long, help = "The docker image to use")]
         image: Option<DockerImageUrl>,
         #[clap(trailing_var_arg = true, help = "The command to run in the container")]
@@ -176,5 +180,17 @@ where
     let pos = s
         .find('=')
         .ok_or_else(|| format!("invalid KEY=value: no `=` found in `{s}`"))?;
+    Ok((s[..pos].parse()?, s[pos + 1..].parse()?))
+}
+fn parse_key_val_colon<T, U>(s: &str) -> Result<(T, U), Box<dyn Error + Send + Sync + 'static>>
+where
+    T: std::str::FromStr,
+    T::Err: Error + Send + Sync + 'static,
+    U: std::str::FromStr,
+    U::Err: Error + Send + Sync + 'static,
+{
+    let pos = s
+        .find(':')
+        .ok_or_else(|| format!("invalid KEY:value: no `:` found in `{s}`"))?;
     Ok((s[..pos].parse()?, s[pos + 1..].parse()?))
 }

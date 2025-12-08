@@ -70,8 +70,20 @@ async fn main() -> Result<()> {
                         command,
                         workdir,
                         env,
+                        mount,
                     } => {
-                        cli_cscs_job_start(script_file, image, command, workdir, env, system, platform, account).await?
+                        cli_cscs_job_start(
+                            script_file,
+                            image,
+                            command,
+                            workdir,
+                            env,
+                            mount,
+                            system,
+                            platform,
+                            account,
+                        )
+                        .await?
                     }
                     cli::CscsJobCommands::Cancel { job_id } => cli_cscs_job_cancel(job_id, system, platform).await?,
                 },

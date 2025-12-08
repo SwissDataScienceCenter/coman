@@ -2,7 +2,7 @@
 use std::os::unix::fs::MetadataExt;
 #[cfg(target_family = "windows")]
 use std::os::windows::fs::MetadataExt;
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 use color_eyre::{Result, eyre::eyre};
 use reqwest::Url;
@@ -153,6 +153,7 @@ pub async fn cscs_start_job(
     command: Option<Vec<String>>,
     container_workdir: Option<String>,
     env: Vec<(String, String)>,
+    mount: Vec<(String, String)>,
     system: Option<String>,
     platform: Option<ComputePlatform>,
     account: Option<String>,
@@ -186,6 +187,8 @@ pub async fn cscs_start_job(
 
             let mut envvars = config.cscs.env.clone();
             envvars.extend(env);
+            let mut mount: HashMap<String, String> = mount.into_iter().collect();
+            mount.entry("${SCRATCH}".to_owned()).or_insert("/scratch".to_owned());
 
             let mut tera = tera::Tera::default();
 
@@ -221,6 +224,7 @@ pub async fn cscs_start_job(
             context.insert("edf_image", &docker_image.to_edf());
             context.insert("container_workdir", &container_workdir);
             context.insert("env", &envvars);
+            context.insert("mount", &mount);
 
             let environment_file = tera.render("environment.toml", &context)?;
             api_client.mkdir(current_system, base_path.clone()).await?;

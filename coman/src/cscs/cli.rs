@@ -106,11 +106,23 @@ pub(crate) async fn cli_cscs_job_start(
     command: Option<Vec<String>>,
     workdir: Option<String>,
     env: Vec<(String, String)>,
+    mount: Vec<(String, String)>,
     system: Option<String>,
     platform: Option<ComputePlatform>,
     account: Option<String>,
 ) -> Result<()> {
-    cscs_start_job(script_file, image, command, workdir, env, system, platform, account).await
+    cscs_start_job(
+        script_file,
+        image,
+        command,
+        workdir,
+        env,
+        mount,
+        system,
+        platform,
+        account,
+    )
+    .await
 }
 
 pub(crate) async fn cli_cscs_job_cancel(
