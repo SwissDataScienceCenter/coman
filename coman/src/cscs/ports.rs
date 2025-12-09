@@ -6,14 +6,14 @@ use color_eyre::{
 };
 use futures::StreamExt;
 use openidconnect::core::CoreDeviceAuthorizationResponse;
-use tokio::{fs::File, io::AsyncWriteExt, sync::mpsc};
+use tokio::{fs::File, io::AsyncWriteExt, sync::mpsc, time::Instant};
 use tuirealm::{
     Event,
     listener::{ListenerResult, PollAsync},
 };
 
 use crate::{
-    app::user_events::{CscsEvent, FileEvent, UserEvent},
+    app::user_events::{CscsEvent, FileEvent, StatusEvent, UserEvent},
     config::Config,
     cscs::{
         api_client::{JobStatus, PathEntry, PathType},
@@ -199,17 +199,13 @@ impl PollAsync<UserEvent> for AsyncJobLogPort {
             Ok(Some(Event::None))
         } else if let Some(job_id) = self.current_job {
             match cscs_job_log(job_id as i64, self.stderr, None, None).await {
-                Ok(log) => {
-                    let log = trace_dbg!(log);
-                    Ok(Some(Event::User(UserEvent::Cscs(CscsEvent::GotJobLog(log)))))
-                }
+                Ok(log) => Ok(Some(Event::User(UserEvent::Cscs(CscsEvent::GotJobLog(log))))),
                 Err(e) => Ok(Some(Event::User(UserEvent::Error(format!(
                     "{:?}",
                     Err::<(), Report>(e).wrap_err("couldn't get log")
                 ))))),
             }
         } else {
-            trace_dbg!("nothing");
             Ok(Some(Event::None))
         }
     }
@@ -223,11 +219,12 @@ pub enum TreeAction {
 /// This port handles asynchronous file operations on CSCS
 pub(crate) struct AsyncFileTreePort {
     receiver: mpsc::Receiver<TreeAction>,
+    event_tx: mpsc::Sender<UserEvent>,
 }
 
 impl AsyncFileTreePort {
-    pub fn new(receiver: mpsc::Receiver<TreeAction>) -> Self {
-        Self { receiver }
+    pub fn new(receiver: mpsc::Receiver<TreeAction>, event_tx: mpsc::Sender<UserEvent>) -> Self {
+        Self { receiver, event_tx }
     }
 }
 async fn list_files(id: PathBuf) -> Result<Option<Event<UserEvent>>> {
@@ -273,7 +270,11 @@ async fn list_files(id: PathBuf) -> Result<Option<Event<UserEvent>>> {
         Ok(Some(Event::User(UserEvent::File(FileEvent::List(id_str, subpaths)))))
     }
 }
-async fn download_file(remote: PathBuf, local: PathBuf) -> Result<Option<Event<UserEvent>>> {
+async fn download_file(
+    remote: PathBuf,
+    local: PathBuf,
+    event_tx: mpsc::Sender<UserEvent>,
+) -> Result<Option<Event<UserEvent>>> {
     match cscs_file_download(remote, local.clone(), None, None, None).await {
         Ok(None) => Ok(Some(Event::User(UserEvent::File(FileEvent::DownloadSuccessful)))),
         Ok(Some(job_data)) => {
@@ -284,7 +285,13 @@ async fn download_file(remote: PathBuf, local: PathBuf) -> Result<Option<Event<U
             while !transfer_done {
                 if let Some(job) = cscs_job_details(job_data.0, None, None).await? {
                     match job.status {
-                        JobStatus::Pending | JobStatus::Running => {}
+                        JobStatus::Pending | JobStatus::Running => {
+                            event_tx
+                                .send(UserEvent::Status(StatusEvent::Info(
+                                    "waiting for transfer job".to_owned(),
+                                )))
+                                .await?;
+                        }
                         JobStatus::Finished => transfer_done = true,
                         JobStatus::Cancelled | JobStatus::Failed => {
                             return Ok(Some(Event::User(UserEvent::Error(
@@ -305,9 +312,22 @@ async fn download_file(remote: PathBuf, local: PathBuf) -> Result<Option<Event<U
 
             let mut output = File::create(local).await?;
             let mut stream = reqwest::get(job_data.1).await?.bytes_stream();
+            let mut start_time = Instant::now();
+            let mut progress = 0;
             while let Some(chunk_result) = stream.next().await {
                 let chunk = chunk_result?;
                 output.write_all(&chunk).await?;
+                progress += chunk.len();
+
+                if start_time.elapsed() >= Duration::from_millis(500) {
+                    event_tx
+                        .send(UserEvent::Status(StatusEvent::Progress(
+                            "Downloading".to_owned(),
+                            100 * progress / job_data.2,
+                        )))
+                        .await?;
+                    start_time = Instant::now();
+                }
             }
             output.flush().await?;
             Ok(Some(Event::User(UserEvent::File(FileEvent::DownloadSuccessful))))
@@ -325,6 +345,7 @@ impl PollAsync<UserEvent> for AsyncFileTreePort {
             return Ok(None);
         }
         if let Some(action) = self.receiver.recv().await {
+            let event_tx = self.event_tx.clone();
             match action {
                 TreeAction::List(id) => match list_files(id).await {
                     Ok(event) => Ok(event),
@@ -333,7 +354,7 @@ impl PollAsync<UserEvent> for AsyncFileTreePort {
                         Err::<(), Report>(e).wrap_err("couldn't list subpaths")
                     ))))),
                 },
-                TreeAction::Download(remote, local) => match download_file(remote, local).await {
+                TreeAction::Download(remote, local) => match download_file(remote, local, event_tx).await {
                     Ok(event) => Ok(event),
                     Err(e) => Ok(Some(Event::User(UserEvent::Error(format!(
                         "{:?}",

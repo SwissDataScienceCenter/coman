@@ -5,7 +5,7 @@ use tuirealm::{
 };
 
 use crate::app::{
-    messages::{InfoPopupMsg, MenuMsg, Msg, SystemSelectMsg, View},
+    messages::{MenuMsg, Msg, StatusMsg, SystemSelectMsg, View},
     user_events::{CscsEvent, FileEvent, UserEvent},
 };
 
@@ -42,13 +42,15 @@ impl Component<Msg, UserEvent> for GlobalListener {
             }
             Event::User(UserEvent::Error(msg)) => Some(Msg::Error(msg)),
             Event::User(UserEvent::Info(msg)) => Some(Msg::Info(msg)),
-            Event::User(UserEvent::Cscs(CscsEvent::LoggedIn)) => Some(Msg::Info("Successfully logged in".to_string())),
+            Event::User(UserEvent::Cscs(CscsEvent::LoggedIn)) => {
+                Some(Msg::Status(StatusMsg::Info("Successfully logged in".to_string())))
+            }
             Event::User(UserEvent::Cscs(CscsEvent::SelectSystemList(systems))) => {
                 Some(Msg::SystemSelectPopup(SystemSelectMsg::Opened(systems)))
             }
-            Event::User(UserEvent::File(FileEvent::DownloadSuccessful)) => Some(Msg::InfoPopup(InfoPopupMsg::Opened(
-                "File successfully downloaded".to_owned(),
-            ))),
+            Event::User(UserEvent::File(FileEvent::DownloadSuccessful)) => {
+                Some(Msg::Status(StatusMsg::Info("File successfully downloaded".to_owned())))
+            }
             _ => None,
         }
     }

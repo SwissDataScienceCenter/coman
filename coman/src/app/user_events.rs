@@ -9,6 +9,7 @@ pub enum CscsEvent {
     GotWorkloadData(Vec<Job>),
     GotJobLog(String),
     SelectSystemList(Vec<System>),
+    SystemSelected(String),
 }
 
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord)]
@@ -17,12 +18,21 @@ pub enum FileEvent {
     DownloadCurrentFile,
     DownloadSuccessful,
 }
+
+#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord)]
+pub enum StatusEvent {
+    Progress(String, usize),
+    Info(String),
+    Warning(String),
+}
+
 #[derive(Debug, Eq, Clone, PartialOrd, Ord)]
 pub enum UserEvent {
     Cscs(CscsEvent),
     File(FileEvent),
     Error(String),
     Info(String),
+    Status(StatusEvent),
     SwitchedToView(View),
 }
 
