@@ -63,7 +63,9 @@ async fn main() -> Result<()> {
                 cli::CscsCommands::Job { command } => match command {
                     cli::CscsJobCommands::List => cli_cscs_job_list(system, platform).await?,
                     cli::CscsJobCommands::Get { job_id } => cli_cscs_job_detail(job_id, system, platform).await?,
-                    cli::CscsJobCommands::Log { job_id } => cli_cscs_job_log(job_id, system, platform).await?,
+                    cli::CscsJobCommands::Log { job_id, stderr } => {
+                        cli_cscs_job_log(job_id, stderr, system, platform).await?
+                    }
                     cli::CscsJobCommands::Submit {
                         script_file,
                         image,

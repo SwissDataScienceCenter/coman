@@ -1,9 +1,9 @@
 use std::{iter, path::PathBuf};
 
 use tokio::sync::mpsc;
-use tui_realm_treeview::{Node, NodeValue, TREE_CMD_CLOSE, TREE_CMD_OPEN, Tree, TreeView};
+use tui_realm_treeview::{Node, NodeValue, TREE_CMD_CLOSE, TREE_CMD_OPEN, TREE_INITIAL_NODE, Tree, TreeView};
 use tuirealm::{
-    Component, Event, MockComponent, State, StateValue,
+    AttrValue, Attribute, Component, Event, MockComponent, State, StateValue,
     command::{Cmd, CmdResult, Direction, Position},
     event::{Key, KeyEvent, KeyModifiers},
     props::{Alignment, BorderType, Borders, Color, Style},
@@ -84,7 +84,20 @@ impl Component<Msg, UserEvent> for FileTree {
             Event::Keyboard(KeyEvent {
                 code: Key::Left,
                 modifiers: KeyModifiers::NONE,
-            }) => self.perform(Cmd::Custom(TREE_CMD_CLOSE)),
+            }) => {
+                let current_id = self.state().unwrap_one().unwrap_string();
+                let node = self.component.tree().root().query(&current_id).unwrap();
+                if self.component.tree_state().is_closed(node) {
+                    // current node is already closed, so we select and close the parent
+                    if let Some(parent) = self.component.tree().root().parent(node.id()) {
+                        self.attr(
+                            Attribute::Custom(TREE_INITIAL_NODE),
+                            AttrValue::String(parent.id().clone()),
+                        );
+                    }
+                }
+                self.perform(Cmd::Custom(TREE_CMD_CLOSE))
+            }
             Event::Keyboard(KeyEvent {
                 code: Key::Right,
                 modifiers: KeyModifiers::NONE,
