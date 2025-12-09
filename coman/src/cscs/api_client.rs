@@ -388,7 +388,7 @@ impl CscsApi {
     ) -> Result<()> {
         let workingdir = script_path.clone();
         let workingdir = workingdir.parent();
-        let result = post_compute_system_job(
+        let _result = post_compute_system_job(
             &self.client,
             system_name,
             account,
@@ -399,7 +399,6 @@ impl CscsApi {
             envvars,
         )
         .await?;
-        let _ = trace_dbg!(result);
 
         Ok(())
     }
@@ -523,7 +522,6 @@ impl CscsApi {
         let result = get_filesystem_ops_ls(&self.client, system_name, path)
             .await
             .wrap_err("couldn't list path")?;
-        let result = trace_dbg!(result);
         match result.output {
             Some(entries) => Ok(entries.into_iter().map(|e| e.into()).collect()),
             None => Ok(vec![]),

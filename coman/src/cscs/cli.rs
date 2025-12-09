@@ -112,7 +112,7 @@ pub(crate) async fn cli_cscs_job_start(
     platform: Option<ComputePlatform>,
     account: Option<String>,
 ) -> Result<()> {
-    cscs_start_job(
+    match cscs_start_job(
         script_file,
         image,
         command,
@@ -124,6 +124,13 @@ pub(crate) async fn cli_cscs_job_start(
         account,
     )
     .await
+    {
+        Ok(_) => {
+            println!("Job started");
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
 }
 
 pub(crate) async fn cli_cscs_job_cancel(

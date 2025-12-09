@@ -59,6 +59,16 @@ pub enum View {
     Workloads,
     Files,
 }
+
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, strum::Display)]
+pub enum StatusMsg {
+    #[allow(dead_code)]
+    Progress(String, usize),
+    Info(String),
+    #[allow(dead_code)]
+    Warning(String),
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Msg {
     AppClose,
@@ -72,6 +82,7 @@ pub enum Msg {
     Info(String),
     Cscs(CscsMsg),
     Job(JobMsg),
+    Status(StatusMsg),
     ChangeView(View),
     CreateEvent(UserEvent),
     None,

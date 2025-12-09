@@ -15,10 +15,13 @@ use crate::{
         ids::Id,
         messages::{Msg, View},
         model::Model,
-        user_events::{CscsEvent, FileEvent, UserEvent},
+        user_events::{CscsEvent, FileEvent, StatusEvent, UserEvent},
     },
     cli::{Cli, version},
-    components::{file_tree::FileTree, global_listener::GlobalListener, toolbar::Toolbar, workload_list::WorkloadList},
+    components::{
+        file_tree::FileTree, global_listener::GlobalListener, status_bar::StatusBar, toolbar::Toolbar,
+        workload_list::WorkloadList,
+    },
     config::Config,
     cscs::{
         cli::{
@@ -107,13 +110,13 @@ async fn main() -> Result<()> {
             },
             cli::CliCommands::Init { destination } => Config::create_config(destination)?,
         },
-        None => run_tui()?,
+        None => run_tui(args.tick_rate)?,
     }
 
     Ok(())
 }
 
-fn run_tui() -> Result<()> {
+fn run_tui(tick_rate: f64) -> Result<()> {
     crate::errors::init()?;
     //we initialize the terminal early so the panic handler that restores the terminal is correctly set up
     let adapter = CrosstermTerminalAdapter::new()?;
@@ -132,6 +135,7 @@ fn run_tui() -> Result<()> {
     // that the components can handle
     let event_listener = EventListenerCfg::default()
         .with_handle(handle)
+        .tick_interval(Duration::from_millis((1000.0 / tick_rate) as u64))
         .async_crossterm_input_listener(Duration::default(), 3)
         .add_async_port(Box::new(AsyncErrorPort::new(error_rx)), Duration::default(), 1)
         .add_async_port(Box::new(AsyncFetchWorkloadsPort::new()), Duration::from_secs(2), 1)
@@ -141,7 +145,11 @@ fn run_tui() -> Result<()> {
             1,
         )
         .add_async_port(Box::new(AsyncJobLogPort::new(job_log_rx)), Duration::from_secs(3), 1)
-        .add_async_port(Box::new(AsyncFileTreePort::new(file_tree_rx)), Duration::default(), 1)
+        .add_async_port(
+            Box::new(AsyncFileTreePort::new(file_tree_rx, user_event_tx.clone())),
+            Duration::default(),
+            1,
+        )
         .add_async_port(Box::new(AsyncUserEventPort::new(user_event_rx)), Duration::default(), 1);
 
     let mut app: Application<Id, Msg, UserEvent> = Application::init(event_listener);
@@ -154,6 +162,21 @@ fn run_tui() -> Result<()> {
             SubEventClause::Discriminant(UserEvent::SwitchedToView(View::default())),
             SubClause::Always,
         )],
+    )?;
+    app.mount(
+        Id::StatusBar,
+        Box::new(StatusBar::new()),
+        vec![
+            Sub::new(
+                SubEventClause::Discriminant(UserEvent::Status(StatusEvent::Info("".to_owned()))),
+                SubClause::Always,
+            ),
+            Sub::new(SubEventClause::Tick, SubClause::Always),
+            Sub::new(
+                SubEventClause::Discriminant(UserEvent::Cscs(CscsEvent::SystemSelected("".to_owned()))),
+                SubClause::Always,
+            ),
+        ],
     )?;
     app.mount(
         Id::WorkloadList,

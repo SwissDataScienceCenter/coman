@@ -14,10 +14,10 @@ use crate::{
     app::{
         ids::Id,
         messages::{
-            CscsMsg, DownloadPopupMsg, ErrorPopupMsg, InfoPopupMsg, JobMsg, LoginPopupMsg, MenuMsg, Msg,
+            CscsMsg, DownloadPopupMsg, ErrorPopupMsg, InfoPopupMsg, JobMsg, LoginPopupMsg, MenuMsg, Msg, StatusMsg,
             SystemSelectMsg, View,
         },
-        user_events::{CscsEvent, UserEvent},
+        user_events::{CscsEvent, StatusEvent, UserEvent},
     },
     components::{
         context_menu::ContextMenu, download_popup::DownloadTargetInput, error_popup::ErrorPopup, info_popup::InfoPopup,
@@ -104,17 +104,19 @@ where
                         .margin(1)
                         .constraints(
                             [
+                                Constraint::Max(3),  //Statusbar
                                 Constraint::Min(10), //content
                                 Constraint::Max(1),  //Toolbar
                             ]
                             .as_ref(),
                         )
                         .split(f.area());
+                    app.view(&Id::StatusBar, f, chunks[0]);
                     match current_view {
-                        View::Workloads => Self::view_workloads(app, f, chunks[0]),
-                        View::Files => Self::view_files(app, f, chunks[0]),
+                        View::Workloads => Self::view_workloads(app, f, chunks[1]),
+                        View::Files => Self::view_files(app, f, chunks[1]),
                     }
-                    app.view(&Id::Toolbar, f, chunks[1]);
+                    app.view(&Id::Toolbar, f, chunks[2]);
 
                     if app.mounted(&Id::Menu) {
                         let popup = draw_area_in_absolute(f.area(), 10);
@@ -188,7 +190,6 @@ where
                         .is_ok()
                 );
                 assert!(self.app.active(&Id::SystemSelectPopup).is_ok());
-                trace_dbg!("mounted system select popup");
                 None
             }
             SystemSelectMsg::Closed => {
@@ -408,9 +409,10 @@ where
                     None
                 }
                 Msg::Cscs(CscsMsg::SystemSelected(system)) => {
+                    let event_tx = self.user_event_tx.clone();
                     let error_tx = self.error_tx.clone();
                     tokio::spawn(async move {
-                        match cscs_system_set(system, true).await {
+                        match cscs_system_set(system.clone(), true).await {
                             Ok(_) => {}
                             Err(e) => error_tx
                                 .send(format!(
@@ -420,6 +422,10 @@ where
                                 .await
                                 .unwrap(),
                         };
+                        event_tx
+                            .send(UserEvent::Cscs(CscsEvent::SystemSelected(system)))
+                            .await
+                            .unwrap();
                     });
                     None
                 }
@@ -438,6 +444,18 @@ where
                     let event_tx = self.user_event_tx.clone();
                     tokio::spawn(async move {
                         event_tx.send(event).await.unwrap();
+                    });
+                    None
+                }
+                Msg::Status(status) => {
+                    let event_tx = self.user_event_tx.clone();
+                    let event = match status {
+                        StatusMsg::Progress(msg, progress) => StatusEvent::Progress(msg, progress),
+                        StatusMsg::Info(msg) => StatusEvent::Info(msg),
+                        StatusMsg::Warning(msg) => StatusEvent::Warning(msg),
+                    };
+                    tokio::spawn(async move {
+                        event_tx.send(UserEvent::Status(event)).await.unwrap();
                     });
                     None
                 }
