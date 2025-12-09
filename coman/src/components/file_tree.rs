@@ -14,7 +14,7 @@ use crate::{
         messages::{DownloadPopupMsg, Msg},
         user_events::{FileEvent, UserEvent},
     },
-    cscs::{api_client::PathType, ports::TreeAction},
+    cscs::{api_client::PathType, ports::BackgroundTask},
 };
 
 #[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Clone)]
@@ -47,16 +47,21 @@ impl NodeValue for FileNode {
 #[derive(MockComponent)]
 pub struct FileTree {
     component: TreeView<FileNode>,
-    file_tree_tx: mpsc::Sender<TreeAction>,
+    file_tree_tx: mpsc::Sender<BackgroundTask>,
 }
 impl FileTree {
-    pub fn new(file_tree_tx: mpsc::Sender<TreeAction>) -> Self {
+    pub fn new(file_tree_tx: mpsc::Sender<BackgroundTask>) -> Self {
         let root_node: Node<FileNode> = Node::new("/".to_owned(), FileNode::default());
         let tree = Tree::new(root_node.clone());
 
         // Load root node
         let tree_tx = file_tree_tx.clone();
-        tokio::spawn(async move { tree_tx.send(TreeAction::List(PathBuf::from("/"))).await.unwrap() });
+        tokio::spawn(async move {
+            tree_tx
+                .send(BackgroundTask::ListPaths(PathBuf::from("/")))
+                .await
+                .unwrap()
+        });
 
         Self {
             component: TreeView::default()
@@ -110,7 +115,10 @@ impl Component<Msg, UserEvent> for FileTree {
                             // try loading children if there are none
                             let tree_tx = self.file_tree_tx.clone();
                             tokio::spawn(async move {
-                                tree_tx.send(TreeAction::List(PathBuf::from(current_id))).await.unwrap();
+                                tree_tx
+                                    .send(BackgroundTask::ListPaths(PathBuf::from(current_id)))
+                                    .await
+                                    .unwrap();
                             });
                             CmdResult::None
                         } else {

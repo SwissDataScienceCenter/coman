@@ -71,6 +71,8 @@ pub enum CscsJobCommands {
 
     #[clap(alias("s"), about = "Submit a new compute job [aliases: s]")]
     Submit {
+        #[clap(short, long, help = "name of the job")]
+        name: Option<String>,
         #[clap(short, long, help = "the path to the srun script file to use")]
         script_file: Option<PathBuf>,
         #[clap(

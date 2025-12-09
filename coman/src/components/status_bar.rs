@@ -72,7 +72,7 @@ impl MockComponent for StatusBar {
                 .border_style(borders.style())
                 .border_type(borders.modifiers);
             let layout = Layout::default()
-                .constraints(&[Constraint::Percentage(30), Constraint::Percentage(70)])
+                .constraints(&[Constraint::Min(34), Constraint::Fill(1)])
                 .direction(Direction::Horizontal)
                 .margin(1);
             frame.render_widget(div, area);

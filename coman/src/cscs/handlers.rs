@@ -158,6 +158,7 @@ pub async fn cscs_job_cancel(job_id: i64, system: Option<String>, platform: Opti
 
 #[allow(clippy::too_many_arguments)]
 pub async fn cscs_start_job(
+    name: Option<String>,
     script_file: Option<PathBuf>,
     image: Option<DockerImageUrl>,
     command: Option<Vec<String>>,
@@ -175,6 +176,7 @@ pub async fn cscs_start_job(
             let current_system = &system.unwrap_or(config.cscs.current_system);
             let account = account.or(config.cscs.account);
             let user_info = api_client.get_userinfo(current_system).await?;
+            let job_name = name.or(config.name).unwrap_or(format!("{}-coman", user_info.name));
             let current_system_info = api_client.get_system(current_system).await?;
             let scratch = match current_system_info {
                 Some(system) => PathBuf::from(
@@ -191,9 +193,7 @@ pub async fn cscs_start_job(
                 }
             };
             let container_workdir = container_workdir.unwrap_or(config.cscs.workdir.unwrap_or("/scratch".to_owned()));
-            let base_path = scratch
-                .join(user_info.name.clone())
-                .join(config.name.clone().unwrap_or("coman".to_owned()));
+            let base_path = scratch.join(user_info.name.clone()).join(&job_name);
 
             let mut envvars = config.cscs.env.clone();
             envvars.extend(env);
@@ -249,9 +249,8 @@ pub async fn cscs_start_job(
                 .map(std::fs::read_to_string)
                 .unwrap_or(Ok(config.cscs.sbatch_script_template))?;
             tera.add_raw_template("script.sh", &script_template)?;
-            let name = config.name.unwrap_or(format!("{}-coman", user_info.name));
             let mut context = tera::Context::new();
-            context.insert("name", &name);
+            context.insert("name", &job_name);
             context.insert("command", &command.unwrap_or(config.cscs.command).join(" "));
             context.insert("environment_file", &environment_path);
             context.insert("container_workdir", &container_workdir);
@@ -262,7 +261,7 @@ pub async fn cscs_start_job(
 
             // start job
             api_client
-                .start_job(current_system, account, &name, script_path, envvars)
+                .start_job(current_system, account, &job_name, script_path, envvars)
                 .await?;
             Ok(())
         }

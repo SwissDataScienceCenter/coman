@@ -1,7 +1,7 @@
 use eyre::{Context, Report};
 use tokio::sync::mpsc;
 use tuirealm::{
-    Application, Update,
+    Application, AttrValue, Attribute, Update,
     ratatui::{
         Frame,
         layout::{Constraint, Direction, Layout, Rect},
@@ -21,12 +21,12 @@ use crate::{
     },
     components::{
         context_menu::ContextMenu, download_popup::DownloadTargetInput, error_popup::ErrorPopup, info_popup::InfoPopup,
-        login_popup::LoginPopup, system_select_popup::SystemSelectPopup, workload_list::WorkloadList,
-        workload_log::WorkloadLog,
+        login_popup::LoginPopup, system_select_popup::SystemSelectPopup, workload_details::WorkloadDetails,
+        workload_list::WorkloadList, workload_log::WorkloadLog,
     },
     cscs::{
         handlers::{cscs_login, cscs_system_set},
-        ports::{JobLogAction, TreeAction},
+        ports::{BackgroundTask, JobLogAction},
     },
     trace_dbg,
     util::ui::{draw_area_in_absolute, draw_area_in_absolute_fixed_height},
@@ -62,7 +62,7 @@ where
     pub user_event_tx: mpsc::Sender<UserEvent>,
 
     /// Allows interacting with the file Api
-    pub file_tree_tx: mpsc::Sender<TreeAction>,
+    pub background_task_tx: mpsc::Sender<BackgroundTask>,
 }
 
 impl<T> Model<T>
@@ -76,7 +76,7 @@ where
         select_system_tx: mpsc::Sender<()>,
         job_log_tx: mpsc::Sender<JobLogAction>,
         user_event_tx: mpsc::Sender<UserEvent>,
-        file_tree_tx: mpsc::Sender<TreeAction>,
+        background_task_tx: mpsc::Sender<BackgroundTask>,
     ) -> Self {
         Self {
             app,
@@ -88,7 +88,7 @@ where
             select_system_tx,
             job_log_tx,
             user_event_tx,
-            file_tree_tx,
+            background_task_tx,
         }
     }
 
@@ -101,7 +101,6 @@ where
                 .draw(|f| {
                     let chunks = Layout::default()
                         .direction(Direction::Vertical)
-                        .margin(1)
                         .constraints(
                             [
                                 Constraint::Max(3),  //Statusbar
@@ -149,11 +148,9 @@ where
     }
 
     fn view_workloads(app: &mut Application<Id, Msg, UserEvent>, frame: &mut Frame, area: Rect) {
-        if app.mounted(&Id::WorkloadList) {
-            app.view(&Id::WorkloadList, frame, area);
-        } else if app.mounted(&Id::WorkloadLogs) {
-            app.view(&Id::WorkloadLogs, frame, area);
-        }
+        app.view(&Id::WorkloadList, frame, area);
+        app.view(&Id::WorkloadLogs, frame, area);
+        app.view(&Id::WorkloadDetails, frame, area);
     }
     fn view_files(app: &mut Application<Id, Msg, UserEvent>, frame: &mut Frame, area: Rect) {
         if app.mounted(&Id::FileView) {
@@ -263,9 +260,9 @@ where
             }
             DownloadPopupMsg::PathSet(remote, local) => {
                 assert!(self.app.umount(&Id::DownloadPopup).is_ok());
-                let file_tx = self.file_tree_tx.clone();
+                let file_tx = self.background_task_tx.clone();
                 tokio::spawn(async move {
-                    file_tx.send(TreeAction::Download(remote, local)).await.unwrap();
+                    file_tx.send(BackgroundTask::DownloadFile(remote, local)).await.unwrap();
                 });
                 None
             }
@@ -306,9 +303,13 @@ where
     }
     fn handle_job_msg(&mut self, msg: JobMsg) -> Option<Msg> {
         match msg {
-            JobMsg::Show(jobid) => {
+            JobMsg::Log(jobid) => {
                 if self.app.mounted(&Id::WorkloadList) {
-                    assert!(self.app.umount(&Id::WorkloadList).is_ok());
+                    assert!(
+                        self.app
+                            .attr(&Id::WorkloadList, Attribute::Display, AttrValue::Flag(false))
+                            .is_ok()
+                    );
                 }
                 if !self.app.mounted(&Id::WorkloadLogs) {
                     assert!(
@@ -324,6 +325,38 @@ where
                 });
                 None
             }
+            JobMsg::GetDetails(jobid) => {
+                let background_tx = self.background_task_tx.clone();
+                let event_tx = self.user_event_tx.clone();
+                tokio::spawn(async move {
+                    background_tx.send(BackgroundTask::GetJobDetails(jobid)).await.unwrap();
+                    event_tx
+                        .send(UserEvent::Status(StatusEvent::Info(
+                            "getting job details...".to_owned(),
+                        )))
+                        .await
+                        .unwrap();
+                });
+                None
+            }
+            JobMsg::Details(jobdetail) => {
+                if self.app.mounted(&Id::WorkloadList) {
+                    assert!(
+                        self.app
+                            .attr(&Id::WorkloadList, Attribute::Display, AttrValue::Flag(false))
+                            .is_ok()
+                    );
+                }
+                if !self.app.mounted(&Id::WorkloadDetails) {
+                    assert!(
+                        self.app
+                            .mount(Id::WorkloadDetails, Box::new(WorkloadDetails::new(jobdetail)), vec![])
+                            .is_ok()
+                    );
+                }
+                assert!(self.app.active(&Id::WorkloadDetails).is_ok());
+                None
+            }
             JobMsg::Switch => {
                 let job_log_tx = self.job_log_tx.clone();
                 tokio::spawn(async move {
@@ -335,6 +368,9 @@ where
                 if self.app.mounted(&Id::WorkloadLogs) {
                     assert!(self.app.umount(&Id::WorkloadLogs).is_ok());
                 }
+                if self.app.mounted(&Id::WorkloadDetails) {
+                    assert!(self.app.umount(&Id::WorkloadDetails).is_ok());
+                }
                 if !self.app.mounted(&Id::WorkloadList) {
                     assert!(
                         self.app
@@ -342,6 +378,11 @@ where
                             .is_ok()
                     );
                 }
+                assert!(
+                    self.app
+                        .attr(&Id::WorkloadList, Attribute::Display, AttrValue::Flag(true))
+                        .is_ok()
+                );
                 assert!(self.app.active(&Id::WorkloadList).is_ok());
                 let job_log_tx = self.job_log_tx.clone();
                 tokio::spawn(async move {

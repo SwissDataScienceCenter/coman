@@ -182,22 +182,22 @@ impl PollAsync<UserEvent> for AsyncJobLogPort {
         if self.receiver.is_closed() {
             return Ok(Some(Event::None));
         }
-        if !self.receiver.is_empty() {
-            if let Some(val) = self.receiver.recv().await {
-                match val {
-                    JobLogAction::Job(jobid) => {
-                        self.current_job = Some(jobid);
-                    }
-                    JobLogAction::SwitchLog => {
-                        self.stderr = !self.stderr;
-                    }
-                    JobLogAction::Stop => {
-                        self.current_job = None;
-                    }
+        if !self.receiver.is_empty()
+            && let Some(val) = self.receiver.recv().await
+        {
+            match val {
+                JobLogAction::Job(jobid) => {
+                    self.current_job = Some(jobid);
+                }
+                JobLogAction::SwitchLog => {
+                    self.stderr = !self.stderr;
+                }
+                JobLogAction::Stop => {
+                    self.current_job = None;
                 }
             }
-            Ok(Some(Event::None))
-        } else if let Some(job_id) = self.current_job {
+        }
+        if let Some(job_id) = self.current_job {
             match cscs_job_log(job_id as i64, self.stderr, None, None).await {
                 Ok(log) => Ok(Some(Event::User(UserEvent::Cscs(CscsEvent::GotJobLog(log))))),
                 Err(e) => Ok(Some(Event::User(UserEvent::Error(format!(
@@ -211,19 +211,20 @@ impl PollAsync<UserEvent> for AsyncJobLogPort {
     }
 }
 
-pub enum TreeAction {
-    List(PathBuf),
-    Download(PathBuf, PathBuf),
+pub enum BackgroundTask {
+    ListPaths(PathBuf),
+    DownloadFile(PathBuf, PathBuf),
+    GetJobDetails(usize),
 }
 
 /// This port handles asynchronous file operations on CSCS
-pub(crate) struct AsyncFileTreePort {
-    receiver: mpsc::Receiver<TreeAction>,
+pub(crate) struct AsyncBackgroundTaskPort {
+    receiver: mpsc::Receiver<BackgroundTask>,
     event_tx: mpsc::Sender<UserEvent>,
 }
 
-impl AsyncFileTreePort {
-    pub fn new(receiver: mpsc::Receiver<TreeAction>, event_tx: mpsc::Sender<UserEvent>) -> Self {
+impl AsyncBackgroundTaskPort {
+    pub fn new(receiver: mpsc::Receiver<BackgroundTask>, event_tx: mpsc::Sender<UserEvent>) -> Self {
         Self { receiver, event_tx }
     }
 }
@@ -339,7 +340,7 @@ async fn download_file(
     }
 }
 #[tuirealm::async_trait]
-impl PollAsync<UserEvent> for AsyncFileTreePort {
+impl PollAsync<UserEvent> for AsyncBackgroundTaskPort {
     async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
         if self.receiver.is_closed() {
             return Ok(None);
@@ -347,18 +348,26 @@ impl PollAsync<UserEvent> for AsyncFileTreePort {
         if let Some(action) = self.receiver.recv().await {
             let event_tx = self.event_tx.clone();
             match action {
-                TreeAction::List(id) => match list_files(id).await {
+                BackgroundTask::ListPaths(id) => match list_files(id).await {
                     Ok(event) => Ok(event),
                     Err(e) => Ok(Some(Event::User(UserEvent::Error(format!(
                         "{:?}",
                         Err::<(), Report>(e).wrap_err("couldn't list subpaths")
                     ))))),
                 },
-                TreeAction::Download(remote, local) => match download_file(remote, local, event_tx).await {
+                BackgroundTask::DownloadFile(remote, local) => match download_file(remote, local, event_tx).await {
                     Ok(event) => Ok(event),
                     Err(e) => Ok(Some(Event::User(UserEvent::Error(format!(
                         "{:?}",
                         Err::<(), Report>(e).wrap_err("couldn't download file")
+                    ))))),
+                },
+                BackgroundTask::GetJobDetails(job_id) => match cscs_job_details(job_id as i64, None, None).await {
+                    Ok(Some(details)) => Ok(Some(Event::User(UserEvent::Cscs(CscsEvent::GotJobDetails(details))))),
+                    Ok(None) => Ok(Some(Event::None)),
+                    Err(e) => Ok(Some(Event::User(UserEvent::Error(format!(
+                        "{:?}",
+                        Err::<(), Report>(e).wrap_err("couldn't get job details")
                     ))))),
                 },
             }

@@ -30,7 +30,8 @@ use crate::{
             cli_cscs_system_list,
         },
         ports::{
-            AsyncFetchWorkloadsPort, AsyncFileTreePort, AsyncJobLogPort, AsyncSelectSystemPort, AsyncUserEventPort,
+            AsyncBackgroundTaskPort, AsyncFetchWorkloadsPort, AsyncJobLogPort, AsyncSelectSystemPort,
+            AsyncUserEventPort,
         },
     },
     errors::AsyncErrorPort,
@@ -70,6 +71,7 @@ async fn main() -> Result<()> {
                         cli_cscs_job_log(job_id, stderr, system, platform).await?
                     }
                     cli::CscsJobCommands::Submit {
+                        name,
                         script_file,
                         image,
                         command,
@@ -78,6 +80,7 @@ async fn main() -> Result<()> {
                         mount,
                     } => {
                         cli_cscs_job_start(
+                            name,
                             script_file,
                             image,
                             command,
@@ -125,7 +128,7 @@ fn run_tui(tick_rate: f64) -> Result<()> {
 
     let (select_system_tx, select_system_rx) = mpsc::channel(100);
     let (job_log_tx, job_log_rx) = mpsc::channel(100);
-    let (file_tree_tx, file_tree_rx) = mpsc::channel(100);
+    let (background_task_tx, background_task_rx) = mpsc::channel(100);
     let (user_event_tx, user_event_rx) = mpsc::channel(100);
     let (error_tx, error_rx) = mpsc::channel(100);
 
@@ -146,7 +149,7 @@ fn run_tui(tick_rate: f64) -> Result<()> {
         )
         .add_async_port(Box::new(AsyncJobLogPort::new(job_log_rx)), Duration::from_secs(3), 1)
         .add_async_port(
-            Box::new(AsyncFileTreePort::new(file_tree_rx, user_event_tx.clone())),
+            Box::new(AsyncBackgroundTaskPort::new(background_task_rx, user_event_tx.clone())),
             Duration::default(),
             1,
         )
@@ -188,7 +191,7 @@ fn run_tui(tick_rate: f64) -> Result<()> {
     )?;
     app.mount(
         Id::FileView,
-        Box::new(FileTree::new(file_tree_tx.clone())),
+        Box::new(FileTree::new(background_task_tx.clone())),
         vec![
             Sub::new(
                 SubEventClause::Discriminant(UserEvent::File(FileEvent::List("".to_owned(), vec![]))),
@@ -267,7 +270,7 @@ fn run_tui(tick_rate: f64) -> Result<()> {
         select_system_tx,
         job_log_tx,
         user_event_tx,
-        file_tree_tx,
+        background_task_tx,
     );
     // Main loop
     // NOTE: loop until quit; quit is set in update if AppClose is received from counter

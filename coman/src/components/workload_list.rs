@@ -1,4 +1,6 @@
-use tui_realm_stdlib::List;
+use std::cmp::Reverse;
+
+use tui_realm_stdlib::Table;
 use tuirealm::{
     AttrValue, Attribute, Component, Event, MockComponent, State, StateValue,
     command::{Cmd, CmdResult, Direction, Position},
@@ -16,21 +18,22 @@ use crate::{
 
 #[derive(MockComponent)]
 pub(crate) struct WorkloadList {
-    component: List,
+    component: Table,
     jobs: Vec<Job>,
 }
 
 impl Default for WorkloadList {
     fn default() -> Self {
         Self {
-            component: List::default()
+            component: Table::default()
                 .borders(Borders::default().modifiers(BorderType::Rounded).color(Color::Yellow))
                 .title("Workloads", Alignment::Center)
                 .scroll(true)
                 .highlighted_color(Color::LightYellow)
-                .highlighted_str("-")
+                .highlighted_str("❯ ")
                 .rewind(true)
-                .step(4),
+                .step(4)
+                .headers(["Name", "Status", "Id", "Start", "End"]),
             jobs: vec![],
         }
     }
@@ -53,21 +56,39 @@ impl Component<Msg, UserEvent> for WorkloadList {
                     self.attr(Attribute::Content, AttrValue::Table(vec![]));
                 } else {
                     self.jobs = data.clone();
+                    self.jobs.sort_by_key(|j| Reverse(j.start_date));
                     let mut table = TableBuilder::default();
-                    for (idx, job) in data.iter().enumerate() {
+                    for (idx, job) in self.jobs.iter().enumerate() {
                         if idx > 0 {
                             table.add_row();
                         }
                         table
                             .add_col(TextSpan::from(job.name.clone()).bold())
-                            .add_col(TextSpan::from(" "))
                             .add_col(TextSpan::from(job.status.to_string()))
-                            .add_col(TextSpan::from(" "))
-                            .add_col(TextSpan::from(job.id.to_string()));
+                            .add_col(TextSpan::from(job.id.to_string()))
+                            .add_col(TextSpan::from(
+                                job.start_date
+                                    .map(|s| s.format("%Y-%m-%d %H:%M").to_string())
+                                    .unwrap_or("".to_owned()),
+                            ))
+                            .add_col(TextSpan::from(
+                                job.end_date
+                                    .map(|s| s.format("%Y-%m-%d %H:%M").to_string())
+                                    .unwrap_or("".to_owned()),
+                            ));
                     }
                     self.attr(Attribute::Content, AttrValue::Table(table.build()));
                 }
                 self.perform(Cmd::Change)
+            }
+            Event::Keyboard(KeyEvent { code: Key::Enter, .. }) => {
+                if let State::One(StateValue::Usize(index)) = self.state()
+                    && !self.jobs.is_empty()
+                {
+                    let job = self.jobs[index].clone();
+                    return Some(Msg::Job(JobMsg::GetDetails(job.id)));
+                }
+                CmdResult::None
             }
             Event::Keyboard(KeyEvent {
                 code: Key::Char('l'),
@@ -77,7 +98,7 @@ impl Component<Msg, UserEvent> for WorkloadList {
                     && !self.jobs.is_empty()
                 {
                     let job = self.jobs[index].clone();
-                    return Some(Msg::Job(JobMsg::Show(job.id)));
+                    return Some(Msg::Job(JobMsg::Log(job.id)));
                 }
                 CmdResult::None
             }

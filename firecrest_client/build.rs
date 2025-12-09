@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, bail};
 
 fn main() -> Result<()> {
     println!("cargo::rerun-if-changed=../openapi_spec/firecrest_3.1.yaml");
@@ -13,7 +13,7 @@ fn main() -> Result<()> {
     let outpath = dbg!(outpath);
     let o = std::fs::File::create(outpath)?;
     serde_json::to_writer_pretty(o, &json_value)?;
-    std::process::Command::new("oas3-gen")
+    let status = std::process::Command::new("oas3-gen")
         .arg("generate")
         .arg("-i")
         .arg(outpath.to_str().unwrap())
@@ -22,6 +22,9 @@ fn main() -> Result<()> {
         .spawn()
         .expect("oas3-gen failed to run, if it's missing please install with 'cargo install oas3-gen@0.21.1'")
         .wait()?;
+    if !status.success() {
+        bail!("oas3-gen execution failed");
+    }
     // we need to add an into clause because the defaults in the openapi spec are weird
     let content = std::fs::read_to_string("./src/types.rs")?;
     let content = content.replace(

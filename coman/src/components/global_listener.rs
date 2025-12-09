@@ -5,7 +5,7 @@ use tuirealm::{
 };
 
 use crate::app::{
-    messages::{MenuMsg, Msg, StatusMsg, SystemSelectMsg, View},
+    messages::{JobMsg, MenuMsg, Msg, StatusMsg, SystemSelectMsg, View},
     user_events::{CscsEvent, FileEvent, UserEvent},
 };
 
@@ -48,6 +48,7 @@ impl Component<Msg, UserEvent> for GlobalListener {
             Event::User(UserEvent::Cscs(CscsEvent::SelectSystemList(systems))) => {
                 Some(Msg::SystemSelectPopup(SystemSelectMsg::Opened(systems)))
             }
+            Event::User(UserEvent::Cscs(CscsEvent::GotJobDetails(details))) => Some(Msg::Job(JobMsg::Details(details))),
             Event::User(UserEvent::File(FileEvent::DownloadSuccessful)) => {
                 Some(Msg::Status(StatusMsg::Info("File successfully downloaded".to_owned())))
             }

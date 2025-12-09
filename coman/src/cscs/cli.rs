@@ -102,6 +102,7 @@ pub(crate) async fn cli_cscs_job_log(
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn cli_cscs_job_start(
+    name: Option<String>,
     script_file: Option<PathBuf>,
     image: Option<DockerImageUrl>,
     command: Option<Vec<String>>,
@@ -113,6 +114,7 @@ pub(crate) async fn cli_cscs_job_start(
     account: Option<String>,
 ) -> Result<()> {
     match cscs_start_job(
+        name,
         script_file,
         image,
         command,
