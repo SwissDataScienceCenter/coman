@@ -1,6 +1,6 @@
 use crate::{
     app::messages::View,
-    cscs::api_client::{Job, PathEntry, System},
+    cscs::api_client::{Job, JobDetail, PathEntry, System},
 };
 
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord)]
@@ -8,6 +8,7 @@ pub enum CscsEvent {
     LoggedIn,
     GotWorkloadData(Vec<Job>),
     GotJobLog(String),
+    GotJobDetails(JobDetail),
     SelectSystemList(Vec<System>),
     SystemSelected(String),
 }

@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use crate::{app::user_events::UserEvent, cscs::api_client::System};
+use crate::{
+    app::user_events::UserEvent,
+    cscs::api_client::{JobDetail, System},
+};
 
 #[derive(Debug, PartialEq)]
 pub enum MenuMsg {
@@ -49,7 +52,9 @@ pub enum CscsMsg {
 }
 #[derive(Debug, PartialEq)]
 pub enum JobMsg {
-    Show(usize),
+    Log(usize),
+    Details(JobDetail),
+    GetDetails(usize),
     Switch,
     Close,
 }

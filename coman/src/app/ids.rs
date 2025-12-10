@@ -4,6 +4,7 @@ pub enum Id {
     Toolbar,
     WorkloadList,
     WorkloadLogs,
+    WorkloadDetails,
     GlobalListener,
     Menu,
     InfoPopup,

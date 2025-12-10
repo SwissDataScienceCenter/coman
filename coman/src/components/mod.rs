@@ -8,5 +8,6 @@ pub(crate) mod login_popup;
 pub(crate) mod status_bar;
 pub(crate) mod system_select_popup;
 pub(crate) mod toolbar;
+pub(crate) mod workload_details;
 pub(crate) mod workload_list;
 pub(crate) mod workload_log;
