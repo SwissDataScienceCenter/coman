@@ -27,7 +27,7 @@ use crate::{
         cli::{
             cli_cscs_file_download, cli_cscs_file_list, cli_cscs_file_upload, cli_cscs_job_cancel, cli_cscs_job_detail,
             cli_cscs_job_list, cli_cscs_job_log, cli_cscs_job_start, cli_cscs_login, cli_cscs_set_system,
-            cli_cscs_system_list,
+            cli_cscs_system_list, cli_exec_command,
         },
         ports::{
             AsyncBackgroundTaskPort, AsyncFetchWorkloadsPort, AsyncJobLogPort, AsyncSelectSystemPort,
@@ -112,6 +112,7 @@ async fn main() -> Result<()> {
                 },
             },
             cli::CliCommands::Init { destination } => Config::create_config(destination)?,
+            cli::CliCommands::Exec { command } => cli_exec_command(command).await?,
         },
         None => run_tui(args.tick_rate)?,
     }
