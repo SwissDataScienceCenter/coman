@@ -11,7 +11,8 @@ use crate::{
     config::{ComputePlatform, Config},
     cscs::{
         api_client::{
-            CscsApi, FileStat, FileSystemType, Job, JobDetail, PathEntry, PathType, S3Upload, System, UserInfo,
+            client::CscsApi,
+            types::{FileStat, FileSystemType, Job, JobDetail, PathEntry, PathType, S3Upload, System, UserInfo},
         },
         oauth2::{
             CLIENT_ID_SECRET_NAME, CLIENT_SECRET_SECRET_NAME, client_credentials_login, finish_cscs_device_login,
@@ -300,7 +301,7 @@ pub async fn cscs_file_download(
             let current_system = &system.unwrap_or(config.cscs.current_system);
             let paths = api_client.list_path(current_system, remote.clone()).await?;
             let path = paths.first().ok_or(eyre!("remote path doesn't exist"))?;
-            if let crate::cscs::api_client::PathType::Directory = path.path_type {
+            if let PathType::Directory = path.path_type {
                 return Err(eyre!("remote path must be a file, not directory"));
             }
             let size = path.size.ok_or(eyre!("couldn't determin download file size"))?;

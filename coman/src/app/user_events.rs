@@ -1,6 +1,6 @@
 use crate::{
     app::messages::View,
-    cscs::api_client::{Job, JobDetail, PathEntry, System},
+    cscs::api_client::types::{Job, JobDetail, PathEntry, System},
 };
 
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord)]

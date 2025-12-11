@@ -18,7 +18,7 @@ use tokio::{
 use crate::{
     config::ComputePlatform,
     cscs::{
-        api_client::JobStatus,
+        api_client::types::JobStatus,
         handlers::{
             cscs_file_download, cscs_file_list, cscs_file_upload, cscs_job_cancel, cscs_job_details, cscs_job_list,
             cscs_job_log, cscs_login, cscs_start_job, cscs_system_list, cscs_system_set,

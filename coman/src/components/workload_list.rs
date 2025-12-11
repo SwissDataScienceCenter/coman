@@ -13,7 +13,7 @@ use crate::{
         messages::{JobMsg, Msg},
         user_events::{CscsEvent, UserEvent},
     },
-    cscs::api_client::Job,
+    cscs::api_client::types::Job,
 };
 
 #[derive(MockComponent)]

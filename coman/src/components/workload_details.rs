@@ -15,7 +15,7 @@ use crate::{
         messages::{JobMsg, Msg},
         user_events::UserEvent,
     },
-    cscs::api_client::JobDetail,
+    cscs::api_client::types::JobDetail,
 };
 
 pub struct WorkloadDetails {

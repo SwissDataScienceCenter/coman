@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::{
     app::user_events::UserEvent,
-    cscs::api_client::{JobDetail, System},
+    cscs::api_client::types::{JobDetail, System},
 };
 
 #[derive(Debug, PartialEq)]

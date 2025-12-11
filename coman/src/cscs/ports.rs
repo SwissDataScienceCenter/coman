@@ -16,7 +16,7 @@ use crate::{
     app::user_events::{CscsEvent, FileEvent, StatusEvent, UserEvent},
     config::Config,
     cscs::{
-        api_client::{JobStatus, PathEntry, PathType},
+        api_client::types::{JobStatus, PathEntry, PathType},
         handlers::{
             cscs_file_download, cscs_file_list, cscs_job_details, cscs_job_list, cscs_job_log, cscs_stat_path,
             cscs_system_list, cscs_user_info,
