@@ -1,8 +1,10 @@
-use std::{error::Error, path::PathBuf};
+use std::{error::Error, path::PathBuf, process::Stdio, thread, time::Duration};
 
 use clap::{Args, Command, Parser, Subcommand, ValueHint, builder::TypedValueParser};
 use clap_complete::{Generator, Shell, generate};
 use color_eyre::Result;
+use pid1::Pid1Settings;
+use rust_supervisor::{ChildType, Supervisor, SupervisorConfig};
 use strum::VariantNames;
 
 use crate::{
@@ -62,6 +64,11 @@ pub enum CliCommands {
         /// generate shell completions
         #[clap(value_enum)]
         generator: Shell,
+    },
+    #[clap(about = "Execute a process/command through coman, with additional monitoring and side processes")]
+    Exec {
+        #[clap(trailing_var_arg = true, help = "The command to run", value_hint=ValueHint::Other)]
+        command: Vec<String>,
     },
 }
 
@@ -371,4 +378,42 @@ fn is_bare_string(value_str: &str) -> bool {
 
 pub fn print_completions<G: Generator>(generator: G, cmd: &mut Command) {
     generate(generator, cmd, cmd.get_name().to_string(), &mut std::io::stdout());
+}
+pub(crate) async fn cli_exec_command(command: Vec<String>) -> Result<()> {
+    // Pid1 takes care of proper terminating of processes and signal handling when running in a container
+    Pid1Settings::new()
+        .enable_log(true)
+        .timeout(Duration::from_secs(2))
+        .launch()
+        .expect("Launch failed");
+
+    let mut supervisor = Supervisor::new(SupervisorConfig::default());
+    supervisor.add_process("iroh-ssh", ChildType::Permanent, || {
+        thread::spawn(|| {
+            // iroh!
+        })
+    });
+    supervisor.add_process("main-process", ChildType::Temporary, move || {
+        let command = command.clone();
+        thread::spawn(move || {
+            let mut child = std::process::Command::new(command[0].clone())
+                .args(&command[1..])
+                .spawn()
+                .expect("Failed to start compute job");
+            child.wait().expect("Failed to wait on compute job");
+        })
+    });
+
+    let supervisor = supervisor.start_monitoring();
+    loop {
+        thread::sleep(Duration::from_secs(1));
+
+        if let Some(state) = supervisor.get_process_state("main-process") {
+            match state {
+                rust_supervisor::ProcessState::Failed | rust_supervisor::ProcessState::Stopped => break,
+                _ => {}
+            }
+        }
+    }
+    Ok(())
 }

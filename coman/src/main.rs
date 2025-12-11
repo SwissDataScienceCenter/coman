@@ -17,7 +17,7 @@ use crate::{
         model::Model,
         user_events::{CscsEvent, FileEvent, StatusEvent, UserEvent},
     },
-    cli::{Cli, get_config, print_completions, set_config, version},
+    cli::{Cli, cli_exec_command, get_config, print_completions, set_config, version},
     components::{
         file_tree::FileTree, global_listener::GlobalListener, status_bar::StatusBar, toolbar::Toolbar,
         workload_list::WorkloadList,
@@ -135,6 +135,7 @@ async fn main() -> Result<()> {
                 },
             },
             cli::CliCommands::Init { destination, name } => Config::create_project_config(destination, name)?,
+            cli::CliCommands::Exec { command } => cli_exec_command(command).await?,
         },
         None => run_tui(args.tick_rate)?,
     }

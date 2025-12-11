@@ -74,10 +74,11 @@ tui-realm-treeview = "3.0.0"
 aws-sdk-s3 = "1.115.0"
 toml_edit = "0.23.9"
 clap_complete = "4.5.61"
+pid1 = "0.1.5"
+rust_supervisor = "0.2.0"
 
 [build-dependencies]
 anyhow = "1.0.90"
-
 vergen-gix = { version = "1.0.2", features = ["build", "cargo"] }
 
 [dev-dependencies]

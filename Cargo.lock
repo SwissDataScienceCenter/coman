@@ -1057,10 +1057,12 @@ dependencies = [
  "open",
  "openidconnect",
  "openssl",
+ "pid1",
  "pretty_assertions",
  "ratatui",
  "reqwest",
  "rstest",
+ "rust_supervisor",
  "serde",
  "serde_json",
  "signal-hook",
@@ -4735,6 +4737,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "pid1"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c90bbdbf4c3b7aa11a325650d0cc79da8202df68d8aa91853342faaa2cd37e13"
+dependencies = [
+ "nix",
+ "signal-hook",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "pin-project-lite"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5341,6 +5354,16 @@ checksum = "3e0698206bcb8882bf2a9ecb4c1e7785db57ff052297085a6efd4fe42302068a"
 dependencies = [
  "cfg-if",
  "ordered-multimap",
+]
+
+[[package]]
+name = "rust_supervisor"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "959b3ccacc365f507c1eb39473dce93e6e5b12e8f48e083b3e3f3978c3c06b95"
+dependencies = [
+ "log",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
