@@ -112,6 +112,7 @@ async fn main() -> Result<()> {
                 },
             },
             cli::CliCommands::Init { destination } => Config::create_config(destination)?,
+            #[cfg(target_family = "unix")]
             cli::CliCommands::Exec { command } => cli_exec_command(command).await?,
         },
         None => run_tui(args.tick_rate)?,
