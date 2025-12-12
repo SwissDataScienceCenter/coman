@@ -1,12 +1,18 @@
 use std::{
     io::{SeekFrom, Write},
     path::PathBuf,
+    process,
     time::{Duration, Instant},
 };
 
 use color_eyre::{Result, eyre::Context};
 use eyre::eyre;
 use futures::StreamExt;
+#[cfg(target_family = "unix")]
+use horust::{
+    Horust,
+    horust::formats::{Environment, Service},
+};
 use inquire::{Password, Text};
 use itertools::Itertools;
 use reqwest::Url;
@@ -303,4 +309,33 @@ async fn upload_chunk(path: PathBuf, offset: u64, size: u64, url: Url) -> Result
     let req = client.put(url).body(buf).build()?;
     let resp = client.execute(req).await?;
     Ok(resp.headers()["etag"].to_str()?.to_owned())
+}
+
+#[cfg(target_family = "unix")]
+pub(crate) async fn cli_exec_command(command: Vec<String>) -> Result<()> {
+    let uds_dir = tempdir::TempDir::new("coman_horus")?;
+    let services = vec![
+        // Service {
+        //     name: "ssh-command".to_owned(),
+        //     command: "echo 'ssh'!".to_owned(),
+        //     ..Default::default()
+        // },
+        Service {
+            name: "main-command".to_owned(),
+            command: command.join(" "),
+            environment: Environment {
+                keep_env: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    ];
+    let mut horust = Horust::from_services(
+        services,
+        uds_dir.into_path().join(format!("horus-{}.sock", process::id())),
+    );
+    match horust.run() {
+        horust::horust::ExitStatus::Successful => Ok(()),
+        horust::horust::ExitStatus::SomeServiceFailed => Err(eyre!("command failed")),
+    }
 }

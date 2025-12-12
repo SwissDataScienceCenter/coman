@@ -29,6 +29,12 @@ pub enum CliCommands {
         #[clap(help = "Destination folder to create config in (default = current directory)")]
         destination: Option<PathBuf>,
     },
+    #[cfg(target_family = "unix")]
+    #[clap(about = "Execute a process/command through coman, with additional monitoring and side processes")]
+    Exec {
+        #[clap(trailing_var_arg = true, help = "The command to run")]
+        command: Vec<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
