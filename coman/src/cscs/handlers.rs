@@ -134,10 +134,19 @@ pub async fn cscs_job_log(
                 return Err(eyre!("couldn't find job {}", job_id));
             }
             let path = if stderr {
-                PathBuf::from(job.unwrap().stderr)
+                job.unwrap().stderr
             } else {
-                PathBuf::from(job.unwrap().stdout)
+                job.unwrap().stdout
             };
+            if path.is_empty() {
+                return Err(eyre!(
+                    "No {} log exists for job {}",
+                    if stderr { "stderr" } else { "stdout" },
+                    job_id
+                ));
+            }
+
+            let path = PathBuf::from(path);
             api_client.tail(current_system, path, 100).await
         }
         Err(e) => Err(e),

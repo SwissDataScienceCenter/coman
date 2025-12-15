@@ -188,6 +188,7 @@ impl PollAsync<UserEvent> for AsyncJobLogPort {
             match val {
                 JobLogAction::Job(jobid) => {
                     self.current_job = Some(jobid);
+                    self.stderr = false;
                 }
                 JobLogAction::SwitchLog => {
                     self.stderr = !self.stderr;
@@ -200,10 +201,19 @@ impl PollAsync<UserEvent> for AsyncJobLogPort {
         if let Some(job_id) = self.current_job {
             match cscs_job_log(job_id as i64, self.stderr, None, None).await {
                 Ok(log) => Ok(Some(Event::User(UserEvent::Cscs(CscsEvent::GotJobLog(log))))),
-                Err(e) => Ok(Some(Event::User(UserEvent::Error(format!(
-                    "{:?}",
-                    Err::<(), Report>(e).wrap_err("couldn't get log")
-                ))))),
+                Err(e) => {
+                    // if there was an error getting the log, if it's stderr, switch to stdout which should
+                    // always exist. If we're on stdout and it doesn't exist, unset log watching to not spam errors
+                    if self.stderr {
+                        self.stderr = false;
+                    } else {
+                        self.current_job = None;
+                    }
+                    Ok(Some(Event::User(UserEvent::Error(format!(
+                        "{:?}",
+                        Err::<(), Report>(e).wrap_err("couldn't get log")
+                    )))))
+                }
             }
         } else {
             Ok(Some(Event::None))
