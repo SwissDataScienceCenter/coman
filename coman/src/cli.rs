@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand, builder::TypedValueParser};
 use strum::VariantNames;
 
 use crate::{
-    config::{ComputePlatform, get_config_dir, get_data_dir},
+    config::{ComputePlatform, get_config_dir, get_data_dir, get_project_local_config_file},
     util::types::DockerImageUrl,
 };
 
@@ -155,18 +155,18 @@ const VERSION_MESSAGE: &str = concat!(
 );
 
 pub fn version() -> String {
-    let author = clap::crate_authors!();
-
     // let current_exe_path = PathBuf::from(clap::crate_name!()).display().to_string();
     let config_dir_path = get_config_dir().display().to_string();
     let data_dir_path = get_data_dir().display().to_string();
+    let project_config_dir = get_project_local_config_file()
+        .map(|p| p.display().to_string())
+        .unwrap_or("".to_owned());
 
     format!(
         "\
 {VERSION_MESSAGE}
 
-Authors: {author}
-
+Project config directory: {project_config_dir}
 Config directory: {config_dir_path}
 Data directory: {data_dir_path}"
     )
