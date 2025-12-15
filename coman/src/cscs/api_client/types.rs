@@ -142,7 +142,7 @@ pub enum JobStatus {
 }
 impl From<String> for JobStatus {
     fn from(value: String) -> Self {
-        match value.as_str() {
+        match value.split_whitespace().next().unwrap() {
             "RUNNING" => JobStatus::Running,
             "FAILED" => JobStatus::Failed,
             "COMPLETED" => JobStatus::Finished,
