@@ -310,5 +310,6 @@ fn popup_exclusion_clause() -> SubClause<Id> {
         SubClause::IsMounted(Id::ErrorPopup),
         SubClause::IsMounted(Id::LoginPopup),
         SubClause::IsMounted(Id::DownloadPopup),
+        SubClause::IsMounted(Id::SystemSelectPopup),
     ])))
 }
