@@ -18,13 +18,12 @@ use tokio::{
 use crate::{
     config::ComputePlatform,
     cscs::{
-        api_client::types::JobStatus,
+        api_client::{client::JobStartOptions, types::JobStatus},
         handlers::{
             cscs_file_download, cscs_file_list, cscs_file_upload, cscs_job_cancel, cscs_job_details, cscs_job_list,
             cscs_job_log, cscs_login, cscs_start_job, cscs_system_list, cscs_system_set,
         },
     },
-    util::types::DockerImageUrl,
 };
 
 pub(crate) async fn cli_cscs_login() -> Result<()> {
@@ -103,30 +102,12 @@ pub(crate) async fn cli_cscs_job_log(
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn cli_cscs_job_start(
     name: Option<String>,
-    script_file: Option<PathBuf>,
-    image: Option<DockerImageUrl>,
-    command: Option<Vec<String>>,
-    workdir: Option<String>,
-    env: Vec<(String, String)>,
-    mount: Vec<(String, String)>,
+    options: JobStartOptions,
     system: Option<String>,
     platform: Option<ComputePlatform>,
     account: Option<String>,
 ) -> Result<()> {
-    match cscs_start_job(
-        name,
-        script_file,
-        image,
-        command,
-        workdir,
-        env,
-        mount,
-        system,
-        platform,
-        account,
-    )
-    .await
-    {
+    match cscs_start_job(name, options, system, platform, account).await {
         Ok(_) => {
             println!("Job started");
             Ok(())

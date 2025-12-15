@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand, builder::TypedValueParser};
 use strum::VariantNames;
 
 use crate::{
-    config::{ComputePlatform, get_config_dir, get_data_dir},
+    config::{ComputePlatform, get_config_dir, get_data_dir, get_project_local_config_file},
     util::types::DockerImageUrl,
 };
 
@@ -31,6 +31,7 @@ pub enum CliCommands {
     },
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand, Debug)]
 pub enum CscsCommands {
     #[clap(about = "Log in to CSCS")]
@@ -87,6 +88,10 @@ pub enum CscsJobCommands {
         mount: Vec<(String, String)>,
         #[clap(short, long, help = "The docker image to use")]
         image: Option<DockerImageUrl>,
+        #[clap(short, long, help = "Path where stdout of the job gets written to")]
+        stdout: Option<PathBuf>,
+        #[clap(short, long, help = "Path where stderr of the job gets written to")]
+        stderr: Option<PathBuf>,
         #[clap(trailing_var_arg = true, help = "The command to run in the container")]
         command: Option<Vec<String>>,
     },
@@ -155,18 +160,18 @@ const VERSION_MESSAGE: &str = concat!(
 );
 
 pub fn version() -> String {
-    let author = clap::crate_authors!();
-
     // let current_exe_path = PathBuf::from(clap::crate_name!()).display().to_string();
     let config_dir_path = get_config_dir().display().to_string();
     let data_dir_path = get_data_dir().display().to_string();
+    let project_config_dir = get_project_local_config_file()
+        .map(|p| p.display().to_string())
+        .unwrap_or("".to_owned());
 
     format!(
         "\
 {VERSION_MESSAGE}
 
-Authors: {author}
-
+Project config directory: {project_config_dir}
 Config directory: {config_dir_path}
 Data directory: {data_dir_path}"
     )
