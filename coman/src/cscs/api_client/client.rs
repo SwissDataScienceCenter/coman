@@ -5,8 +5,8 @@ use eyre::eyre;
 use firecrest_client::{
     client::FirecrestClient,
     compute_api::{
-        cancel_compute_system_job, get_compute_system_job, get_compute_system_job_metadata, get_compute_system_jobs,
-        post_compute_system_job,
+        JobOptions, cancel_compute_system_job, get_compute_system_job, get_compute_system_job_metadata,
+        get_compute_system_jobs, post_compute_system_job,
     },
     filesystem_api::{
         get_filesystem_ops_download, get_filesystem_ops_ls, get_filesystem_ops_stat, get_filesystem_ops_tail,
@@ -22,7 +22,20 @@ use crate::{
     config::{ComputePlatform, Config},
     cscs::api_client::types::{FileStat, Job, JobDetail, PathEntry, S3Upload, System, UserInfo},
     trace_dbg,
+    util::types::DockerImageUrl,
 };
+
+#[derive(Debug, Clone, Default)]
+pub struct JobStartOptions {
+    pub script_file: Option<PathBuf>,
+    pub image: Option<DockerImageUrl>,
+    pub command: Option<Vec<String>>,
+    pub stdout: Option<PathBuf>,
+    pub stderr: Option<PathBuf>,
+    pub container_workdir: Option<String>,
+    pub env: Vec<(String, String)>,
+    pub mount: Vec<(String, String)>,
+}
 
 pub struct CscsApi {
     client: FirecrestClient,
@@ -46,6 +59,7 @@ impl CscsApi {
         name: &str,
         script_path: PathBuf,
         envvars: HashMap<String, String>,
+        options: JobStartOptions,
     ) -> Result<()> {
         let workingdir = script_path.clone();
         let workingdir = workingdir.parent();
@@ -54,10 +68,14 @@ impl CscsApi {
             system_name,
             account,
             name,
-            None,
-            Some(script_path),
-            workingdir.map(|p| p.to_path_buf()),
-            envvars,
+            JobOptions {
+                script: None,
+                script_path: Some(script_path),
+                working_dir: workingdir.map(|p| p.to_path_buf()),
+                envvars,
+                stdout: options.stdout,
+                stderr: options.stderr,
+            },
         )
         .await?;
 
@@ -231,10 +249,14 @@ mod tests {
                     "",
                     None,
                     "",
-                    None,
-                    None,
-                    None,
-                    HashMap::new()
+                    JobOptions {
+                        script: None,
+                        script_path: None,
+                        working_dir: None,
+                        envvars: HashMap::new(),
+                        stdout: None,
+                        stderr: None
+                    }
                 ),
                 Result<PostJobSubmissionResponse>
             ))
@@ -243,7 +265,14 @@ mod tests {
                 Result<PostJobSubmissionResponse>
             ));
         let result = client
-            .start_job("test", None, "test", PathBuf::from("/test"), HashMap::new())
+            .start_job(
+                "test",
+                None,
+                "test",
+                PathBuf::from("/test"),
+                HashMap::new(),
+                JobStartOptions::default(),
+            )
             .await;
         assert_ok!(result);
     }

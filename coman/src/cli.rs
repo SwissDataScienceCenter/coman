@@ -31,6 +31,7 @@ pub enum CliCommands {
     },
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand, Debug)]
 pub enum CscsCommands {
     #[clap(about = "Log in to CSCS")]
@@ -87,6 +88,10 @@ pub enum CscsJobCommands {
         mount: Vec<(String, String)>,
         #[clap(short, long, help = "The docker image to use")]
         image: Option<DockerImageUrl>,
+        #[clap(short, long, help = "Path where stdout of the job gets written to")]
+        stdout: Option<PathBuf>,
+        #[clap(short, long, help = "Path where stderr of the job gets written to")]
+        stderr: Option<PathBuf>,
         #[clap(trailing_var_arg = true, help = "The command to run in the container")]
         command: Option<Vec<String>>,
     },

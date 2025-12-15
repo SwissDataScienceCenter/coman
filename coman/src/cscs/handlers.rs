@@ -11,7 +11,7 @@ use crate::{
     config::{ComputePlatform, Config},
     cscs::{
         api_client::{
-            client::CscsApi,
+            client::{CscsApi, JobStartOptions},
             types::{FileStat, FileSystemType, Job, JobDetail, PathEntry, PathType, S3Upload, System, UserInfo},
         },
         oauth2::{
@@ -19,10 +19,7 @@ use crate::{
             start_cscs_device_login,
         },
     },
-    util::{
-        keyring::{Secret, get_secret, store_secret},
-        types::DockerImageUrl,
-    },
+    util::keyring::{Secret, get_secret, store_secret},
 };
 
 const CSCS_MAX_DIRECT_SIZE: usize = 5242880;
@@ -169,12 +166,7 @@ pub async fn cscs_job_cancel(job_id: i64, system: Option<String>, platform: Opti
 #[allow(clippy::too_many_arguments)]
 pub async fn cscs_start_job(
     name: Option<String>,
-    script_file: Option<PathBuf>,
-    image: Option<DockerImageUrl>,
-    command: Option<Vec<String>>,
-    container_workdir: Option<String>,
-    env: Vec<(String, String)>,
-    mount: Vec<(String, String)>,
+    options: JobStartOptions,
     system: Option<String>,
     platform: Option<ComputePlatform>,
     account: Option<String>,
@@ -202,12 +194,15 @@ pub async fn cscs_start_job(
                     return Err(eyre!("couldn't get system description for {}", current_system));
                 }
             };
-            let container_workdir = container_workdir.unwrap_or(config.cscs.workdir.unwrap_or("/scratch".to_owned()));
+            let container_workdir = options
+                .container_workdir
+                .clone()
+                .unwrap_or(config.cscs.workdir.unwrap_or("/scratch".to_owned()));
             let base_path = scratch.join(user_info.name.clone()).join(&job_name);
 
             let mut envvars = config.cscs.env.clone();
-            envvars.extend(env);
-            let mut mount: HashMap<String, String> = mount.into_iter().collect();
+            envvars.extend(options.env.clone());
+            let mut mount: HashMap<String, String> = options.mount.clone().into_iter().collect();
             mount.entry("${SCRATCH}".to_owned()).or_insert("/scratch".to_owned());
 
             let mut tera = tera::Tera::default();
@@ -216,7 +211,7 @@ pub async fn cscs_start_job(
             let environment_template = config.cscs.edf_file_template;
             tera.add_raw_template("environment.toml", &environment_template)?;
 
-            let docker_image = image.unwrap_or(config.cscs.image.try_into()?);
+            let docker_image = options.image.clone().unwrap_or(config.cscs.image.try_into()?);
             let meta = docker_image.inspect().await?;
             if let Some(system_info) = config.cscs.systems.get(current_system) {
                 let mut compatible = false;
@@ -255,13 +250,18 @@ pub async fn cscs_start_job(
 
             // upload script
             let script_path = base_path.join("script.sh");
-            let script_template = script_file
+            let script_template = options
+                .script_file
+                .clone()
                 .map(std::fs::read_to_string)
                 .unwrap_or(Ok(config.cscs.sbatch_script_template))?;
             tera.add_raw_template("script.sh", &script_template)?;
             let mut context = tera::Context::new();
             context.insert("name", &job_name);
-            context.insert("command", &command.unwrap_or(config.cscs.command).join(" "));
+            context.insert(
+                "command",
+                &options.command.clone().unwrap_or(config.cscs.command).join(" "),
+            );
             context.insert("environment_file", &environment_path);
             context.insert("container_workdir", &container_workdir);
             let script = tera.render("script.sh", &context)?;
@@ -271,7 +271,7 @@ pub async fn cscs_start_job(
 
             // start job
             api_client
-                .start_job(current_system, account, &job_name, script_path, envvars)
+                .start_job(current_system, account, &job_name, script_path, envvars, options)
                 .await?;
             Ok(())
         }

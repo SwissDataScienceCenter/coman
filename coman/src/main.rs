@@ -24,6 +24,7 @@ use crate::{
     },
     config::Config,
     cscs::{
+        api_client::client::JobStartOptions,
         cli::{
             cli_cscs_file_download, cli_cscs_file_list, cli_cscs_file_upload, cli_cscs_job_cancel, cli_cscs_job_detail,
             cli_cscs_job_list, cli_cscs_job_log, cli_cscs_job_start, cli_cscs_login, cli_cscs_set_system,
@@ -78,15 +79,21 @@ async fn main() -> Result<()> {
                         workdir,
                         env,
                         mount,
+                        stdout,
+                        stderr,
                     } => {
                         cli_cscs_job_start(
                             name,
-                            script_file,
-                            image,
-                            command,
-                            workdir,
-                            env,
-                            mount,
+                            JobStartOptions {
+                                script_file,
+                                image,
+                                command,
+                                container_workdir: workdir,
+                                env,
+                                mount,
+                                stdout,
+                                stderr,
+                            },
                             system,
                             platform,
                             account,

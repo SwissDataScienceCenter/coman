@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use eyre::{Result, eyre};
+use eyre::{Result, WrapErr, eyre};
 use serde_json::json;
 
 use crate::{
@@ -11,34 +11,54 @@ use crate::{
     },
 };
 
-#[allow(clippy::too_many_arguments)]
-pub async fn post_compute_system_job(
+#[derive(Debug, Clone, Default)]
+pub struct JobOptions<'a> {
+    pub script: Option<&'a str>,
+    pub script_path: Option<PathBuf>,
+    pub working_dir: Option<PathBuf>,
+    pub envvars: HashMap<String, String>,
+    pub stdout: Option<PathBuf>,
+    pub stderr: Option<PathBuf>,
+}
+
+pub async fn post_compute_system_job<'a>(
     client: &FirecrestClient,
     system_name: &str,
     account: Option<String>,
     name: &str,
-    script: Option<&str>,
-    script_path: Option<PathBuf>,
-    working_dir: Option<PathBuf>,
-    envvars: HashMap<String, String>,
+    options: JobOptions<'a>,
 ) -> Result<PostJobSubmissionResponse> {
-    if script.is_none() && script_path.is_none() {
+    if options.script.is_none() && options.script_path.is_none() {
         return Err(eyre!("either script or script_path must be set"));
     }
     let body = PostJobSubmitRequest {
         job: JobDescriptionModel {
             name: Some(name.to_string()),
-            script: script.map(|s| s.to_owned()),
-            script_path: script_path
+            script: options.script.map(|s| s.to_owned()),
+            script_path: options
+                .script_path
                 .map(|s| s.into_os_string().into_string())
                 .transpose()
                 .map_err(|_| eyre!("couldn't convert script path"))?,
-            working_directory: working_dir
+            working_directory: options
+                .working_dir
                 .map(|s| s.into_os_string().into_string())
                 .transpose()
                 .map_err(|_| eyre!("couldn't convert working dir path"))?
                 .unwrap_or("/".to_owned()),
-            env: Some(JobDescriptionModelEnv::Object(json!(envvars))),
+            env: Some(JobDescriptionModelEnv::Object(json!(options.envvars))),
+            standard_output: options
+                .stdout
+                .map(|p| p.into_os_string().into_string())
+                .transpose()
+                .map_err(|e| eyre!("Path:{}", e.display()))
+                .wrap_err("stdout is not a valid path")?,
+            standard_error: options
+                .stderr
+                .map(|p| p.into_os_string().into_string())
+                .transpose()
+                .map_err(|e| eyre!("Path:{}", e.display()))
+                .wrap_err("stderr is not a valid path")?,
             account,
             ..Default::default()
         },
