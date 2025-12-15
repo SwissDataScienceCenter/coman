@@ -2,26 +2,35 @@
 
 use std::{collections::HashMap, env, path::PathBuf};
 
-use color_eyre::Result;
+use color_eyre::{
+    Result,
+    eyre::{Context, ContextCompat, eyre},
+};
 use directories::ProjectDirs;
-use eyre::eyre;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use strum_macros::{EnumString, VariantNames};
+use toml_edit::DocumentMut;
 
 const DEFAULT_CONFIG_TOML: &str = include_str!("../.config/config.toml");
+
+const DEFAULT_KEYS: &[&str] = &["name", "cscs.account"];
+
+lazy_static! {
+    pub static ref PROJECT_NAME: String = env!("CARGO_CRATE_NAME").to_uppercase().to_string();
+    pub static ref DATA_FOLDER: Option<PathBuf> = env::var(format!("{}_DATA", PROJECT_NAME.clone()))
+        .ok()
+        .map(PathBuf::from);
+    pub static ref CONFIG_FOLDER: Option<PathBuf> = env::var(format!("{}_CONFIG", PROJECT_NAME.clone()))
+        .ok()
+        .map(PathBuf::from);
+    pub static ref CONFIG_FILE_NAME: String = format!("{}.toml", PROJECT_NAME.to_lowercase().clone());
+    pub static ref CONFIG_FORMAT: config::FileFormat = config::FileFormat::Toml;
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct SystemDescription {
     pub architecture: Vec<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
-pub struct AppConfig {
-    #[serde(default)]
-    pub data_dir: PathBuf,
-    #[serde(default)]
-    pub config_dir: PathBuf,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, strum::Display, EnumString, VariantNames)]
@@ -60,70 +69,153 @@ pub struct CscsConfig {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct Config {
+pub struct ComanConfig {
     #[serde(default)]
     pub name: Option<String>,
-    #[serde(default, flatten)]
-    pub config: AppConfig,
     #[serde(default)]
     pub cscs: CscsConfig,
 }
 
-lazy_static! {
-    pub static ref PROJECT_NAME: String = env!("CARGO_CRATE_NAME").to_uppercase().to_string();
-    pub static ref DATA_FOLDER: Option<PathBuf> = env::var(format!("{}_DATA", PROJECT_NAME.clone()))
-        .ok()
-        .map(PathBuf::from);
-    pub static ref CONFIG_FOLDER: Option<PathBuf> = env::var(format!("{}_CONFIG", PROJECT_NAME.clone()))
-        .ok()
-        .map(PathBuf::from);
-    pub static ref CONFIG_FILE_NAME: String = format!("{}.toml", PROJECT_NAME.to_lowercase().clone());
-    pub static ref CONFIG_FORMAT: config::FileFormat = config::FileFormat::Toml;
+#[derive(Clone, Debug)]
+pub struct Layer {
+    source: PathBuf,
+    data: DocumentMut,
+}
+
+impl Layer {
+    pub fn from_path(path: PathBuf) -> Result<Self> {
+        if !path.exists() {
+            return Ok(Self {
+                source: path,
+                data: DocumentMut::new(),
+            });
+        }
+        if !path.is_file() {
+            return Err(eyre!("Config path {} is not a file", path.display()));
+        }
+        let content =
+            std::fs::read_to_string(path.clone()).wrap_err(format!("couldn't read config {}", path.display()))?;
+        let doc = content
+            .parse::<DocumentMut>()
+            .wrap_err(format!("couldn't parse toml file {}", path.display()))?;
+        Ok(Self {
+            source: path,
+            data: doc,
+        })
+    }
+
+    pub fn get(&self, key_path: &str) -> Result<Option<String>> {
+        let key_path_parsed = toml_edit::Key::parse(key_path)?;
+        let root = self.data.as_item();
+        let item = lookup_entry(key_path_parsed, root)?;
+        let item = item
+            .map(|i| i.clone().into_value())
+            .transpose()
+            .map_err(|e| eyre!(format!("{:?}", e)))
+            .wrap_err("couldn't convert config item to value")?;
+
+        Ok(item.map(|val| match val {
+            toml_edit::Value::String(v) => v.into_value(),
+            toml_edit::Value::Integer(_)
+            | toml_edit::Value::Float(_)
+            | toml_edit::Value::Boolean(_)
+            | toml_edit::Value::Datetime(_)
+            | toml_edit::Value::Array(_)
+            | toml_edit::Value::InlineTable(_) => val.decorated("", "").to_string(),
+        }))
+    }
+
+    pub fn set<V: Into<toml_edit::Value>>(&mut self, key_path: &str, value: V) -> Result<()> {
+        let key_path_parsed = toml_edit::Key::parse(key_path)?;
+        let (leaf, keys) = key_path_parsed.split_last().wrap_err("couldn't parse key path")?;
+        let root_table: &mut dyn toml_edit::TableLike = self.data.as_table_mut();
+        let table = keys
+            .iter()
+            .enumerate()
+            .try_fold(root_table, |table: &mut dyn toml_edit::TableLike, (i, key)| {
+                let sub_item = table.entry_format(key).or_insert_with(implicit_table);
+                sub_item.as_table_like_mut().ok_or(&keys[..=i])
+            })
+            .map_err(|e| eyre!("{:?}", e))
+            .wrap_err("couldn't get config item path")?;
+
+        match table.entry_format(leaf) {
+            toml_edit::Entry::Occupied(mut occupied_entry) => {
+                if !occupied_entry.get().is_value() {
+                    return Err(eyre!("would overwrite entry {}", key_path));
+                }
+                occupied_entry.insert(toml_edit::value(value));
+            }
+            toml_edit::Entry::Vacant(vacant_entry) => {
+                vacant_entry.insert(toml_edit::value(value));
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn write(&self) -> Result<()> {
+        let contents = self.data.to_string();
+        std::fs::write(&self.source, contents).wrap_err("couldn't write config")
+    }
+}
+
+fn lookup_entry(key_path_parsed: Vec<toml_edit::Key>, root: &toml_edit::Item) -> Result<Option<&toml_edit::Item>> {
+    let mut cur_item = root;
+    for key in key_path_parsed {
+        let Some(table) = cur_item.as_table_like() else {
+            return Err(eyre!("couldn't get subentry for {}", cur_item));
+        };
+        cur_item = match table.get(key.get()) {
+            Some(item) => item,
+            None => return Ok(None),
+        };
+    }
+    Ok(Some(cur_item))
+}
+
+fn implicit_table() -> toml_edit::Item {
+    let mut table = toml_edit::Table::new();
+    table.set_implicit(true);
+    toml_edit::Item::Table(table)
+}
+
+#[derive(Clone, Debug)]
+pub struct Config {
+    pub values: ComanConfig,
+    default_layer: toml_edit::DocumentMut,
+    global_layer: Layer,
+    project_layer: Option<Layer>,
 }
 
 impl Config {
     pub fn new() -> Result<Self> {
-        let builder = default_config_builder()?;
-        let builder = global_config_builder(builder)?;
-        let builder = project_local_config_builder(builder)?;
-
-        let cfg: Self = builder.build()?.try_deserialize()?;
-        Ok(cfg)
-    }
-    pub fn new_global() -> Result<Self> {
-        let builder = default_config_builder()?;
-        let builder = global_config_builder(builder)?;
-
-        let cfg: Self = builder.build()?.try_deserialize()?;
-        Ok(cfg)
-    }
-
-    pub fn write_local(&self) -> Result<()> {
-        match get_project_local_config_file() {
-            Some(path) => {
-                let content = toml::to_string_pretty(self)?;
-                std::fs::write(path, content)?;
-                Ok(())
-            }
-            None => Err(eyre!(
-                "No config file exists in current project. Consider creating one using '{} init",
-                PROJECT_NAME.to_lowercase().clone()
-            )),
+        let default_layer: DocumentMut = DEFAULT_CONFIG_TOML.parse()?;
+        let global_layer = global_config_layer()?;
+        let project_layer = project_local_config_layer()?;
+        let mut builder =
+            config::Config::builder().add_source(config::File::from_str(DEFAULT_CONFIG_TOML, config::FileFormat::Toml));
+        builder = builder.add_source(config::File::from_str(
+            &global_layer.data.to_string(),
+            config::FileFormat::Toml,
+        ));
+        if let Some(project_layer) = project_layer.clone() {
+            builder = builder.add_source(config::File::from_str(
+                &project_layer.data.to_string(),
+                config::FileFormat::Toml,
+            ));
         }
-    }
 
-    pub fn write_global(&self) -> Result<()> {
-        let config_dir = get_config_dir();
-        let path = config_dir.join(CONFIG_FILE_NAME.clone());
-        let content = toml::to_string_pretty(self)?;
-        let parent = path.parent().unwrap();
-        std::fs::create_dir_all(parent)?;
-        std::fs::write(path, content)?;
-        Ok(())
-    }
+        let cfg: ComanConfig = builder.build()?.try_deserialize()?;
 
-    pub fn create_config(destination: Option<PathBuf>) -> Result<()> {
-        let mut config = Config::new()?;
+        Ok(Self {
+            values: cfg,
+            default_layer,
+            global_layer,
+            project_layer,
+        })
+    }
+    pub fn create_project_config(destination: Option<PathBuf>, name: Option<String>) -> Result<()> {
         let project_dir = destination
             .unwrap_or(std::env::current_dir().expect("current directory does not exist"))
             .canonicalize()?;
@@ -134,27 +226,90 @@ impl Config {
             ));
         }
 
-        let name = project_dir
-            .file_name()
-            .expect("could not get base name from destination");
-        config.name = Some(name.to_string_lossy().to_string());
+        let name = name.unwrap_or(
+            project_dir
+                .file_name()
+                .expect("could not get base name from destination")
+                .to_os_string()
+                .into_string()
+                .map_err(|e| eyre!("couldn't parse path: {:?}", e))?,
+        );
 
         let config_path = project_dir.join(CONFIG_FILE_NAME.clone());
-        std::fs::write(config_path.clone(), "")?;
-        let content = toml::to_string_pretty(&config)?;
-        std::fs::write(config_path, content)?;
+        let mut project_layer = Layer::from_path(config_path)?;
+        project_layer.set("name", name)?;
+        project_layer.write()
+    }
+
+    pub fn set<V: Into<toml_edit::Value>>(&mut self, key_path: &str, value: V, global: bool) -> Result<()> {
+        match global {
+            true => {
+                self.global_layer.set(key_path, value)?;
+                self.validate()?;
+                self.global_layer.write()?;
+            }
+            false => match self.project_layer {
+                Some(ref mut layer) => {
+                    layer.set(key_path, value)?;
+                }
+                None => return Err(eyre!("No project config found, please create one with `coman init`")),
+            },
+        };
+        self.validate()?;
+        match global {
+            true => {
+                self.global_layer.write()?;
+            }
+            false => {
+                self.project_layer.as_ref().unwrap().write()?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn get(&self, key_path: &str) -> Result<String> {
+        if let Some(ref layer) = self.project_layer {
+            match layer.get(key_path) {
+                Ok(Some(val)) => return Ok(val),
+                Ok(None) => {}
+                Err(e) => return Err(e),
+            }
+        }
+
+        match self.global_layer.get(key_path) {
+            Ok(Some(val)) => return Ok(val),
+            Ok(None) => {}
+            Err(e) => return Err(e),
+        };
+
+        let key_path_parsed = toml_edit::Key::parse(key_path)?;
+        let item = lookup_entry(key_path_parsed, self.default_layer.as_item())?;
+        Ok(item.map(|i| i.to_string()).unwrap_or("".to_owned()))
+    }
+
+    pub fn validate(&mut self) -> Result<()> {
+        let mut builder =
+            config::Config::builder().add_source(config::File::from_str(DEFAULT_CONFIG_TOML, config::FileFormat::Toml));
+        builder = builder.add_source(config::File::from_str(
+            &self.global_layer.data.to_string(),
+            config::FileFormat::Toml,
+        ));
+        if let Some(project_layer) = self.project_layer.clone() {
+            builder = builder.add_source(config::File::from_str(
+                &project_layer.data.to_string(),
+                config::FileFormat::Toml,
+            ));
+        }
+
+        let _cfg: ComanConfig = builder.build()?.try_deserialize().wrap_err("invalid config")?;
         Ok(())
     }
 }
 
-pub fn default_config_builder() -> Result<config::ConfigBuilder<config::builder::DefaultState>> {
-    let data_dir = get_data_dir();
+pub fn global_config_layer() -> Result<Layer> {
     let config_dir = get_config_dir();
-    let builder = config::Config::builder()
-        .add_source(config::File::from_str(DEFAULT_CONFIG_TOML, config::FileFormat::Toml))
-        .set_default("data_dir", data_dir.to_str().unwrap())?
-        .set_default("config_dir", config_dir.to_str().unwrap())?;
-    Ok(builder)
+    let source = config_dir.join(CONFIG_FILE_NAME.clone());
+    Layer::from_path(source)
 }
 
 pub fn global_config_builder(
@@ -166,6 +321,14 @@ pub fn global_config_builder(
         .required(false);
     let builder = builder.add_source(source);
     Ok(builder)
+}
+
+pub fn project_local_config_layer() -> Result<Option<Layer>> {
+    if let Some(source) = get_project_local_config_file() {
+        let layer = Layer::from_path(source)?;
+        return Ok(Some(layer));
+    }
+    Ok(None)
 }
 
 pub fn project_local_config_builder(

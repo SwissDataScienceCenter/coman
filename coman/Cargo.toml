@@ -72,6 +72,7 @@ chrono = "0.4.42"
 openssl = { version = "0.10.75", features = ["vendored"] }
 tui-realm-treeview = "3.0.0"
 aws-sdk-s3 = "1.115.0"
+toml_edit = "0.23.9"
 
 [build-dependencies]
 anyhow = "1.0.90"

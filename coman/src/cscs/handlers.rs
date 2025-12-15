@@ -77,16 +77,8 @@ pub async fn cscs_system_list(platform: Option<ComputePlatform>) -> Result<Vec<S
 }
 
 pub async fn cscs_system_set(system_name: String, global: bool) -> Result<()> {
-    if global {
-        let mut config = Config::new_global()?;
-        config.cscs.current_system = system_name;
-        config.write_global()?;
-    } else {
-        let mut config = Config::new()?;
-        config.cscs.current_system = system_name;
-        config.write_local()?;
-    }
-    Ok(())
+    let mut config = Config::new()?;
+    config.set("cscs.current_system", system_name, global)
 }
 
 pub async fn cscs_job_list(system: Option<String>, platform: Option<ComputePlatform>) -> Result<Vec<Job>> {
@@ -95,7 +87,7 @@ pub async fn cscs_job_list(system: Option<String>, platform: Option<ComputePlatf
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
             api_client
-                .list_jobs(&system.unwrap_or(config.cscs.current_system), Some(true))
+                .list_jobs(&system.unwrap_or(config.values.cscs.current_system), Some(true))
                 .await
         }
         Err(e) => Err(e),
@@ -112,7 +104,7 @@ pub async fn cscs_job_details(
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
             api_client
-                .get_job(&system.unwrap_or(config.cscs.current_system), job_id)
+                .get_job(&system.unwrap_or(config.values.cscs.current_system), job_id)
                 .await
         }
         Err(e) => Err(e),
@@ -129,7 +121,7 @@ pub async fn cscs_job_log(
         Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
-            let current_system = &system.unwrap_or(config.cscs.current_system);
+            let current_system = &system.unwrap_or(config.values.cscs.current_system);
             let job = api_client.get_job(current_system, job_id).await?;
             if job.is_none() {
                 return Err(eyre!("couldn't find job {}", job_id));
@@ -160,7 +152,7 @@ pub async fn cscs_job_cancel(job_id: i64, system: Option<String>, platform: Opti
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
             api_client
-                .cancel_job(&system.unwrap_or(config.cscs.current_system), job_id)
+                .cancel_job(&system.unwrap_or(config.values.cscs.current_system), job_id)
                 .await
         }
         Err(e) => Err(e),
@@ -181,14 +173,17 @@ async fn handle_edf(
         EdfSpec::Generate => {
             let mut tera = tera::Tera::default();
 
-            let environment_template = &config.cscs.edf_file_template;
+            let environment_template = &config.values.cscs.edf_file_template;
             tera.add_raw_template("environment.toml", environment_template)?;
             let mut mount: HashMap<String, String> = options.mount.clone().into_iter().collect();
             mount.entry("${SCRATCH}".to_owned()).or_insert("/scratch".to_owned());
 
-            let docker_image = options.image.clone().unwrap_or(config.cscs.image.clone().try_into()?);
+            let docker_image = options
+                .image
+                .clone()
+                .unwrap_or(config.values.cscs.image.clone().try_into()?);
             let meta = docker_image.inspect().await?;
-            if let Some(system_info) = config.cscs.systems.get(current_system) {
+            if let Some(system_info) = config.values.cscs.systems.get(current_system) {
                 let mut compatible = false;
                 for sys_platform in system_info.architecture.iter() {
                     if meta.platforms.contains(&sys_platform.clone().into()) {
@@ -249,14 +244,14 @@ async fn handle_script(
     let script_path = base_path.join("script.sh");
     match options.script_spec.clone() {
         ScriptSpec::Generate => {
-            let script_template = config.cscs.sbatch_script_template;
+            let script_template = config.values.cscs.sbatch_script_template;
             let mut tera = tera::Tera::default();
             tera.add_raw_template("script.sh", &script_template)?;
             let mut context = tera::Context::new();
             context.insert("name", &job_name);
             context.insert(
                 "command",
-                &options.command.clone().unwrap_or(config.cscs.command).join(" "),
+                &options.command.clone().unwrap_or(config.values.cscs.command).join(" "),
             );
             context.insert("environment_file", &environment_path.to_path_buf());
             context.insert("container_workdir", &workdir);
@@ -290,10 +285,12 @@ pub async fn cscs_job_start(
         Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
-            let current_system = &system.unwrap_or(config.cscs.current_system);
-            let account = account.or(config.cscs.account);
+            let current_system = &system.unwrap_or(config.values.cscs.current_system);
+            let account = account.or(config.values.cscs.account);
             let user_info = api_client.get_userinfo(current_system).await?;
-            let job_name = name.or(config.name).unwrap_or(format!("{}-coman", user_info.name));
+            let job_name = name
+                .or(config.values.name)
+                .unwrap_or(format!("{}-coman", user_info.name));
             let current_system_info = api_client.get_system(current_system).await?;
             let scratch = match current_system_info {
                 Some(system) => PathBuf::from(
@@ -312,10 +309,10 @@ pub async fn cscs_job_start(
             let container_workdir = options
                 .container_workdir
                 .clone()
-                .unwrap_or(config.cscs.workdir.unwrap_or("/scratch".to_owned()));
+                .unwrap_or(config.values.cscs.workdir.unwrap_or("/scratch".to_owned()));
             let base_path = scratch.join(user_info.name.clone()).join(&job_name);
 
-            let mut envvars = config.cscs.env.clone();
+            let mut envvars = config.values.cscs.env.clone();
             envvars.extend(options.env.clone());
 
             let environment_path = handle_edf(
@@ -359,7 +356,7 @@ pub async fn cscs_file_list(
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
             api_client
-                .list_path(&system.unwrap_or(config.cscs.current_system), path)
+                .list_path(&system.unwrap_or(config.values.cscs.current_system), path)
                 .await
         }
         Err(e) => Err(e),
@@ -382,7 +379,7 @@ pub async fn cscs_file_download(
         Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
-            let current_system = &system.unwrap_or(config.cscs.current_system);
+            let current_system = &system.unwrap_or(config.values.cscs.current_system);
             let paths = api_client.list_path(current_system, remote.clone()).await?;
             let path = paths.first().ok_or(eyre!("remote path doesn't exist"))?;
             if let PathType::Directory = path.path_type {
@@ -396,7 +393,7 @@ pub async fn cscs_file_download(
                 Ok(None)
             } else {
                 // download via s3
-                let account = account.or(config.cscs.account);
+                let account = account.or(config.values.cscs.account);
                 let job_data = api_client.transfer_download(current_system, account, remote).await?;
                 Ok(Some((job_data.0, job_data.1, size)))
             }
@@ -415,7 +412,7 @@ pub async fn cscs_file_upload(
         Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
-            let current_system = &system.unwrap_or(config.cscs.current_system);
+            let current_system = &system.unwrap_or(config.values.cscs.current_system);
             let existing = api_client.list_path(current_system, remote.clone()).await?;
             let remote = if !existing.is_empty() {
                 if existing.len() == 1 && existing[0].path_type == PathType::File {
@@ -441,7 +438,7 @@ pub async fn cscs_file_upload(
                 Ok(None)
             } else {
                 // upload via s3
-                let account = account.or(config.cscs.account);
+                let account = account.or(config.values.cscs.account);
                 let transfer_data = api_client
                     .transfer_upload(current_system, account, remote, size as i64)
                     .await?;
@@ -463,7 +460,7 @@ pub async fn cscs_stat_path(
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
             api_client
-                .stat_path(&system.unwrap_or(config.cscs.current_system), path)
+                .stat_path(&system.unwrap_or(config.values.cscs.current_system), path)
                 .await
         }
         Err(e) => Err(e),
@@ -476,7 +473,7 @@ pub async fn cscs_user_info(system: Option<String>, platform: Option<ComputePlat
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
             api_client
-                .get_userinfo(&system.unwrap_or(config.cscs.current_system))
+                .get_userinfo(&system.unwrap_or(config.values.cscs.current_system))
                 .await
         }
         Err(e) => Err(e),

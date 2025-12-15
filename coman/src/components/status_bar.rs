@@ -42,8 +42,8 @@ impl StatusBar {
             last_updated: Instant::now(),
             current_status: None,
             status_clear_time: Duration::from_secs(10),
-            current_platform: config.cscs.current_platform.to_string(),
-            current_system: config.cscs.current_system,
+            current_platform: config.values.cscs.current_platform.to_string(),
+            current_system: config.values.cscs.current_system,
         }
     }
 }

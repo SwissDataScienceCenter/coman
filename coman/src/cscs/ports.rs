@@ -251,8 +251,8 @@ async fn list_files(id: PathBuf) -> Result<Option<Event<UserEvent>>> {
         let systems = cscs_system_list(None).await?;
         let system = systems
             .iter()
-            .find(|s| s.name == config.cscs.current_system)
-            .unwrap_or_else(|| panic!("couldn't get info for system {}", config.cscs.current_system));
+            .find(|s| s.name == config.values.cscs.current_system)
+            .unwrap_or_else(|| panic!("couldn't get info for system {}", config.values.cscs.current_system));
         // listing big directories fails in the api and we might not actually be allowed to
         // access the roots of the storage.
         // So we try to append the user name to the paths and use that, if it works
