@@ -303,6 +303,11 @@ pub async fn cscs_file_download(
     system: Option<String>,
     platform: Option<ComputePlatform>,
 ) -> Result<Option<(i64, Url, usize)>> {
+    let local = if local.is_dir() {
+        local.join(remote.file_name().ok_or(eyre!("couldn't get name of remote file"))?)
+    } else {
+        local
+    };
     match get_access_token().await {
         Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
