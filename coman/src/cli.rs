@@ -1,10 +1,11 @@
 use std::{error::Error, path::PathBuf};
 
-use clap::{Parser, Subcommand, builder::TypedValueParser};
+use clap::{Args, Parser, Subcommand, builder::TypedValueParser};
 use strum::VariantNames;
 
 use crate::{
     config::{ComputePlatform, get_config_dir, get_data_dir, get_project_local_config_file},
+    cscs::api_client::client::EdfSpec as EdfSpecEnum,
     util::types::DockerImageUrl,
 };
 
@@ -56,6 +57,42 @@ pub enum CscsCommands {
     },
 }
 
+#[derive(Args, Clone, Debug)]
+#[group(multiple = false)]
+pub struct EdfSpec {
+    #[arg(
+        long,
+        help = "generate and upload edf file based on template (on by default unless `--local`, `--remote` or `--no-edf` are passed)"
+    )]
+    generate_edf: bool,
+    #[arg(long, value_name = "PATH", help = "upload local edf file")]
+    local_edf: Option<PathBuf>,
+    #[arg(long, value_name = "PATH", help = "use edf file already present on remote")]
+    remote_edf: Option<PathBuf>,
+}
+
+impl Default for EdfSpec {
+    fn default() -> Self {
+        Self {
+            generate_edf: true,
+            local_edf: Default::default(),
+            remote_edf: Default::default(),
+        }
+    }
+}
+
+impl From<EdfSpec> for EdfSpecEnum {
+    fn from(val: EdfSpec) -> Self {
+        if val.local_edf.is_some() {
+            EdfSpecEnum::Local(val.local_edf.unwrap())
+        } else if val.remote_edf.is_some() {
+            EdfSpecEnum::Remote(val.remote_edf.unwrap())
+        } else {
+            EdfSpecEnum::Generate
+        }
+    }
+}
+
 #[allow(clippy::large_enum_variant)]
 #[derive(Subcommand, Debug)]
 pub enum CscsJobCommands {
@@ -88,10 +125,12 @@ pub enum CscsJobCommands {
         mount: Vec<(String, String)>,
         #[clap(short, long, help = "The docker image to use")]
         image: Option<DockerImageUrl>,
-        #[clap(short, long, help = "Path where stdout of the job gets written to")]
+        #[clap(long, help = "Path where stdout of the job gets written to")]
         stdout: Option<PathBuf>,
-        #[clap(short, long, help = "Path where stderr of the job gets written to")]
+        #[clap(long, help = "Path where stderr of the job gets written to")]
         stderr: Option<PathBuf>,
+        #[command(flatten)]
+        edf_spec: Option<EdfSpec>,
         #[clap(trailing_var_arg = true, help = "The command to run in the container")]
         command: Option<Vec<String>>,
     },

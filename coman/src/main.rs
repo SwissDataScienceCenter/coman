@@ -81,6 +81,7 @@ async fn main() -> Result<()> {
                         mount,
                         stdout,
                         stderr,
+                        edf_spec,
                     } => {
                         cli_cscs_job_start(
                             name,
@@ -93,6 +94,7 @@ async fn main() -> Result<()> {
                                 mount,
                                 stdout,
                                 stderr,
+                                edf_spec: edf_spec.unwrap_or_default().into(),
                             },
                             system,
                             platform,

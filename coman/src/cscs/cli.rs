@@ -21,7 +21,7 @@ use crate::{
         api_client::{client::JobStartOptions, types::JobStatus},
         handlers::{
             cscs_file_download, cscs_file_list, cscs_file_upload, cscs_job_cancel, cscs_job_details, cscs_job_list,
-            cscs_job_log, cscs_login, cscs_start_job, cscs_system_list, cscs_system_set,
+            cscs_job_log, cscs_job_start, cscs_login, cscs_system_list, cscs_system_set,
         },
     },
 };
@@ -107,7 +107,7 @@ pub(crate) async fn cli_cscs_job_start(
     platform: Option<ComputePlatform>,
     account: Option<String>,
 ) -> Result<()> {
-    match cscs_start_job(name, options, system, platform, account).await {
+    match cscs_job_start(name, options, system, platform, account).await {
         Ok(_) => {
             println!("Job started");
             Ok(())
