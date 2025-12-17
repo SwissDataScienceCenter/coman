@@ -25,6 +25,13 @@ use crate::{
     util::types::DockerImageUrl,
 };
 #[derive(Debug, Clone, Default)]
+pub enum ScriptSpec {
+    #[default]
+    Generate,
+    Local(PathBuf),
+    Remote(PathBuf),
+}
+#[derive(Debug, Clone, Default)]
 pub enum EdfSpec {
     #[default]
     Generate,
@@ -34,7 +41,6 @@ pub enum EdfSpec {
 
 #[derive(Debug, Clone, Default)]
 pub struct JobStartOptions {
-    pub script_file: Option<PathBuf>,
     pub image: Option<DockerImageUrl>,
     pub command: Option<Vec<String>>,
     pub stdout: Option<PathBuf>,
@@ -43,6 +49,7 @@ pub struct JobStartOptions {
     pub env: Vec<(String, String)>,
     pub mount: Vec<(String, String)>,
     pub edf_spec: EdfSpec,
+    pub script_spec: ScriptSpec,
 }
 
 pub struct CscsApi {

@@ -10,7 +10,7 @@ use std::{
 use color_eyre::{Result, eyre::eyre};
 use reqwest::Url;
 
-use super::api_client::client::EdfSpec;
+use super::api_client::client::{EdfSpec, ScriptSpec};
 use crate::{
     config::{ComputePlatform, Config},
     cscs::{
@@ -236,8 +236,49 @@ async fn handle_edf(
         EdfSpec::Remote(path) => Ok(path),
     }
 }
+async fn handle_script(
+    api_client: &CscsApi,
+    job_name: &str,
+    base_path: &Path,
+    current_system: &str,
+    environment_path: &Path,
+    workdir: &str,
+    options: &JobStartOptions,
+) -> Result<PathBuf> {
+    let config = Config::new().unwrap();
+    let script_path = base_path.join("script.sh");
+    match options.script_spec.clone() {
+        ScriptSpec::Generate => {
+            let script_template = config.cscs.sbatch_script_template;
+            let mut tera = tera::Tera::default();
+            tera.add_raw_template("script.sh", &script_template)?;
+            let mut context = tera::Context::new();
+            context.insert("name", &job_name);
+            context.insert(
+                "command",
+                &options.command.clone().unwrap_or(config.cscs.command).join(" "),
+            );
+            context.insert("environment_file", &environment_path.to_path_buf());
+            context.insert("container_workdir", &workdir);
+            let script = tera.render("script.sh", &context)?;
+            api_client
+                .upload(current_system, script_path.clone(), script.into_bytes())
+                .await?;
 
-#[allow(clippy::too_many_arguments)]
+            Ok(script_path)
+        }
+        ScriptSpec::Local(local_path) => {
+            let script = std::fs::read_to_string(local_path)?;
+            api_client
+                .upload(current_system, script_path.clone(), script.into_bytes())
+                .await?;
+
+            Ok(script_path)
+        }
+        ScriptSpec::Remote(script_path) => Ok(script_path),
+    }
+}
+
 pub async fn cscs_job_start(
     name: Option<String>,
     options: JobStartOptions,
@@ -276,6 +317,7 @@ pub async fn cscs_job_start(
 
             let mut envvars = config.cscs.env.clone();
             envvars.extend(options.env.clone());
+
             let environment_path = handle_edf(
                 &api_client,
                 &base_path,
@@ -286,27 +328,16 @@ pub async fn cscs_job_start(
             )
             .await?;
 
-            // upload script
-            let script_path = base_path.join("script.sh");
-            let script_template = options
-                .script_file
-                .clone()
-                .map(std::fs::read_to_string)
-                .unwrap_or(Ok(config.cscs.sbatch_script_template))?;
-            let mut tera = tera::Tera::default();
-            tera.add_raw_template("script.sh", &script_template)?;
-            let mut context = tera::Context::new();
-            context.insert("name", &job_name);
-            context.insert(
-                "command",
-                &options.command.clone().unwrap_or(config.cscs.command).join(" "),
-            );
-            context.insert("environment_file", &environment_path);
-            context.insert("container_workdir", &container_workdir);
-            let script = tera.render("script.sh", &context)?;
-            api_client
-                .upload(current_system, script_path.clone(), script.into_bytes())
-                .await?;
+            let script_path = handle_script(
+                &api_client,
+                &job_name,
+                &base_path,
+                current_system,
+                &environment_path,
+                &container_workdir,
+                &options,
+            )
+            .await?;
 
             // start job
             api_client
