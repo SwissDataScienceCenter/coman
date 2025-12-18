@@ -246,11 +246,14 @@ name = "myproject" # the name of the project, used to generate job names
 # check https://docs.cscs.ch/access/firecrest/#firecrest-deployment-on-alps for possible system and platform combinations
 current_system = "daint" # what system/cluster to execute commands on
 current_platform = "HPC" # what platform to execute commands on (valid: HPC, ML or CW)
+account = "..." # the project/group account to use on cscs
 
 
 image = "ubuntu" # default docker image to use
 
 command = ["sleep", "1"] # command to execute within the container, i.e. the job you want to run
+
+workdir = "/scratch" # working directory within container
 
 # the sbatch script you want to execute
 # this gets templated with values specified in the {{}} and {% %} expressions (see https://keats.github.io/tera/docs/#templates for
