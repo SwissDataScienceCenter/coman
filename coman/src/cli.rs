@@ -1,10 +1,11 @@
 use std::{error::Error, path::PathBuf};
 
 use clap::{Args, Parser, Subcommand, builder::TypedValueParser};
+use color_eyre::Result;
 use strum::VariantNames;
 
 use crate::{
-    config::{ComputePlatform, get_config_dir, get_data_dir, get_project_local_config_file},
+    config::{ComputePlatform, Config, get_config_dir, get_data_dir, get_project_local_config_file},
     cscs::api_client::client::{EdfSpec as EdfSpecEnum, ScriptSpec as ScriptSpecEnum},
     util::types::DockerImageUrl,
 };
@@ -27,8 +28,37 @@ pub enum CliCommands {
     },
     #[clap(about = "Create a new project configuration file")]
     Init {
-        #[clap(help = "Destination folder to create config in (default = current directory)")]
+        #[clap(help = "destination folder to create config in (default = current directory)")]
         destination: Option<PathBuf>,
+        #[clap(help = "project name to use")]
+        name: Option<String>,
+    },
+    #[clap(about = "Manage configuration")]
+    Config {
+        #[command(subcommand)]
+        command: ConfigCommands,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ConfigCommands {
+    #[clap(about = "Set config values")]
+    Set {
+        #[clap(
+            short,
+            long,
+            action,
+            help = "whether to change the global config or the project local one"
+        )]
+        global: bool,
+        #[clap(help = "Config key path, e.g. `cscs.current_system`")]
+        key_path: String,
+        #[clap(help = "Value to set", value_parser = parse_toml_value)]
+        value: toml_edit::Value,
+    },
+    Get {
+        #[clap(help = "Config key path, e.g. `cscs.current_system`")]
+        key_path: String,
     },
 }
 
@@ -251,6 +281,17 @@ Data directory: {data_dir_path}"
     )
 }
 
+pub fn set_config<V: Into<toml_edit::Value>>(key_path: String, value: V, global: bool) -> Result<()> {
+    let mut config = Config::new()?;
+    config.set(&key_path, value, global)?;
+    Ok(())
+}
+
+pub fn get_config(key_path: String) -> Result<String> {
+    let config = Config::new()?;
+    config.get(&key_path)
+}
+
 fn parse_key_val<T, U>(s: &str) -> Result<(T, U), Box<dyn Error + Send + Sync + 'static>>
 where
     T: std::str::FromStr,
@@ -274,4 +315,23 @@ where
         .find(':')
         .ok_or_else(|| format!("invalid KEY:value: no `:` found in `{s}`"))?;
     Ok((s[..pos].parse()?, s[pos + 1..].parse()?))
+}
+
+pub fn parse_toml_value(value_str: &str) -> Result<toml_edit::Value, toml_edit::TomlError> {
+    match value_str.parse() {
+        Ok(value) => Ok(value),
+        Err(_) if is_bare_string(value_str) => Ok(value_str.into()),
+        Err(err) => Err(err),
+    }
+}
+fn is_bare_string(value_str: &str) -> bool {
+    // leading whitespace isn't ignored when parsing TOML value expression, but
+    // "\n[]" doesn't look like a bare string.
+    let trimmed = value_str.trim_ascii().as_bytes();
+    if let (Some(&first), Some(&last)) = (trimmed.first(), trimmed.last()) {
+        // string, array, or table constructs?
+        !matches!(first, b'"' | b'\'' | b'[' | b'{') && !matches!(last, b'"' | b'\'' | b']' | b'}')
+    } else {
+        true // empty or whitespace only
+    }
 }

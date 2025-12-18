@@ -17,7 +17,7 @@ use crate::{
         model::Model,
         user_events::{CscsEvent, FileEvent, StatusEvent, UserEvent},
     },
-    cli::{Cli, version},
+    cli::{Cli, get_config, set_config, version},
     components::{
         file_tree::FileTree, global_listener::GlobalListener, status_bar::StatusBar, toolbar::Toolbar,
         workload_list::WorkloadList,
@@ -58,6 +58,16 @@ async fn main() -> Result<()> {
     match args.command {
         Some(command) => match command {
             cli::CliCommands::Version => println!("{}", version()),
+            cli::CliCommands::Config {
+                command: config_command,
+            } => match config_command {
+                cli::ConfigCommands::Set {
+                    key_path,
+                    value,
+                    global,
+                } => set_config(key_path, value, global)?,
+                cli::ConfigCommands::Get { key_path } => println!("{}", get_config(key_path)?),
+            },
             cli::CliCommands::Cscs {
                 command: cscs_command,
                 system,
@@ -120,7 +130,7 @@ async fn main() -> Result<()> {
                     }
                 },
             },
-            cli::CliCommands::Init { destination } => Config::create_config(destination)?,
+            cli::CliCommands::Init { destination, name } => Config::create_project_config(destination, name)?,
         },
         None => run_tui(args.tick_rate)?,
     }
