@@ -2,11 +2,15 @@
 use std::os::unix::fs::MetadataExt;
 #[cfg(target_family = "windows")]
 use std::os::windows::fs::MetadataExt;
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use color_eyre::{Result, eyre::eyre};
 use reqwest::Url;
 
+use super::api_client::client::{EdfSpec, ScriptSpec};
 use crate::{
     config::{ComputePlatform, Config},
     cscs::{
@@ -163,8 +167,119 @@ pub async fn cscs_job_cancel(job_id: i64, system: Option<String>, platform: Opti
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-pub async fn cscs_start_job(
+async fn handle_edf(
+    api_client: &CscsApi,
+    base_path: &Path,
+    current_system: &str,
+    envvars: &HashMap<String, String>,
+    workdir: &str,
+    options: &JobStartOptions,
+) -> Result<PathBuf> {
+    let config = Config::new().unwrap();
+    let environment_path = base_path.join("environment.toml");
+    match options.edf_spec.clone() {
+        EdfSpec::Generate => {
+            let mut tera = tera::Tera::default();
+
+            let environment_template = &config.cscs.edf_file_template;
+            tera.add_raw_template("environment.toml", environment_template)?;
+            let mut mount: HashMap<String, String> = options.mount.clone().into_iter().collect();
+            mount.entry("${SCRATCH}".to_owned()).or_insert("/scratch".to_owned());
+
+            let docker_image = options.image.clone().unwrap_or(config.cscs.image.clone().try_into()?);
+            let meta = docker_image.inspect().await?;
+            if let Some(system_info) = config.cscs.systems.get(current_system) {
+                let mut compatible = false;
+                for sys_platform in system_info.architecture.iter() {
+                    if meta.platforms.contains(&sys_platform.clone().into()) {
+                        compatible = true;
+                    }
+                }
+
+                if !compatible {
+                    return Err(eyre!(
+                        "System {} only supports images with architecture(s) '{}' but the supplied image is for architecture(s) '{}'",
+                        current_system,
+                        system_info.architecture.join(","),
+                        meta.platforms
+                            .iter()
+                            .map(|p| p.to_string())
+                            .collect::<Vec<String>>()
+                            .join(",")
+                    ));
+                }
+            }
+
+            let mut context = tera::Context::new();
+            context.insert("edf_image", &docker_image.to_edf());
+            context.insert("container_workdir", &workdir);
+            context.insert("env", &envvars);
+            context.insert("mount", &mount);
+
+            let environment_file = tera.render("environment.toml", &context)?;
+            api_client.mkdir(current_system, base_path.to_path_buf()).await?;
+            api_client.chmod(current_system, base_path.to_path_buf(), "700").await?;
+            api_client
+                .upload(current_system, environment_path.clone(), environment_file.into_bytes())
+                .await?;
+            Ok(environment_path)
+        }
+        EdfSpec::Local(local_path) => {
+            let environment_file = std::fs::read_to_string(local_path.clone())?;
+            api_client.mkdir(current_system, base_path.to_path_buf()).await?;
+            api_client.chmod(current_system, base_path.to_path_buf(), "700").await?;
+            api_client
+                .upload(current_system, environment_path.clone(), environment_file.into_bytes())
+                .await?;
+            Ok(environment_path)
+        }
+        EdfSpec::Remote(path) => Ok(path),
+    }
+}
+async fn handle_script(
+    api_client: &CscsApi,
+    job_name: &str,
+    base_path: &Path,
+    current_system: &str,
+    environment_path: &Path,
+    workdir: &str,
+    options: &JobStartOptions,
+) -> Result<PathBuf> {
+    let config = Config::new().unwrap();
+    let script_path = base_path.join("script.sh");
+    match options.script_spec.clone() {
+        ScriptSpec::Generate => {
+            let script_template = config.cscs.sbatch_script_template;
+            let mut tera = tera::Tera::default();
+            tera.add_raw_template("script.sh", &script_template)?;
+            let mut context = tera::Context::new();
+            context.insert("name", &job_name);
+            context.insert(
+                "command",
+                &options.command.clone().unwrap_or(config.cscs.command).join(" "),
+            );
+            context.insert("environment_file", &environment_path.to_path_buf());
+            context.insert("container_workdir", &workdir);
+            let script = tera.render("script.sh", &context)?;
+            api_client
+                .upload(current_system, script_path.clone(), script.into_bytes())
+                .await?;
+
+            Ok(script_path)
+        }
+        ScriptSpec::Local(local_path) => {
+            let script = std::fs::read_to_string(local_path)?;
+            api_client
+                .upload(current_system, script_path.clone(), script.into_bytes())
+                .await?;
+
+            Ok(script_path)
+        }
+        ScriptSpec::Remote(script_path) => Ok(script_path),
+    }
+}
+
+pub async fn cscs_job_start(
     name: Option<String>,
     options: JobStartOptions,
     system: Option<String>,
@@ -202,72 +317,27 @@ pub async fn cscs_start_job(
 
             let mut envvars = config.cscs.env.clone();
             envvars.extend(options.env.clone());
-            let mut mount: HashMap<String, String> = options.mount.clone().into_iter().collect();
-            mount.entry("${SCRATCH}".to_owned()).or_insert("/scratch".to_owned());
 
-            let mut tera = tera::Tera::default();
+            let environment_path = handle_edf(
+                &api_client,
+                &base_path,
+                current_system,
+                &envvars,
+                &container_workdir,
+                &options,
+            )
+            .await?;
 
-            let environment_path = base_path.join("environment.toml");
-            let environment_template = config.cscs.edf_file_template;
-            tera.add_raw_template("environment.toml", &environment_template)?;
-
-            let docker_image = options.image.clone().unwrap_or(config.cscs.image.try_into()?);
-            let meta = docker_image.inspect().await?;
-            if let Some(system_info) = config.cscs.systems.get(current_system) {
-                let mut compatible = false;
-                for sys_platform in system_info.architecture.iter() {
-                    if meta.platforms.contains(&sys_platform.clone().into()) {
-                        compatible = true;
-                    }
-                }
-
-                if !compatible {
-                    return Err(eyre!(
-                        "System {} only supports images with architecture(s) '{}' but the supplied image is for architecture(s) '{}'",
-                        current_system,
-                        system_info.architecture.join(","),
-                        meta.platforms
-                            .iter()
-                            .map(|p| p.to_string())
-                            .collect::<Vec<String>>()
-                            .join(",")
-                    ));
-                }
-            }
-
-            let mut context = tera::Context::new();
-            context.insert("edf_image", &docker_image.to_edf());
-            context.insert("container_workdir", &container_workdir);
-            context.insert("env", &envvars);
-            context.insert("mount", &mount);
-
-            let environment_file = tera.render("environment.toml", &context)?;
-            api_client.mkdir(current_system, base_path.clone()).await?;
-            api_client.chmod(current_system, base_path.clone(), "700").await?;
-            api_client
-                .upload(current_system, environment_path.clone(), environment_file.into_bytes())
-                .await?;
-
-            // upload script
-            let script_path = base_path.join("script.sh");
-            let script_template = options
-                .script_file
-                .clone()
-                .map(std::fs::read_to_string)
-                .unwrap_or(Ok(config.cscs.sbatch_script_template))?;
-            tera.add_raw_template("script.sh", &script_template)?;
-            let mut context = tera::Context::new();
-            context.insert("name", &job_name);
-            context.insert(
-                "command",
-                &options.command.clone().unwrap_or(config.cscs.command).join(" "),
-            );
-            context.insert("environment_file", &environment_path);
-            context.insert("container_workdir", &container_workdir);
-            let script = tera.render("script.sh", &context)?;
-            api_client
-                .upload(current_system, script_path.clone(), script.into_bytes())
-                .await?;
+            let script_path = handle_script(
+                &api_client,
+                &job_name,
+                &base_path,
+                current_system,
+                &environment_path,
+                &container_workdir,
+                &options,
+            )
+            .await?;
 
             // start job
             api_client

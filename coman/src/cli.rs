@@ -1,10 +1,11 @@
 use std::{error::Error, path::PathBuf};
 
-use clap::{Parser, Subcommand, builder::TypedValueParser};
+use clap::{Args, Parser, Subcommand, builder::TypedValueParser};
 use strum::VariantNames;
 
 use crate::{
     config::{ComputePlatform, get_config_dir, get_data_dir, get_project_local_config_file},
+    cscs::api_client::client::{EdfSpec as EdfSpecEnum, ScriptSpec as ScriptSpecEnum},
     util::types::DockerImageUrl,
 };
 
@@ -56,6 +57,77 @@ pub enum CscsCommands {
     },
 }
 
+#[derive(Args, Clone, Debug)]
+#[group(multiple = false)]
+pub struct ScriptSpec {
+    #[arg(
+        long,
+        help = "generate and upload script file based on template (on by default unless `--local` or `--remote` are passed)"
+    )]
+    generate_script: bool,
+    #[arg(long, value_name = "PATH", help = "upload local script file")]
+    local_script: Option<PathBuf>,
+    #[arg(long, value_name = "PATH", help = "use script file already present on remote")]
+    remote_script: Option<PathBuf>,
+}
+impl Default for ScriptSpec {
+    fn default() -> Self {
+        Self {
+            generate_script: true,
+            local_script: Default::default(),
+            remote_script: Default::default(),
+        }
+    }
+}
+
+impl From<ScriptSpec> for ScriptSpecEnum {
+    fn from(val: ScriptSpec) -> Self {
+        if let Some(local_script) = val.local_script {
+            ScriptSpecEnum::Local(local_script)
+        } else if let Some(remote_script) = val.remote_script {
+            ScriptSpecEnum::Remote(remote_script)
+        } else {
+            ScriptSpecEnum::Generate
+        }
+    }
+}
+
+#[derive(Args, Clone, Debug)]
+#[group(multiple = false)]
+pub struct EdfSpec {
+    #[arg(
+        long,
+        help = "generate and upload edf file based on template (on by default unless `--local` or `--remote` are passed)"
+    )]
+    generate_edf: bool,
+    #[arg(long, value_name = "PATH", help = "upload local edf file")]
+    local_edf: Option<PathBuf>,
+    #[arg(long, value_name = "PATH", help = "use edf file already present on remote")]
+    remote_edf: Option<PathBuf>,
+}
+
+impl Default for EdfSpec {
+    fn default() -> Self {
+        Self {
+            generate_edf: true,
+            local_edf: Default::default(),
+            remote_edf: Default::default(),
+        }
+    }
+}
+
+impl From<EdfSpec> for EdfSpecEnum {
+    fn from(val: EdfSpec) -> Self {
+        if let Some(local_edf) = val.local_edf {
+            EdfSpecEnum::Local(local_edf)
+        } else if let Some(remote_edf) = val.remote_edf {
+            EdfSpecEnum::Remote(remote_edf)
+        } else {
+            EdfSpecEnum::Generate
+        }
+    }
+}
+
 #[allow(clippy::large_enum_variant)]
 #[derive(Subcommand, Debug)]
 pub enum CscsJobCommands {
@@ -74,8 +146,6 @@ pub enum CscsJobCommands {
     Submit {
         #[clap(short, long, help = "name of the job")]
         name: Option<String>,
-        #[clap(short, long, help = "the path to the srun script file to use")]
-        script_file: Option<PathBuf>,
         #[clap(
             short,
             long,
@@ -88,10 +158,14 @@ pub enum CscsJobCommands {
         mount: Vec<(String, String)>,
         #[clap(short, long, help = "The docker image to use")]
         image: Option<DockerImageUrl>,
-        #[clap(short, long, help = "Path where stdout of the job gets written to")]
+        #[clap(long, help = "Path where stdout of the job gets written to")]
         stdout: Option<PathBuf>,
-        #[clap(short, long, help = "Path where stderr of the job gets written to")]
+        #[clap(long, help = "Path where stderr of the job gets written to")]
         stderr: Option<PathBuf>,
+        #[command(flatten)]
+        edf_spec: Option<EdfSpec>,
+        #[command(flatten)]
+        script_spec: Option<ScriptSpec>,
         #[clap(trailing_var_arg = true, help = "The command to run in the container")]
         command: Option<Vec<String>>,
     },

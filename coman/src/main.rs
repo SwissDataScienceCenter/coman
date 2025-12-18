@@ -73,7 +73,6 @@ async fn main() -> Result<()> {
                     }
                     cli::CscsJobCommands::Submit {
                         name,
-                        script_file,
                         image,
                         command,
                         workdir,
@@ -81,11 +80,12 @@ async fn main() -> Result<()> {
                         mount,
                         stdout,
                         stderr,
+                        edf_spec,
+                        script_spec,
                     } => {
                         cli_cscs_job_start(
                             name,
                             JobStartOptions {
-                                script_file,
                                 image,
                                 command,
                                 container_workdir: workdir,
@@ -93,6 +93,8 @@ async fn main() -> Result<()> {
                                 mount,
                                 stdout,
                                 stderr,
+                                edf_spec: edf_spec.unwrap_or_default().into(),
+                                script_spec: script_spec.unwrap_or_default().into(),
                             },
                             system,
                             platform,

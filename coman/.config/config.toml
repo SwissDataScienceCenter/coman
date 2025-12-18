@@ -11,11 +11,11 @@ sbatch_script_template = """
 #SBATCH --job-name={{name}}
 #SBATCH --ntasks=1
 #SBATCH --time=10:00
-srun --environment={{environment_file}} {{command}}
+srun {% if environment_file %}--environment={{environment_file}}{% endif %} {{command}}
 """
 
 edf_file_template = """
-image = "{{edf_image}}"
+{% if edf_image %}image = "{{edf_image}}"{% endif %}
 mounts = [{% for source, target in mount %}"{{source}}:{{target}}",{% endfor %}]
 workdir = "{{container_workdir}}"
 
