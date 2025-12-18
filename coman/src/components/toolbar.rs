@@ -5,8 +5,9 @@ use crate::app::{
     messages::{Msg, View},
     user_events::UserEvent,
 };
-const WORKLOAD_TOOLTIP: &str = "q: quit, Esc: close/back, l: logs, f: File view, x: menu, tab: switch view, ?: help";
-const FILETREE_TOOLTIP: &str = "q: quit, ↑↓: navigate,←→: collapse/expand, x: menu, ?: help";
+const WORKLOAD_TOOLTIP: &str =
+    "q: quit, Esc: close/back, Enter: details, l: logs, f: file view, x: menu, tab: switch view";
+const FILETREE_TOOLTIP: &str = "q: quit, ↑↓: navigate,←→: collapse/expand, w: workload view x: menu";
 
 #[derive(MockComponent)]
 pub struct Toolbar {
