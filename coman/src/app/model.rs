@@ -311,6 +311,9 @@ where
                             .is_ok()
                     );
                 }
+                if self.app.mounted(&Id::WorkloadDetails) {
+                    assert!(self.app.umount(&Id::WorkloadDetails).is_ok());
+                }
                 if !self.app.mounted(&Id::WorkloadLogs) {
                     assert!(
                         self.app

@@ -1,7 +1,7 @@
 use tuirealm::{
     AttrValue, Attribute, Component, Event, MockComponent, Props, State,
     command::{Cmd, CmdResult},
-    event::{Key, KeyEvent},
+    event::{Key, KeyEvent, KeyModifiers},
     props::{BorderType, Borders, Layout},
     ratatui::{
         layout::{Constraint, Direction},
@@ -110,6 +110,12 @@ impl MockComponent for WorkloadDetails {
 impl Component<Msg, UserEvent> for WorkloadDetails {
     fn on(&mut self, ev: Event<UserEvent>) -> Option<Msg> {
         let _ = match ev {
+            Event::Keyboard(KeyEvent {
+                code: Key::Char('l'),
+                modifiers: KeyModifiers::NONE,
+            }) => {
+                return Some(Msg::Job(JobMsg::Log(self.details.id)));
+            }
             Event::Keyboard(KeyEvent { code: Key::Esc, .. }) => {
                 return Some(Msg::Job(JobMsg::Close));
             }
