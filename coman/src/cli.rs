@@ -1,6 +1,7 @@
 use std::{error::Error, path::PathBuf};
 
-use clap::{Args, Parser, Subcommand, builder::TypedValueParser};
+use clap::{Args, Command, Parser, Subcommand, ValueHint, builder::TypedValueParser};
+use clap_complete::{Generator, Shell, generate};
 use color_eyre::Result;
 use strum::VariantNames;
 
@@ -9,6 +10,17 @@ use crate::{
     cscs::api_client::client::{EdfSpec as EdfSpecEnum, ScriptSpec as ScriptSpecEnum},
     util::types::DockerImageUrl,
 };
+
+#[derive(Parser, Debug)]
+#[command(author, version = version(), about)]
+pub struct Cli {
+    /// Tick rate, i.e. number of ticks per second
+    #[arg(short, long, value_name = "FLOAT", default_value_t = 4.0)]
+    pub tick_rate: f64,
+
+    #[command(subcommand)]
+    pub command: Option<CliCommands>,
+}
 
 #[derive(Subcommand, Debug)]
 #[allow(clippy::large_enum_variant)]
@@ -19,24 +31,37 @@ pub enum CliCommands {
     Cscs {
         #[command(subcommand)]
         command: CscsCommands,
-        #[clap(short, long, help = "override compute system (e.g. 'eiger', 'daint')")]
+        #[clap(short, long, help = "override compute system (e.g. 'eiger', 'daint')", value_hint=ValueHint::Other)]
         system: Option<String>,
-        #[clap(short, long, ignore_case=true, value_parser=clap::builder::PossibleValuesParser::new(ComputePlatform::VARIANTS).map(|s|s.parse::<ComputePlatform>().unwrap()),help = "override compute platform (one of 'hpc', 'ml' or 'cw')")]
+        #[clap(
+            short,
+            long,
+            ignore_case=true,
+            value_parser=clap::builder::PossibleValuesParser::new(ComputePlatform::VARIANTS).map(
+                |s|s.parse::<ComputePlatform>().unwrap()),
+            help = "override compute platform (one of 'hpc', 'ml' or 'cw')",
+            value_hint=ValueHint::Other)]
         platform: Option<ComputePlatform>,
-        #[clap(short, long, help = "override compute account to use (project or user)")]
+        #[clap(short, long, help = "override compute account to use (project or user)",value_hint=ValueHint::Other)]
         account: Option<String>,
     },
     #[clap(about = "Create a new project configuration file")]
     Init {
-        #[clap(help = "destination folder to create config in (default = current directory)")]
+        #[clap(help = "destination folder to create config in (default = current directory)",value_hint=ValueHint::DirPath)]
         destination: Option<PathBuf>,
-        #[clap(help = "project name to use")]
+        #[clap(help = "project name to use", value_hint=ValueHint::Other)]
         name: Option<String>,
     },
     #[clap(about = "Manage configuration")]
     Config {
         #[command(subcommand)]
         command: ConfigCommands,
+    },
+    #[clap(about = "Generate shell completions")]
+    Completions {
+        /// generate shell completions
+        #[clap(value_enum)]
+        generator: Shell,
     },
 }
 
@@ -51,13 +76,13 @@ pub enum ConfigCommands {
             help = "whether to change the global config or the project local one"
         )]
         global: bool,
-        #[clap(help = "Config key path, e.g. `cscs.current_system`")]
+        #[clap(help = "Config key path, e.g. `cscs.current_system`", value_hint=ValueHint::Other)]
         key_path: String,
-        #[clap(help = "Value to set", value_parser = parse_toml_value)]
+        #[clap(help = "Value to set", value_parser = parse_toml_value, value_hint=ValueHint::Other)]
         value: toml_edit::Value,
     },
     Get {
-        #[clap(help = "Config key path, e.g. `cscs.current_system`")]
+        #[clap(help = "Config key path, e.g. `cscs.current_system`", value_hint=ValueHint::Other)]
         key_path: String,
     },
 }
@@ -95,9 +120,9 @@ pub struct ScriptSpec {
         help = "generate and upload script file based on template (on by default unless `--local` or `--remote` are passed)"
     )]
     generate_script: bool,
-    #[arg(long, value_name = "PATH", help = "upload local script file")]
+    #[arg(long, value_name = "PATH", help = "upload local script file", value_hint=ValueHint::FilePath)]
     local_script: Option<PathBuf>,
-    #[arg(long, value_name = "PATH", help = "use script file already present on remote")]
+    #[arg(long, value_name = "PATH", help = "use script file already present on remote", value_hint=ValueHint::Other)]
     remote_script: Option<PathBuf>,
 }
 impl Default for ScriptSpec {
@@ -130,9 +155,9 @@ pub struct EdfSpec {
         help = "generate and upload edf file based on template (on by default unless `--local` or `--remote` are passed)"
     )]
     generate_edf: bool,
-    #[arg(long, value_name = "PATH", help = "upload local edf file")]
+    #[arg(long, value_name = "PATH", help = "upload local edf file", value_hint=ValueHint::FilePath)]
     local_edf: Option<PathBuf>,
-    #[arg(long, value_name = "PATH", help = "use edf file already present on remote")]
+    #[arg(long, value_name = "PATH", help = "use edf file already present on remote", value_hint=ValueHint::Other)]
     remote_edf: Option<PathBuf>,
 }
 
@@ -164,65 +189,84 @@ pub enum CscsJobCommands {
     #[clap(alias("ls"), about = "List all jobs [aliases: ls]")]
     List,
     #[clap(alias("g"), about = "Get metadata for a specific job [aliases: g]")]
-    Get { job_id: i64 },
+    Get {
+        #[arg(help="id of the job", value_hint=ValueHint::Other)]
+        job_id: i64,
+    },
     #[clap(about = "Get the stdout of a job")]
     Log {
         #[clap(short, long, action, help = "whether to get stderr instead of stdout")]
         stderr: bool,
+        #[arg(help="id of the job", value_hint=ValueHint::Other)]
         job_id: i64,
     },
 
     #[clap(alias("s"), about = "Submit a new compute job [aliases: s]")]
     Submit {
-        #[clap(short, long, help = "name of the job")]
+        #[clap(short, long, help = "name of the job", value_hint=ValueHint::Other)]
         name: Option<String>,
         #[clap(
             short,
             long,
-            help = "the working directory path inside the container (note this is different from the working directory that the srun command is executed from)"
+            help = "the working directory path inside the container (note this is different from the working directory that the srun command is executed from)",
+            value_hint=ValueHint::Other
         )]
         workdir: Option<String>,
-        #[clap(short='E', value_name="KEY=VALUE", value_parser=parse_key_val::<String,String>, help="Environment variables to set in the container")]
+        #[clap(short='E',
+            value_name="KEY=VALUE",
+            value_parser=parse_key_val::<String, String>,
+            help="Environment variables to set in the container",
+            value_hint=ValueHint::Other)]
         env: Vec<(String, String)>,
-        #[clap(short='M', value_name="PATH:CONTAINER_PATH", value_parser=parse_key_val_colon::<String,String>, help="Paths to mount inside container")]
+        #[clap(short='M',
+            value_name="PATH:CONTAINER_PATH",
+            value_parser=parse_key_val_colon::<String,String>,
+            help="Paths to mount inside container",
+            value_hint=ValueHint::Other)]
         mount: Vec<(String, String)>,
-        #[clap(short, long, help = "The docker image to use")]
+        #[clap(short, long, help = "The docker image to use", value_hint=ValueHint::Other)]
         image: Option<DockerImageUrl>,
-        #[clap(long, help = "Path where stdout of the job gets written to")]
+        #[clap(long, help = "Path where stdout of the job gets written to", value_hint=ValueHint::Other)]
         stdout: Option<PathBuf>,
-        #[clap(long, help = "Path where stderr of the job gets written to")]
+        #[clap(long, help = "Path where stderr of the job gets written to", value_hint=ValueHint::Other)]
         stderr: Option<PathBuf>,
         #[command(flatten)]
         edf_spec: Option<EdfSpec>,
         #[command(flatten)]
         script_spec: Option<ScriptSpec>,
-        #[clap(trailing_var_arg = true, help = "The command to run in the container")]
+        #[clap(trailing_var_arg = true, help = "The command to run in the container", value_hint=ValueHint::Other)]
         command: Option<Vec<String>>,
     },
     #[clap(
         alias("c"),
         about = "Cancel a running job, fails if the job isn't running [aliases: c]"
     )]
-    Cancel { job_id: i64 },
+    Cancel {
+        #[clap(help="id of the job", value_hint=ValueHint::Other)]
+        job_id: i64,
+    },
 }
 
 #[derive(Subcommand, Debug)]
 pub enum CscsFileCommands {
     #[clap(alias("ls"), about = "List folders and files in a remote path [aliases: ls]")]
-    List { path: PathBuf },
+    List {
+        #[arg(help ="remote path to list", value_hint=ValueHint::Other)]
+        path: PathBuf,
+    },
     #[clap(alias("dl"), about = "Download a remote file [aliases: dl]")]
     Download {
-        #[clap(help = "The path in the cluster to download")]
+        #[clap(help = "The path in the cluster to download", value_hint=ValueHint::Other)]
         remote: PathBuf,
-        #[clap(help = "The local path to download the file to")]
+        #[clap(help = "The local path to download the file to", value_hint=ValueHint::AnyPath)]
         local: PathBuf,
     },
     #[clap(alias("ul"), about = "Upload a file to remote storage [aliases: ul]")]
     Upload {
-        #[clap(help = "The local path to upload to the cluster")]
+        #[clap(help = "The local path to upload to the cluster", value_hint=ValueHint::AnyPath)]
         local: PathBuf,
 
-        #[clap(help = "the path in the cluster to upload to")]
+        #[clap(help = "the path in the cluster to upload to", value_hint=ValueHint::Other)]
         remote: PathBuf,
     },
 }
@@ -238,20 +282,9 @@ pub enum CscsSystemCommands {
     Set {
         #[clap(short, long, action, help = "set in global config instead of project-local one")]
         global: bool,
-        #[clap(help = "System name to use")]
+        #[clap(help = "System name to use", value_hint=ValueHint::Other)]
         system_name: String,
     },
-}
-
-#[derive(Parser, Debug)]
-#[command(author, version = version(), about)]
-pub struct Cli {
-    /// Tick rate, i.e. number of ticks per second
-    #[arg(short, long, value_name = "FLOAT", default_value_t = 4.0)]
-    pub tick_rate: f64,
-
-    #[command(subcommand)]
-    pub command: Option<CliCommands>,
 }
 
 const VERSION_MESSAGE: &str = concat!(
@@ -334,4 +367,8 @@ fn is_bare_string(value_str: &str) -> bool {
     } else {
         true // empty or whitespace only
     }
+}
+
+pub fn print_completions<G: Generator>(generator: G, cmd: &mut Command) {
+    generate(generator, cmd, cmd.get_name().to_string(), &mut std::io::stdout());
 }
