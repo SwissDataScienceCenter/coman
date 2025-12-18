@@ -1,11 +1,21 @@
 [cscs]
-current_system = "daint"
-current_platform = "HPC"
+# check https://docs.cscs.ch/access/firecrest/#firecrest-deployment-on-alps for possible system and platform combinations
+current_system = "daint" # what system/cluster to execute commands on
+current_platform = "HPC" # what platform to execute commands on (valid: HPC, ML or CW)
 
-image = "ubuntu"
 
-command = ["sleep", "1"]
+image = "ubuntu" # default docker image to use
 
+command = ["sleep", "1"] # command to execute within the container, i.e. the job you want to run
+
+# the sbatch script you want to execute
+# this gets templated with values specified in the {{}} and {% %} expressions (see https://keats.github.io/tera/docs/#templates for
+# more information on the template language). Note, this can also just be hardcoded without any template parameters.
+# Available parameters:
+#   name: the name of the job
+#   environment_file: the path to the edf environment toml file in the cluster
+#   command: the command to run
+#   container_workdir: the working directory inside the container
 sbatch_script_template = """
 #!/bin/bash
 #SBATCH --job-name={{name}}
@@ -14,6 +24,14 @@ sbatch_script_template = """
 srun {% if environment_file %}--environment={{environment_file}}{% endif %} {{command}}
 """
 
+# the edf environment toml file template
+# this gets templated with values specified in the {{}} and {% %} expressions (see https://keats.github.io/tera/docs/#templates for
+# more information on the template language). Note, this can also just be hardcoded without any template parameters.
+# Available parameters:
+#   edf_image: the container image to use, in edf format
+#   container_workdir: the working directory to use within the container
+#   env: a dictionary of key/value pairs for environment variables to set in the container
+#   mount: a dictionary of key/value pairs for folders to mount to the container, with key being the path in the cluster and value being the path in the container
 edf_file_template = """
 {% if edf_image %}image = "{{edf_image}}"{% endif %}
 mounts = [{% for source, target in mount %}"{{source}}:{{target}}",{% endfor %}]
@@ -25,8 +43,9 @@ workdir = "{{container_workdir}}"
 {% endfor %}
 """
 
+# set environment variables that should be passed to a job
 [cscs.env]
-
+# env_var = "env_value"
 
 [cscs.systems]
 
@@ -35,3 +54,12 @@ architecture = ["arm64"]
 
 [cscs.systems.eiger]
 architecture = ["amd64"]
+
+[cscs.systems.bristen]
+architecture = ["amd64"]
+
+[cscs.systems.clariden]
+architecture = ["amd64"]
+
+[cscs.systems.santis]
+architecture = ["arm64"]

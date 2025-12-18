@@ -5,6 +5,24 @@
 
 Compute Manager for managing HPC compute
 
+Table of contents
+=================
+
+<!--ts-->
+   * [Installation](#installation)
+      * [Linux](#linux)
+      * [Macos](#macos)
+      * [Windows](#windows)
+   * [Usage](#usage)
+      * [Logging in](#logging-in)
+      * [CLI](#cli)
+      * [Terminal UI](#tui)
+      * [coman.toml config file](#comantoml-config-file)
+        * [Editing the config](#editing-the-config)
+   * [Development](#development)
+     * [Prerequisites](#prerequisites)
+     * [Install binaries](#install-binaries)
+<!--te-->
 
 ## Installation
 
@@ -188,6 +206,24 @@ Get the logs from a job
 coman cscs job log <id>
 ```
 
+You can also manage files with coman.
+List a remote directory:
+
+```shell
+coman cscs file list /capstor/scratch/cscs/your_user
+```
+
+Download a file:
+
+```shell
+coman cscs file download /capstor/scratch/cscs/your_user/your_file /local/target_file
+```
+
+Upload a file:
+
+```shell
+coman cscs file upload /my/local/file /capstor/scratch/cscs/your_user/your_file
+```
 
 ### TUI
 
@@ -199,7 +235,73 @@ The TUI should be pretty self-explanatory. It gives an overview of your jobs on 
 refreshed every couple of seconds, lets you see the logs and all the other functionality of the CLI,
 just in an interactive way.
 
+### coman.toml config file
 
+The config file options look as follows:
+
+```toml
+name = "myproject" # the name of the project, used to generate job names
+
+[cscs]
+# check https://docs.cscs.ch/access/firecrest/#firecrest-deployment-on-alps for possible system and platform combinations
+current_system = "daint" # what system/cluster to execute commands on
+current_platform = "HPC" # what platform to execute commands on (valid: HPC, ML or CW)
+
+
+image = "ubuntu" # default docker image to use
+
+command = ["sleep", "1"] # command to execute within the container, i.e. the job you want to run
+
+# the sbatch script you want to execute
+# this gets templated with values specified in the {{}} and {% %} expressions (see https://keats.github.io/tera/docs/#templates for
+# more information on the template language). Note, this can also just be hardcoded without any template parameters.
+# Available parameters:
+#   name: the name of the job
+#   environment_file: the path to the edf environment toml file in the cluster
+#   command: the command to run
+#   container_workdir: the working directory inside the container
+sbatch_script_template = """
+#!/bin/bash
+#SBATCH --job-name={{name}}
+#SBATCH --ntasks=1
+#SBATCH --time=10:00
+srun {% if environment_file %}--environment={{environment_file}}{% endif %} {{command}}
+"""
+
+# the edf environment toml file template
+# this gets templated with values specified in the {{}} and {% %} expressions (see https://keats.github.io/tera/docs/#templates for
+# more information on the template language). Note, this can also just be hardcoded without any template parameters.
+# Available parameters:
+#   edf_image: the container image to use, in edf format
+#   container_workdir: the working directory to use within the container
+#   env: a dictionary of key/value pairs for environment variables to set in the container
+#   mount: a dictionary of key/value pairs for folders to mount to the container, with key being the path in the cluster and value being the path in the container
+edf_file_template = """
+{% if edf_image %}image = "{{edf_image}}"{% endif %}
+mounts = [{% for source, target in mount %}"{{source}}:{{target}}",{% endfor %}]
+workdir = "{{container_workdir}}"
+
+[env]
+{% for key, value in env %}
+{{key}} = "{{value}}"
+{% endfor %}
+"""
+
+# set environment variables that should be passed to a job
+[cscs.env]
+ENV_VAR = "env_value"
+
+```
+#### Editing the config
+
+You can edit the config file directly or (safer) use coman commands to do so:
+```shell
+coman config get cscs.current_system
+```
+
+```shell
+coman config set cscs.current_system "daint"
+```
 
 ## Development
 

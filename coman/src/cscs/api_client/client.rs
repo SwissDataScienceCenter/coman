@@ -58,9 +58,7 @@ pub struct CscsApi {
 
 impl CscsApi {
     pub fn new(token: String, platform: Option<ComputePlatform>) -> Result<Self> {
-        let config = Config::new();
-        let config = dbg!(config);
-        let config = config?;
+        let config = Config::new()?;
         let client = FirecrestClient::default()
             .base_path(format!(
                 "https://api.cscs.ch/{}/firecrest/v2/",
