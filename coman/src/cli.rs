@@ -1,8 +1,9 @@
-use std::{error::Error, path::PathBuf, process::Stdio, thread, time::Duration};
+use std::{error::Error, path::PathBuf, thread, time::Duration};
 
 use clap::{Args, Command, Parser, Subcommand, ValueHint, builder::TypedValueParser};
 use clap_complete::{Generator, Shell, generate};
 use color_eyre::Result;
+use iroh_ssh::IrohSsh;
 use pid1::Pid1Settings;
 use rust_supervisor::{ChildType, Supervisor, SupervisorConfig};
 use strum::VariantNames;
@@ -379,6 +380,8 @@ fn is_bare_string(value_str: &str) -> bool {
 pub fn print_completions<G: Generator>(generator: G, cmd: &mut Command) {
     generate(generator, cmd, cmd.get_name().to_string(), &mut std::io::stdout());
 }
+
+/// Runs a wrapped command in a container-safe way and potentially runs background processes like iroh-ssh
 pub(crate) async fn cli_exec_command(command: Vec<String>) -> Result<()> {
     // Pid1 takes care of proper terminating of processes and signal handling when running in a container
     Pid1Settings::new()
@@ -390,7 +393,20 @@ pub(crate) async fn cli_exec_command(command: Vec<String>) -> Result<()> {
     let mut supervisor = Supervisor::new(SupervisorConfig::default());
     supervisor.add_process("iroh-ssh", ChildType::Permanent, || {
         thread::spawn(|| {
-            // iroh!
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("couldn't start tokio");
+
+            // Call the asynchronous connect method using the runtime.
+            rt.block_on(async move {
+                let mut builder = IrohSsh::builder().accept_incoming(true).accept_port(22);
+                let server = builder.build().await.expect("couldn't create iroh server");
+                println!("{}@{}", whoami::username(), server.node_id());
+                loop {
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                }
+            });
         })
     });
     supervisor.add_process("main-process", ChildType::Temporary, move || {
@@ -408,11 +424,10 @@ pub(crate) async fn cli_exec_command(command: Vec<String>) -> Result<()> {
     loop {
         thread::sleep(Duration::from_secs(1));
 
-        if let Some(state) = supervisor.get_process_state("main-process") {
-            match state {
-                rust_supervisor::ProcessState::Failed | rust_supervisor::ProcessState::Stopped => break,
-                _ => {}
-            }
+        if let Some(rust_supervisor::ProcessState::Failed | rust_supervisor::ProcessState::Stopped) =
+            supervisor.get_process_state("main-process")
+        {
+            break;
         }
     }
     Ok(())
