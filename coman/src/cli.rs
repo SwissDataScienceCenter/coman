@@ -1,5 +1,6 @@
 use std::{error::Error, path::PathBuf, thread, time::Duration};
 
+use base64::prelude::*;
 use clap::{Args, Command, Parser, Subcommand, ValueHint, builder::TypedValueParser};
 use clap_complete::{Generator, Shell, generate};
 use color_eyre::Result;
@@ -242,6 +243,10 @@ pub enum CscsJobCommands {
         edf_spec: Option<EdfSpec>,
         #[command(flatten)]
         script_spec: Option<ScriptSpec>,
+        #[clap(long, action, help = "don't set up ssh integration")]
+        no_ssh: bool,
+        #[clap(short, long, help="ssh public key to use", value_hint=ValueHint::FilePath)]
+        ssh_key: Option<PathBuf>,
         #[clap(trailing_var_arg = true, help = "The command to run in the container", value_hint=ValueHint::Other)]
         command: Option<Vec<String>>,
     },
@@ -400,7 +405,13 @@ pub(crate) async fn cli_exec_command(command: Vec<String>) -> Result<()> {
 
             // Call the asynchronous connect method using the runtime.
             rt.block_on(async move {
-                let mut builder = IrohSsh::builder().accept_incoming(true).accept_port(22);
+                let mut builder = IrohSsh::builder().accept_incoming(true).accept_port(15263);
+                if let Ok(secret) = std::env::var("COMAN_IROH_SECRET") {
+                    let secret_key = BASE64_STANDARD.decode(secret).unwrap();
+                    let secret_key: &[u8; 32] = secret_key[0..32].try_into().unwrap();
+                    builder = builder.secret_key(secret_key);
+                }
+
                 let server = builder.build().await.expect("couldn't create iroh server");
                 println!("{}@{}", whoami::username(), server.node_id());
                 loop {

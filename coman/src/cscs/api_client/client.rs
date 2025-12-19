@@ -50,6 +50,8 @@ pub struct JobStartOptions {
     pub mount: Vec<(String, String)>,
     pub edf_spec: EdfSpec,
     pub script_spec: ScriptSpec,
+    pub no_ssh: bool,
+    pub ssh_key: Option<PathBuf>,
 }
 
 pub struct CscsApi {

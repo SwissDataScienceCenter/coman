@@ -8,6 +8,7 @@ use std::{
 };
 
 use color_eyre::{Result, eyre::eyre};
+use eyre::Context;
 use reqwest::Url;
 
 use super::api_client::client::{EdfSpec, ScriptSpec};
@@ -159,6 +160,47 @@ pub async fn cscs_job_cancel(job_id: i64, system: Option<String>, platform: Opti
     }
 }
 
+async fn setup_ssh(
+    api_client: &CscsApi,
+    base_path: &Path,
+    current_system: &str,
+    options: &JobStartOptions,
+) -> Result<Option<PathBuf>> {
+    if options.no_ssh {
+        return Ok(None);
+    }
+
+    let ssh_key = if let Some(path) = options.ssh_key.clone() {
+        path.canonicalize().map(Some).wrap_err("couldn't get ssh key path")?
+    } else {
+        // try to figure our ssh key
+        let ssh_dir = dirs::home_dir().ok_or(eyre!("couldn't find home dir"))?.join(".ssh");
+        let mut ssh_path = None;
+        for file in ["id_dsa.pub", "id_ecdsa.pub", "id_rsa.pub"] {
+            let path = ssh_dir.join(file);
+            if path.exists() {
+                ssh_path = Some(path);
+                break;
+            }
+        }
+        ssh_path
+    };
+
+    match ssh_key {
+        Some(path) => {
+            let filename = path.file_name().ok_or(eyre!("couldn't get filename of ssh key"))?;
+            let remote_path = base_path.join(filename);
+            let public_key = std::fs::read_to_string(path.clone())?;
+
+            api_client
+                .upload(current_system, remote_path.clone(), public_key.into_bytes())
+                .await?;
+            Ok(Some(remote_path))
+        }
+        None => Err(eyre!("couldn't find ssh public key, use `--ssh_key` to specify it")),
+    }
+}
+
 async fn handle_edf(
     api_client: &CscsApi,
     base_path: &Path,
@@ -205,11 +247,14 @@ async fn handle_edf(
                 }
             }
 
+            let ssh_path = setup_ssh(api_client, base_path, current_system, options).await?;
+
             let mut context = tera::Context::new();
             context.insert("edf_image", &docker_image.to_edf());
             context.insert("container_workdir", &workdir);
             context.insert("env", &envvars);
             context.insert("mount", &mount);
+            context.insert("ssh_public_key", &ssh_path);
 
             let environment_file = tera.render("environment.toml", &context)?;
             api_client.mkdir(current_system, base_path.to_path_buf()).await?;

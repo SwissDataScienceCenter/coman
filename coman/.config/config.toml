@@ -6,7 +6,10 @@ current_platform = "HPC" # what platform to execute commands on (valid: HPC, ML 
 
 image = "ubuntu" # default docker image to use
 
-command = ["sleep", "1"] # command to execute within the container, i.e. the job you want to run
+command = [
+  "sleep",
+  "1",
+] # command to execute within the container, i.e. the job you want to run
 
 # the sbatch script you want to execute
 # this gets templated with values specified in the {{}} and {% %} expressions (see https://keats.github.io/tera/docs/#templates for
@@ -41,6 +44,13 @@ workdir = "{{container_workdir}}"
 {% for key, value in env %}
 {{key}} = "{{value}}"
 {% endfor %}
+
+[annotations]
+{% if ssh_public_key %}
+com.hooks.ssh.enabled = "true"
+com.hooks.ssh.authorize_ssh_key = "{{ ssh_public_key }}"
+com.hooks.ssh.port = 15263
+{% endif %}
 """
 
 # set environment variables that should be passed to a job

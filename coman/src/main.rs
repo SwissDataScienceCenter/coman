@@ -96,6 +96,8 @@ async fn main() -> Result<()> {
                         stderr,
                         edf_spec,
                         script_spec,
+                        no_ssh,
+                        ssh_key,
                     } => {
                         cli_cscs_job_start(
                             name,
@@ -109,6 +111,8 @@ async fn main() -> Result<()> {
                                 stderr,
                                 edf_spec: edf_spec.unwrap_or_default().into(),
                                 script_spec: script_spec.unwrap_or_default().into(),
+                                no_ssh,
+                                ssh_key,
                             },
                             system,
                             platform,

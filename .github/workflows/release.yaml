@@ -22,6 +22,13 @@ jobs:
             name: coman-Linux-x86_64-musl.tar.gz
             cargo_command: cargo
 
+          - os_name: Linux-aarch64
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            bin: coman
+            name: coman-Linux-aarch64-musl.tar.gz
+            cargo_command: cargo
+
           - os_name: Windows-aarch64
             os: windows-latest
             target: aarch64-pc-windows-msvc
@@ -47,7 +54,7 @@ jobs:
       - name: Install oas3-gen
         run: cargo install oas3-gen@0.21.1
       - name: Install build dependencies on Linux
-        run: sudo apt-get update --yes && sudo apt-get install --yes musl-tools openssl libssl-dev
+        run: sudo apt-get update --yes && sudo apt-get install --yes musl-tools openssl libssl-dev squashfs-tools
         if: contains(matrix.platform.os, 'ubuntu')
       - name: Build binary (*nix)
         shell: bash
@@ -75,6 +82,9 @@ jobs:
             7z a ../../../${{ matrix.platform.name }} ${{ matrix.platform.bin }}
           else
             tar czvf ../../../${{ matrix.platform.name }} ${{ matrix.platform.bin }}
+          fi
+          if [[ "${{ matrix.platform.os }}" == "ubuntu-latest" ]]; then
+            mksquashfs coman coman_${{matrix.platform.os_name}}.sqsh
           fi
           cd -
       - name: Publish GitHub release
