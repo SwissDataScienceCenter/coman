@@ -225,6 +225,29 @@ Upload a file:
 coman cscs file upload /my/local/file /capstor/scratch/cscs/your_user/your_file
 ```
 
+You can set up shell completions as follows:
+
+```shell
+# Bash
+mkdir -p ~/.local/share/bash-completion/completions
+coman completions bash > ~/.local/share/bash-completion/completions/coman
+
+# Bash (macOS/Homebrew)
+mkdir -p $(brew --prefix)/etc/bash_completion.d/
+coman completions bash > $(brew --prefix)/etc/bash_completion.d/coman.bash-completion
+
+# Fish
+mkdir -p ~/.config/fish/completions
+coman completions fish > ~/.config/fish/completions/coman.fish
+
+# Zsh
+mkdir ~/.zfunc
+# Then add the following lines to your `.zshrc` just before
+# `compinit`:
+# 
+#         fpath+=~/.zfunc
+coman completions zsh > ~/.zfunc/_coman
+```
 ### TUI
 
 To run the TUI, simply run `coman` without any arguments:

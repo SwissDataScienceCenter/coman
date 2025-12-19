@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use color_eyre::Result;
 use keyring::set_global_service_name;
 use tokio::{runtime::Handle, sync::mpsc};
@@ -17,7 +17,7 @@ use crate::{
         model::Model,
         user_events::{CscsEvent, FileEvent, StatusEvent, UserEvent},
     },
-    cli::{Cli, get_config, set_config, version},
+    cli::{Cli, get_config, print_completions, set_config, version},
     components::{
         file_tree::FileTree, global_listener::GlobalListener, status_bar::StatusBar, toolbar::Toolbar,
         workload_list::WorkloadList,
@@ -58,6 +58,10 @@ async fn main() -> Result<()> {
     match args.command {
         Some(command) => match command {
             cli::CliCommands::Version => println!("{}", version()),
+            cli::CliCommands::Completions { generator } => {
+                let mut cmd = Cli::command();
+                print_completions(generator, &mut cmd);
+            }
             cli::CliCommands::Config {
                 command: config_command,
             } => match config_command {
