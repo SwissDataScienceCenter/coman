@@ -24,7 +24,7 @@ sbatch_script_template = """
 #SBATCH --job-name={{name}}
 #SBATCH --ntasks=1
 #SBATCH --time=1:00:00
-srun {% if environment_file %}--environment={{environment_file}}{% endif %} {{command}}
+srun {% if environment_file %}--environment={{environment_file}}{% endif %} {% if coman_squash %}/coman/coman exec {% endif %}{{command}}
 """
 
 # the edf environment toml file template
@@ -37,7 +37,10 @@ srun {% if environment_file %}--environment={{environment_file}}{% endif %} {{co
 #   mount: a dictionary of key/value pairs for folders to mount to the container, with key being the path in the cluster and value being the path in the container
 edf_file_template = """
 {% if edf_image %}image = "{{edf_image}}"{% endif %}
-mounts = [{% for source, target in mount %}"{{source}}:{{target}}",{% endfor %}]
+mounts = [
+  {% for source, target in mount %}"{{source}}:{{target}}",{% endfor %}
+  {% if coman_squash %}"{{coman_squash}}:/coman:sqsh"{% endif%}
+]
 workdir = "{{container_workdir}}"
 
 [env]
@@ -49,7 +52,7 @@ workdir = "{{container_workdir}}"
 {% if ssh_public_key %}
 com.hooks.ssh.enabled = "true"
 com.hooks.ssh.authorize_ssh_key = "{{ ssh_public_key }}"
-com.hooks.ssh.port = 15263
+com.hooks.ssh.port = "15263"
 {% endif %}
 """
 

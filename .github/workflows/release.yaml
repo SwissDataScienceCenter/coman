@@ -23,7 +23,7 @@ jobs:
             cargo_command: cargo
 
           - os_name: Linux-aarch64
-            os: ubuntu-latest
+            os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
             bin: coman
             name: coman-Linux-aarch64-musl.tar.gz

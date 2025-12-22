@@ -247,6 +247,8 @@ pub enum CscsJobCommands {
         no_ssh: bool,
         #[clap(short, long, help="ssh public key to use", value_hint=ValueHint::FilePath)]
         ssh_key: Option<PathBuf>,
+        #[clap(long, action, help = "don't upload and inject coman into the container")]
+        no_coman: bool,
         #[clap(trailing_var_arg = true, help = "The command to run in the container", value_hint=ValueHint::Other)]
         command: Option<Vec<String>>,
     },

@@ -9,6 +9,7 @@ use std::{
 
 use color_eyre::{Result, eyre::eyre};
 use eyre::Context;
+use itertools::Itertools;
 use reqwest::Url;
 
 use super::api_client::client::{EdfSpec, ScriptSpec};
@@ -19,6 +20,7 @@ use crate::{
             client::{CscsApi, JobStartOptions},
             types::{FileStat, FileSystemType, Job, JobDetail, PathEntry, PathType, S3Upload, System, UserInfo},
         },
+        cli::upload_chunk,
         oauth2::{
             CLIENT_ID_SECRET_NAME, CLIENT_SECRET_SECRET_NAME, client_credentials_login, finish_cscs_device_login,
             start_cscs_device_login,
@@ -201,6 +203,66 @@ async fn setup_ssh(
     }
 }
 
+async fn inject_coman_squash(
+    api_client: &CscsApi,
+    base_path: &Path,
+    current_system: &str,
+    options: &JobStartOptions,
+) -> Result<Option<PathBuf>> {
+    if options.no_coman {
+        return Ok(None);
+    }
+    let config = Config::new().unwrap();
+    let local_squash_path = match config.values.coman_squash_path.clone() {
+        Some(path) => path,
+        None => todo!(),
+    };
+    let target = base_path.join("coman.sqsh");
+    let file_meta = std::fs::metadata(local_squash_path.clone())?;
+
+    #[cfg(target_family = "unix")]
+    let size = file_meta.size() as usize;
+
+    #[cfg(target_family = "windows")]
+    let size = file_meta.file_size() as usize;
+
+    //upload squash file
+    let transfer_data = api_client
+        .transfer_upload(current_system, config.values.cscs.account, target.clone(), size as i64)
+        .await?;
+    let mut etags: Vec<String> = Vec::new();
+    let client = reqwest::Client::new();
+    let num_parts = transfer_data.1.num_parts;
+    for (chunk_id, transfer_url) in transfer_data.1.parts_upload_urls.into_iter().enumerate() {
+        println!(
+            "Uploading part {}/{} ({}Mb)",
+            chunk_id + 1,
+            num_parts,
+            transfer_data.1.part_size / 1024 / 1024
+        );
+        let etag = upload_chunk(
+            local_squash_path.clone(),
+            (chunk_id as u64) * transfer_data.1.part_size,
+            transfer_data.1.part_size,
+            transfer_url,
+        )
+        .await?;
+        etags.push(etag);
+    }
+
+    let body = etags
+        .into_iter()
+        .enumerate()
+        .map(|(i, etag)| (i + 1, etag))
+        .map(|(i, etag)| format!("<Part><PartNumber>{}</PartNumber><ETag>{}</ETag></Part>", i, etag))
+        .join("");
+    let body = format!("<CompleteMultipartUpload>{}</CompleteMultipartUpload>", body);
+    let req = client.post(transfer_data.1.complete_upload_url).body(body).build()?;
+    let resp = client.execute(req).await?;
+    resp.error_for_status()?;
+    Ok(Some(target))
+}
+
 async fn handle_edf(
     api_client: &CscsApi,
     base_path: &Path,
@@ -208,7 +270,7 @@ async fn handle_edf(
     envvars: &HashMap<String, String>,
     workdir: &str,
     options: &JobStartOptions,
-) -> Result<PathBuf> {
+) -> Result<(PathBuf, Option<PathBuf>)> {
     let config = Config::new().unwrap();
     let environment_path = base_path.join("environment.toml");
     match options.edf_spec.clone() {
@@ -248,6 +310,7 @@ async fn handle_edf(
             }
 
             let ssh_path = setup_ssh(api_client, base_path, current_system, options).await?;
+            let coman_squash = inject_coman_squash(api_client, base_path, current_system, options).await?;
 
             let mut context = tera::Context::new();
             context.insert("edf_image", &docker_image.to_edf());
@@ -255,6 +318,7 @@ async fn handle_edf(
             context.insert("env", &envvars);
             context.insert("mount", &mount);
             context.insert("ssh_public_key", &ssh_path);
+            context.insert("coman_squash", &coman_squash);
 
             let environment_file = tera.render("environment.toml", &context)?;
             api_client.mkdir(current_system, base_path.to_path_buf()).await?;
@@ -262,7 +326,7 @@ async fn handle_edf(
             api_client
                 .upload(current_system, environment_path.clone(), environment_file.into_bytes())
                 .await?;
-            Ok(environment_path)
+            Ok((environment_path, coman_squash))
         }
         EdfSpec::Local(local_path) => {
             let environment_file = std::fs::read_to_string(local_path.clone())?;
@@ -271,17 +335,20 @@ async fn handle_edf(
             api_client
                 .upload(current_system, environment_path.clone(), environment_file.into_bytes())
                 .await?;
-            Ok(environment_path)
+            Ok((environment_path, None))
         }
-        EdfSpec::Remote(path) => Ok(path),
+        EdfSpec::Remote(path) => Ok((path, None)),
     }
 }
+
+#[allow(clippy::too_many_arguments)]
 async fn handle_script(
     api_client: &CscsApi,
     job_name: &str,
     base_path: &Path,
     current_system: &str,
     environment_path: &Path,
+    coman_squash: Option<PathBuf>,
     workdir: &str,
     options: &JobStartOptions,
 ) -> Result<PathBuf> {
@@ -300,6 +367,9 @@ async fn handle_script(
             );
             context.insert("environment_file", &environment_path.to_path_buf());
             context.insert("container_workdir", &workdir);
+            if let Some(path) = coman_squash {
+                context.insert("coman_squash", &path);
+            }
             let script = tera.render("script.sh", &context)?;
             api_client
                 .upload(current_system, script_path.clone(), script.into_bytes())
@@ -360,7 +430,7 @@ pub async fn cscs_job_start(
             let mut envvars = config.values.cscs.env.clone();
             envvars.extend(options.env.clone());
 
-            let environment_path = handle_edf(
+            let (environment_path, coman_squash) = handle_edf(
                 &api_client,
                 &base_path,
                 current_system,
@@ -376,6 +446,7 @@ pub async fn cscs_job_start(
                 &base_path,
                 current_system,
                 &environment_path,
+                coman_squash,
                 &container_workdir,
                 &options,
             )

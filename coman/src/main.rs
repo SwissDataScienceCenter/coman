@@ -98,6 +98,7 @@ async fn main() -> Result<()> {
                         script_spec,
                         no_ssh,
                         ssh_key,
+                        no_coman,
                     } => {
                         cli_cscs_job_start(
                             name,
@@ -113,6 +114,7 @@ async fn main() -> Result<()> {
                                 script_spec: script_spec.unwrap_or_default().into(),
                                 no_ssh,
                                 ssh_key,
+                                no_coman,
                             },
                             system,
                             platform,

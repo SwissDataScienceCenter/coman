@@ -5,3 +5,8 @@ resolver = "3"
 
 [workspace.dependencies]
 firecrest_client = { path = "./firecrest_client", version = "2.4.0" }
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true

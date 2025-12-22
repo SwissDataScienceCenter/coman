@@ -52,6 +52,7 @@ pub struct JobStartOptions {
     pub script_spec: ScriptSpec,
     pub no_ssh: bool,
     pub ssh_key: Option<PathBuf>,
+    pub no_coman: bool,
 }
 
 pub struct CscsApi {
@@ -160,8 +161,8 @@ impl CscsApi {
             .wrap_err("couldn't change directory permission")?;
         Ok(())
     }
-    pub async fn upload(&self, system_name: &str, path: PathBuf, file: Vec<u8>) -> Result<()> {
-        post_filesystem_ops_upload(&self.client, system_name, path, file)
+    pub async fn upload(&self, system_name: &str, target: PathBuf, file: Vec<u8>) -> Result<()> {
+        post_filesystem_ops_upload(&self.client, system_name, target, file)
             .await
             .wrap_err("couldn't upload file")?;
         Ok(())
@@ -170,10 +171,10 @@ impl CscsApi {
         &self,
         system_name: &str,
         account: Option<String>,
-        path: PathBuf,
+        target: PathBuf,
         size: i64,
     ) -> Result<(i64, S3Upload)> {
-        let job = post_filesystem_transfer_upload(&self.client, system_name, account, path, size)
+        let job = post_filesystem_transfer_upload(&self.client, system_name, account, target, size)
             .await
             .wrap_err("couldn't upload file")?;
         if let DownloadFileResponseTransferDirectives::S3(directives) = job.transfer_directives {
