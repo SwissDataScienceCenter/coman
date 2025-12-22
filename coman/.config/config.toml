@@ -47,6 +47,9 @@ workdir = "{{container_workdir}}"
 {% for key, value in env %}
 {{key}} = "{{value}}"
 {% endfor %}
+{% if iroh_secret%}
+COMAN_IROH_SECRET="{{iroh_secret}}"
+{% endif %}
 
 [annotations]
 {% if ssh_public_key %}

@@ -7,8 +7,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use base64::prelude::*;
 use color_eyre::{Result, eyre::eyre};
 use eyre::Context;
+use iroh::SecretKey;
 use itertools::Itertools;
 use reqwest::Url;
 
@@ -167,10 +169,12 @@ async fn setup_ssh(
     base_path: &Path,
     current_system: &str,
     options: &JobStartOptions,
-) -> Result<Option<PathBuf>> {
+) -> Result<Option<(PathBuf, String)>> {
     if options.no_ssh {
         return Ok(None);
     }
+    let secret = SecretKey::generate(&mut rand::rng());
+    let encoded_secret = BASE64_STANDARD.encode(secret.to_bytes());
 
     let ssh_key = if let Some(path) = options.ssh_key.clone() {
         path.canonicalize().map(Some).wrap_err("couldn't get ssh key path")?
@@ -197,7 +201,7 @@ async fn setup_ssh(
             api_client
                 .upload(current_system, remote_path.clone(), public_key.into_bytes())
                 .await?;
-            Ok(Some(remote_path))
+            Ok(Some((remote_path, encoded_secret)))
         }
         None => Err(eyre!("couldn't find ssh public key, use `--ssh_key` to specify it")),
     }
@@ -215,7 +219,7 @@ async fn inject_coman_squash(
     let config = Config::new().unwrap();
     let local_squash_path = match config.values.coman_squash_path.clone() {
         Some(path) => path,
-        None => todo!(),
+        None => todo!(), //download from github for architecture
     };
     let target = base_path.join("coman.sqsh");
     let file_meta = std::fs::metadata(local_squash_path.clone())?;
@@ -263,14 +267,18 @@ async fn inject_coman_squash(
     Ok(Some(target))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn handle_edf(
     api_client: &CscsApi,
     base_path: &Path,
     current_system: &str,
     envvars: &HashMap<String, String>,
+    coman_squash: &Option<PathBuf>,
+    ssh_path: &Option<PathBuf>,
+    iroh_secret: &Option<String>,
     workdir: &str,
     options: &JobStartOptions,
-) -> Result<(PathBuf, Option<PathBuf>)> {
+) -> Result<PathBuf> {
     let config = Config::new().unwrap();
     let environment_path = base_path.join("environment.toml");
     match options.edf_spec.clone() {
@@ -309,9 +317,6 @@ async fn handle_edf(
                 }
             }
 
-            let ssh_path = setup_ssh(api_client, base_path, current_system, options).await?;
-            let coman_squash = inject_coman_squash(api_client, base_path, current_system, options).await?;
-
             let mut context = tera::Context::new();
             context.insert("edf_image", &docker_image.to_edf());
             context.insert("container_workdir", &workdir);
@@ -319,6 +324,10 @@ async fn handle_edf(
             context.insert("mount", &mount);
             context.insert("ssh_public_key", &ssh_path);
             context.insert("coman_squash", &coman_squash);
+            if let Some(iroh_secret) = iroh_secret {
+                // set iroh secret key
+                context.insert("iroh_secret", &iroh_secret);
+            }
 
             let environment_file = tera.render("environment.toml", &context)?;
             api_client.mkdir(current_system, base_path.to_path_buf()).await?;
@@ -326,7 +335,7 @@ async fn handle_edf(
             api_client
                 .upload(current_system, environment_path.clone(), environment_file.into_bytes())
                 .await?;
-            Ok((environment_path, coman_squash))
+            Ok(environment_path)
         }
         EdfSpec::Local(local_path) => {
             let environment_file = std::fs::read_to_string(local_path.clone())?;
@@ -335,9 +344,9 @@ async fn handle_edf(
             api_client
                 .upload(current_system, environment_path.clone(), environment_file.into_bytes())
                 .await?;
-            Ok((environment_path, None))
+            Ok(environment_path)
         }
-        EdfSpec::Remote(path) => Ok((path, None)),
+        EdfSpec::Remote(path) => Ok(path),
     }
 }
 
@@ -430,11 +439,17 @@ pub async fn cscs_job_start(
             let mut envvars = config.values.cscs.env.clone();
             envvars.extend(options.env.clone());
 
-            let (environment_path, coman_squash) = handle_edf(
+            let ssh_values = setup_ssh(&api_client, &base_path, current_system, &options).await?;
+            let coman_squash = inject_coman_squash(&api_client, &base_path, current_system, &options).await?;
+
+            let environment_path = handle_edf(
                 &api_client,
                 &base_path,
                 current_system,
                 &envvars,
+                &coman_squash,
+                &ssh_values.clone().map(|v| v.0),
+                &ssh_values.map(|v| v.1),
                 &container_workdir,
                 &options,
             )
