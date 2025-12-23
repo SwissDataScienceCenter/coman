@@ -78,10 +78,10 @@ impl CscsApi {
         script_path: PathBuf,
         envvars: HashMap<String, String>,
         options: JobStartOptions,
-    ) -> Result<()> {
+    ) -> Result<Option<i64>> {
         let workingdir = script_path.clone();
         let workingdir = workingdir.parent();
-        let _result = post_compute_system_job(
+        let result = post_compute_system_job(
             &self.client,
             system_name,
             account,
@@ -97,7 +97,7 @@ impl CscsApi {
         )
         .await?;
 
-        Ok(())
+        Ok(result.job_id)
     }
     pub async fn get_system(&self, system: &str) -> Result<Option<System>> {
         let systems = self.list_systems().await?;

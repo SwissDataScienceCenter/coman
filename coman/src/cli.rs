@@ -3,7 +3,7 @@ use std::{error::Error, path::PathBuf, thread, time::Duration};
 use base64::prelude::*;
 use clap::{Args, Command, Parser, Subcommand, ValueHint, builder::TypedValueParser};
 use clap_complete::{Generator, Shell, generate};
-use color_eyre::Result;
+use color_eyre::{Result, eyre::eyre};
 use iroh_ssh::IrohSsh;
 use pid1::Pid1Settings;
 use rust_supervisor::{ChildType, Supervisor, SupervisorConfig};
@@ -72,6 +72,8 @@ pub enum CliCommands {
         #[clap(trailing_var_arg = true, help = "The command to run", value_hint=ValueHint::Other)]
         command: Vec<String>,
     },
+    #[clap(hide = true)]
+    Proxy { job_id: i64 },
 }
 
 #[derive(Subcommand, Debug)]
@@ -444,4 +446,14 @@ pub(crate) async fn cli_exec_command(command: Vec<String>) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Thin wrapper around iroh proxy
+pub(crate) async fn cli_proxy_command(job_id: i64) -> Result<()> {
+    let data_dir = get_data_dir();
+    let endpoint_id = std::fs::read_to_string(data_dir.join(format!("{}.endpoint", job_id)))?;
+    println!("{}", endpoint_id);
+    iroh_ssh::api::proxy_mode(iroh_ssh::ProxyArgs { node_id: endpoint_id })
+        .await
+        .map_err(|e| eyre!("couldn't proxy ssh connection: {:?}", e))
 }

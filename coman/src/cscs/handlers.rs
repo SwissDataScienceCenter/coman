@@ -4,6 +4,7 @@ use std::os::unix::fs::MetadataExt;
 use std::os::windows::fs::MetadataExt;
 use std::{
     collections::HashMap,
+    io::{BufWriter, Read, Write},
     path::{Path, PathBuf},
 };
 
@@ -16,7 +17,7 @@ use reqwest::Url;
 
 use super::api_client::client::{EdfSpec, ScriptSpec};
 use crate::{
-    config::{ComputePlatform, Config},
+    config::{ComputePlatform, Config, get_data_dir},
     cscs::{
         api_client::{
             client::{CscsApi, JobStartOptions},
@@ -169,12 +170,11 @@ async fn setup_ssh(
     base_path: &Path,
     current_system: &str,
     options: &JobStartOptions,
-) -> Result<Option<(PathBuf, String)>> {
+) -> Result<Option<(PathBuf, SecretKey)>> {
     if options.no_ssh {
         return Ok(None);
     }
     let secret = SecretKey::generate(&mut rand::rng());
-    let encoded_secret = BASE64_STANDARD.encode(secret.to_bytes());
 
     let ssh_key = if let Some(path) = options.ssh_key.clone() {
         path.canonicalize().map(Some).wrap_err("couldn't get ssh key path")?
@@ -201,7 +201,7 @@ async fn setup_ssh(
             api_client
                 .upload(current_system, remote_path.clone(), public_key.into_bytes())
                 .await?;
-            Ok(Some((remote_path, encoded_secret)))
+            Ok(Some((remote_path, secret)))
         }
         None => Err(eyre!("couldn't find ssh public key, use `--ssh_key` to specify it")),
     }
@@ -274,8 +274,8 @@ async fn handle_edf(
     current_system: &str,
     envvars: &HashMap<String, String>,
     coman_squash: &Option<PathBuf>,
-    ssh_path: &Option<PathBuf>,
-    iroh_secret: &Option<String>,
+    ssh_public_key_path: &Option<PathBuf>,
+    iroh_secret: &Option<SecretKey>,
     workdir: &str,
     options: &JobStartOptions,
 ) -> Result<PathBuf> {
@@ -322,11 +322,12 @@ async fn handle_edf(
             context.insert("container_workdir", &workdir);
             context.insert("env", &envvars);
             context.insert("mount", &mount);
-            context.insert("ssh_public_key", &ssh_path);
+            context.insert("ssh_public_key", &ssh_public_key_path);
             context.insert("coman_squash", &coman_squash);
             if let Some(iroh_secret) = iroh_secret {
                 // set iroh secret key
-                context.insert("iroh_secret", &iroh_secret);
+                let encoded_secret = BASE64_STANDARD.encode(iroh_secret.to_bytes());
+                context.insert("iroh_secret", &encoded_secret);
             }
 
             let environment_file = tera.render("environment.toml", &context)?;
@@ -439,7 +440,9 @@ pub async fn cscs_job_start(
             let mut envvars = config.values.cscs.env.clone();
             envvars.extend(options.env.clone());
 
-            let ssh_values = setup_ssh(&api_client, &base_path, current_system, &options).await?;
+            let (ssh_public_key_path, secret_key) = setup_ssh(&api_client, &base_path, current_system, &options)
+                .await?
+                .unzip();
             let coman_squash = inject_coman_squash(&api_client, &base_path, current_system, &options).await?;
 
             let environment_path = handle_edf(
@@ -448,8 +451,8 @@ pub async fn cscs_job_start(
                 current_system,
                 &envvars,
                 &coman_squash,
-                &ssh_values.clone().map(|v| v.0),
-                &ssh_values.map(|v| v.1),
+                &ssh_public_key_path,
+                &secret_key,
                 &container_workdir,
                 &options,
             )
@@ -468,9 +471,55 @@ pub async fn cscs_job_start(
             .await?;
 
             // start job
-            api_client
+            let job_id = api_client
                 .start_job(current_system, account, &job_name, script_path, envvars, options)
-                .await?;
+                .await?
+                .ok_or(eyre!("didn't get job id for created job"))?;
+
+            if let Some(secret_key) = secret_key {
+                // store connection information in data dir and set up ssh connection
+                let data_dir = get_data_dir();
+                std::fs::write(
+                    data_dir.join(format!("{}.endpoint", job_id)),
+                    format!("{}", secret_key.public()),
+                )?;
+                let coman_ssh_config_path = data_dir.join("ssh_config");
+                let coman_ssh_config = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(coman_ssh_config_path.clone())?;
+                let mut writer = BufWriter::new(coman_ssh_config);
+                write!(
+                    writer,
+                    "\nHost {}-{}\n    Hostname {}\n    User {}\n    ProxyCommand coman proxy {}\n",
+                    job_name,
+                    job_id,
+                    secret_key.public(),
+                    user_info.name,
+                    job_id
+                )?;
+                let ssh_dir = dirs::home_dir().ok_or(eyre!("couldn't find home dir"))?.join(".ssh");
+                let ssh_config_path = ssh_dir.join("config");
+                let mut ssh_config = std::fs::OpenOptions::new()
+                    .read(true)
+                    .append(true)
+                    .open(ssh_config_path)?;
+                let mut content = String::new();
+                ssh_config.read_to_string(&mut content)?;
+                if !content.contains(&format!("Include {}", coman_ssh_config_path.clone().display())) {
+                    let mut writer = BufWriter::new(ssh_config);
+                    write!(
+                        writer,
+                        "\n\n#coman include\nMatch all\nInclude {}",
+                        coman_ssh_config_path.display()
+                    )?;
+                }
+                println!(
+                    "Use ssh {}@{}-{} to connect to the job",
+                    user_info.name, job_name, job_id
+                );
+            }
+
             Ok(())
         }
         Err(e) => Err(e),
