@@ -11,9 +11,11 @@ use std::{
 use base64::prelude::*;
 use color_eyre::{Result, eyre::eyre};
 use eyre::Context;
+use futures::StreamExt;
 use iroh::SecretKey;
 use itertools::Itertools;
 use reqwest::Url;
+use tokio::{fs::File, io::AsyncWriteExt};
 
 use super::api_client::client::{EdfSpec, ScriptSpec};
 use crate::{
@@ -219,7 +221,47 @@ async fn inject_coman_squash(
     let config = Config::new().unwrap();
     let local_squash_path = match config.values.coman_squash_path.clone() {
         Some(path) => path,
-        None => todo!(), //download from github for architecture
+        None => {
+            //download from github for architecture
+            let system = config
+                .values
+                .cscs
+                .systems
+                .get(current_system)
+                .ok_or(eyre!("couldn't find architecture for system {}", current_system))?;
+            let architecture = system
+                .architecture
+                .first()
+                .ok_or(eyre!("no architecture set for {}", current_system))?;
+            let target_path = get_data_dir().join(format!("coman_{}.sqsh", architecture));
+            if !target_path.exists() {
+                let url = match architecture.as_str() {
+                    "arm64" => {
+                        "https://github.com/SwissDataScienceCenter/coman/releases/latest/download/coman_Linux-aarch64.sqsh"
+                    }
+                    "amd64" => {
+                        "https://github.com/SwissDataScienceCenter/coman/releases/latest/download/coman_Linux-x86_64.sqsh"
+                    }
+                    _ => {
+                        return Err(eyre!("unsupported architecture {}", architecture));
+                    }
+                };
+                let mut out = File::create(target_path.clone()).await?;
+                let resp = reqwest::get(url).await?;
+                match resp.error_for_status() {
+                    Ok(resp) => {
+                        let mut stream = resp.bytes_stream();
+                        while let Some(chunk_result) = stream.next().await {
+                            let chunk = chunk_result?;
+                            out.write_all(&chunk).await?;
+                        }
+                        out.flush().await?;
+                    }
+                    Err(e) => return Err(eyre!("couldn't download coman squash file: {}", e)),
+                }
+            }
+            target_path
+        }
     };
     let target = base_path.join("coman.sqsh");
     let file_meta = std::fs::metadata(local_squash_path.clone())?;
@@ -409,7 +451,7 @@ pub async fn cscs_job_start(
     match get_access_token().await {
         Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
-            let config = Config::new().unwrap();
+            let config = Config::new()?;
             let current_system = &system.unwrap_or(config.values.cscs.current_system);
             let account = account.or(config.values.cscs.account);
             let user_info = api_client.get_userinfo(current_system).await?;
