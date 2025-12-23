@@ -73,6 +73,8 @@ pub struct ComanConfig {
     #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]
+    pub coman_squash_path: Option<PathBuf>,
+    #[serde(default)]
     pub cscs: CscsConfig,
 }
 

@@ -4,20 +4,28 @@ use std::os::unix::fs::MetadataExt;
 use std::os::windows::fs::MetadataExt;
 use std::{
     collections::HashMap,
+    io::{BufWriter, Read, Write},
     path::{Path, PathBuf},
 };
 
+use base64::prelude::*;
 use color_eyre::{Result, eyre::eyre};
+use eyre::Context;
+use futures::StreamExt;
+use iroh::SecretKey;
+use itertools::Itertools;
 use reqwest::Url;
+use tokio::{fs::File, io::AsyncWriteExt};
 
 use super::api_client::client::{EdfSpec, ScriptSpec};
 use crate::{
-    config::{ComputePlatform, Config},
+    config::{ComputePlatform, Config, get_data_dir},
     cscs::{
         api_client::{
             client::{CscsApi, JobStartOptions},
             types::{FileStat, FileSystemType, Job, JobDetail, PathEntry, PathType, S3Upload, System, UserInfo},
         },
+        cli::upload_chunk,
         oauth2::{
             CLIENT_ID_SECRET_NAME, CLIENT_SECRET_SECRET_NAME, client_credentials_login, finish_cscs_device_login,
             start_cscs_device_login,
@@ -159,11 +167,157 @@ pub async fn cscs_job_cancel(job_id: i64, system: Option<String>, platform: Opti
     }
 }
 
+async fn setup_ssh(
+    api_client: &CscsApi,
+    base_path: &Path,
+    current_system: &str,
+    options: &JobStartOptions,
+) -> Result<Option<(PathBuf, SecretKey)>> {
+    if options.no_ssh {
+        return Ok(None);
+    }
+    let secret = SecretKey::generate(&mut rand::rng());
+
+    let ssh_key = if let Some(path) = options.ssh_key.clone() {
+        path.canonicalize().map(Some).wrap_err("couldn't get ssh key path")?
+    } else {
+        // try to figure our ssh key
+        let ssh_dir = dirs::home_dir().ok_or(eyre!("couldn't find home dir"))?.join(".ssh");
+        let mut ssh_path = None;
+        for file in ["id_dsa.pub", "id_ecdsa.pub", "id_rsa.pub"] {
+            let path = ssh_dir.join(file);
+            if path.exists() {
+                ssh_path = Some(path);
+                break;
+            }
+        }
+        ssh_path
+    };
+
+    match ssh_key {
+        Some(path) => {
+            let filename = path.file_name().ok_or(eyre!("couldn't get filename of ssh key"))?;
+            let remote_path = base_path.join(filename);
+            let public_key = std::fs::read_to_string(path.clone())?;
+
+            api_client
+                .upload(current_system, remote_path.clone(), public_key.into_bytes())
+                .await?;
+            Ok(Some((remote_path, secret)))
+        }
+        None => Err(eyre!("couldn't find ssh public key, use `--ssh_key` to specify it")),
+    }
+}
+
+async fn inject_coman_squash(
+    api_client: &CscsApi,
+    base_path: &Path,
+    current_system: &str,
+    options: &JobStartOptions,
+) -> Result<Option<PathBuf>> {
+    if options.no_coman {
+        return Ok(None);
+    }
+    let config = Config::new().unwrap();
+    let local_squash_path = match config.values.coman_squash_path.clone() {
+        Some(path) => path,
+        None => {
+            //download from github for architecture
+            let system = config
+                .values
+                .cscs
+                .systems
+                .get(current_system)
+                .ok_or(eyre!("couldn't find architecture for system {}", current_system))?;
+            let architecture = system
+                .architecture
+                .first()
+                .ok_or(eyre!("no architecture set for {}", current_system))?;
+            let target_path = get_data_dir().join(format!("coman_{}.sqsh", architecture));
+            if !target_path.exists() {
+                let url = match architecture.as_str() {
+                    "arm64" => {
+                        "https://github.com/SwissDataScienceCenter/coman/releases/latest/download/coman_Linux-aarch64.sqsh"
+                    }
+                    "amd64" => {
+                        "https://github.com/SwissDataScienceCenter/coman/releases/latest/download/coman_Linux-x86_64.sqsh"
+                    }
+                    _ => {
+                        return Err(eyre!("unsupported architecture {}", architecture));
+                    }
+                };
+                let mut out = File::create(target_path.clone()).await?;
+                let resp = reqwest::get(url).await?;
+                match resp.error_for_status() {
+                    Ok(resp) => {
+                        let mut stream = resp.bytes_stream();
+                        while let Some(chunk_result) = stream.next().await {
+                            let chunk = chunk_result?;
+                            out.write_all(&chunk).await?;
+                        }
+                        out.flush().await?;
+                    }
+                    Err(e) => return Err(eyre!("couldn't download coman squash file: {}", e)),
+                }
+            }
+            target_path
+        }
+    };
+    let target = base_path.join("coman.sqsh");
+    let file_meta = std::fs::metadata(local_squash_path.clone())?;
+
+    #[cfg(target_family = "unix")]
+    let size = file_meta.size() as usize;
+
+    #[cfg(target_family = "windows")]
+    let size = file_meta.file_size() as usize;
+
+    //upload squash file
+    let transfer_data = api_client
+        .transfer_upload(current_system, config.values.cscs.account, target.clone(), size as i64)
+        .await?;
+    let mut etags: Vec<String> = Vec::new();
+    let client = reqwest::Client::new();
+    let num_parts = transfer_data.1.num_parts;
+    for (chunk_id, transfer_url) in transfer_data.1.parts_upload_urls.into_iter().enumerate() {
+        println!(
+            "Uploading part {}/{} ({}Mb)",
+            chunk_id + 1,
+            num_parts,
+            transfer_data.1.part_size / 1024 / 1024
+        );
+        let etag = upload_chunk(
+            local_squash_path.clone(),
+            (chunk_id as u64) * transfer_data.1.part_size,
+            transfer_data.1.part_size,
+            transfer_url,
+        )
+        .await?;
+        etags.push(etag);
+    }
+
+    let body = etags
+        .into_iter()
+        .enumerate()
+        .map(|(i, etag)| (i + 1, etag))
+        .map(|(i, etag)| format!("<Part><PartNumber>{}</PartNumber><ETag>{}</ETag></Part>", i, etag))
+        .join("");
+    let body = format!("<CompleteMultipartUpload>{}</CompleteMultipartUpload>", body);
+    let req = client.post(transfer_data.1.complete_upload_url).body(body).build()?;
+    let resp = client.execute(req).await?;
+    resp.error_for_status()?;
+    Ok(Some(target))
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn handle_edf(
     api_client: &CscsApi,
     base_path: &Path,
     current_system: &str,
     envvars: &HashMap<String, String>,
+    coman_squash: &Option<PathBuf>,
+    ssh_public_key_path: &Option<PathBuf>,
+    iroh_secret: &Option<SecretKey>,
     workdir: &str,
     options: &JobStartOptions,
 ) -> Result<PathBuf> {
@@ -210,6 +364,13 @@ async fn handle_edf(
             context.insert("container_workdir", &workdir);
             context.insert("env", &envvars);
             context.insert("mount", &mount);
+            context.insert("ssh_public_key", &ssh_public_key_path);
+            context.insert("coman_squash", &coman_squash);
+            if let Some(iroh_secret) = iroh_secret {
+                // set iroh secret key
+                let encoded_secret = BASE64_STANDARD.encode(iroh_secret.to_bytes());
+                context.insert("iroh_secret", &encoded_secret);
+            }
 
             let environment_file = tera.render("environment.toml", &context)?;
             api_client.mkdir(current_system, base_path.to_path_buf()).await?;
@@ -231,12 +392,15 @@ async fn handle_edf(
         EdfSpec::Remote(path) => Ok(path),
     }
 }
+
+#[allow(clippy::too_many_arguments)]
 async fn handle_script(
     api_client: &CscsApi,
     job_name: &str,
     base_path: &Path,
     current_system: &str,
     environment_path: &Path,
+    coman_squash: Option<PathBuf>,
     workdir: &str,
     options: &JobStartOptions,
 ) -> Result<PathBuf> {
@@ -255,6 +419,9 @@ async fn handle_script(
             );
             context.insert("environment_file", &environment_path.to_path_buf());
             context.insert("container_workdir", &workdir);
+            if let Some(path) = coman_squash {
+                context.insert("coman_squash", &path);
+            }
             let script = tera.render("script.sh", &context)?;
             api_client
                 .upload(current_system, script_path.clone(), script.into_bytes())
@@ -284,7 +451,7 @@ pub async fn cscs_job_start(
     match get_access_token().await {
         Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
-            let config = Config::new().unwrap();
+            let config = Config::new()?;
             let current_system = &system.unwrap_or(config.values.cscs.current_system);
             let account = account.or(config.values.cscs.account);
             let user_info = api_client.get_userinfo(current_system).await?;
@@ -315,11 +482,19 @@ pub async fn cscs_job_start(
             let mut envvars = config.values.cscs.env.clone();
             envvars.extend(options.env.clone());
 
+            let (ssh_public_key_path, secret_key) = setup_ssh(&api_client, &base_path, current_system, &options)
+                .await?
+                .unzip();
+            let coman_squash = inject_coman_squash(&api_client, &base_path, current_system, &options).await?;
+
             let environment_path = handle_edf(
                 &api_client,
                 &base_path,
                 current_system,
                 &envvars,
+                &coman_squash,
+                &ssh_public_key_path,
+                &secret_key,
                 &container_workdir,
                 &options,
             )
@@ -331,15 +506,62 @@ pub async fn cscs_job_start(
                 &base_path,
                 current_system,
                 &environment_path,
+                coman_squash,
                 &container_workdir,
                 &options,
             )
             .await?;
 
             // start job
-            api_client
+            let job_id = api_client
                 .start_job(current_system, account, &job_name, script_path, envvars, options)
-                .await?;
+                .await?
+                .ok_or(eyre!("didn't get job id for created job"))?;
+
+            if let Some(secret_key) = secret_key {
+                // store connection information in data dir and set up ssh connection
+                let data_dir = get_data_dir();
+                std::fs::write(
+                    data_dir.join(format!("{}.endpoint", job_id)),
+                    format!("{}", secret_key.public()),
+                )?;
+                let coman_ssh_config_path = data_dir.join("ssh_config");
+                let coman_ssh_config = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(coman_ssh_config_path.clone())?;
+                let mut writer = BufWriter::new(coman_ssh_config);
+                write!(
+                    writer,
+                    "\nHost {}-{}\n    Hostname {}\n    User {}\n    ProxyCommand coman proxy {}\n",
+                    job_name,
+                    job_id,
+                    secret_key.public(),
+                    user_info.name,
+                    job_id
+                )?;
+                let ssh_dir = dirs::home_dir().ok_or(eyre!("couldn't find home dir"))?.join(".ssh");
+                let ssh_config_path = ssh_dir.join("config");
+                let mut ssh_config = std::fs::OpenOptions::new()
+                    .read(true)
+                    .append(true)
+                    .open(ssh_config_path)?;
+                let mut content = String::new();
+                ssh_config.read_to_string(&mut content)?;
+                if !content.contains(&format!("Include {}", coman_ssh_config_path.clone().display())) {
+                    let mut writer = BufWriter::new(ssh_config);
+                    write!(
+                        writer,
+                        "\n\n#coman include\nMatch all\nInclude {}",
+                        coman_ssh_config_path.display()
+                    )?;
+                }
+                println!(
+                    "Use ssh {}@{}-{} to connect to the job",
+                    user_info.name, job_name, job_id
+                );
+            }
+
             Ok(())
         }
         Err(e) => Err(e),

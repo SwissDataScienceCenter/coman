@@ -302,6 +302,7 @@ srun {% if environment_file %}--environment={{environment_file}}{% endif %} {{co
 #   container_workdir: the working directory to use within the container
 #   env: a dictionary of key/value pairs for environment variables to set in the container
 #   mount: a dictionary of key/value pairs for folders to mount to the container, with key being the path in the cluster and value being the path in the container
+#   ssh_public_key: path to the ssh public key on the remote
 edf_file_template = """
 {% if edf_image %}image = "{{edf_image}}"{% endif %}
 mounts = [{% for source, target in mount %}"{{source}}:{{target}}",{% endfor %}]
@@ -311,6 +312,12 @@ workdir = "{{container_workdir}}"
 {% for key, value in env %}
 {{key}} = "{{value}}"
 {% endfor %}
+
+[annotations]
+{% if ssh_public_key %}
+com.hooks.ssh.enabled = "true"
+com.hooks.ssh.authorize_ssh_key = "{{ ssh_public_key }}"
+com.hooks.ssh.port = 15263
 """
 
 # set environment variables that should be passed to a job

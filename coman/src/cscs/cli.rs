@@ -272,7 +272,7 @@ pub(crate) async fn cli_cscs_file_upload(
     }
 }
 
-async fn upload_chunk(path: PathBuf, offset: u64, size: u64, url: Url) -> Result<String> {
+pub(crate) async fn upload_chunk(path: PathBuf, offset: u64, size: u64, url: Url) -> Result<String> {
     let client = reqwest::Client::new();
 
     let source_file = File::open(path).await?;
