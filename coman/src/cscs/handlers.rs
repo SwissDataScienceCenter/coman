@@ -1,9 +1,10 @@
+use regex::Regex;
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::MetadataExt;
 #[cfg(target_family = "windows")]
 use std::os::windows::fs::MetadataExt;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io::{BufWriter, Read, Write},
     path::{Path, PathBuf},
 };
@@ -202,11 +203,113 @@ async fn setup_ssh(
 
             api_client
                 .upload(current_system, remote_path.clone(), public_key.into_bytes())
-                .await?;
+                .await
+                .wrap_err(eyre!("couldn't upload ssh public key"))?;
             Ok(Some((remote_path, secret)))
         }
         None => Err(eyre!("couldn't find ssh public key, use `--ssh_key` to specify it")),
     }
+}
+
+async fn garbage_collect_ssh(api_client: &CscsApi, current_system: &str) -> Result<()> {
+    let data_dir = get_data_dir();
+    if !data_dir.exists() {
+        return Ok(());
+    }
+    let jobs = api_client.list_jobs(current_system, None).await?;
+    let job_entries: HashSet<_> = jobs.iter().map(|j| format!("{}_{}", current_system, j.id)).collect();
+    let outdated_endpoints: Vec<_> = std::fs::read_dir(&data_dir)?
+        .filter(|d| {
+            d.as_ref().is_ok_and(|e| {
+                e.path().is_file()
+                    && e.file_name().to_string_lossy().ends_with(".endpoint")
+                    && e.file_name().to_string_lossy().starts_with(current_system)
+                    && !job_entries.contains(e.file_name().to_string_lossy().split_once('.').unwrap().0)
+            })
+        })
+        .map(|d| d.unwrap())
+        .collect();
+
+    // delete connection files
+    for d in outdated_endpoints.iter() {
+        std::fs::remove_file(d.path())?;
+    }
+
+    // cleanup ssh config
+    let coman_ssh_config_path = data_dir.join("ssh_config");
+    if !coman_ssh_config_path.exists() {
+        return Ok(());
+    }
+    let mut ssh_content = std::fs::read_to_string(&coman_ssh_config_path)?;
+    for d in outdated_endpoints {
+        let re = Regex::new(
+            format!(
+                r"(?ms)#Start {0}_[^\s]_{1}.*?#End {0}_[^\s]_{1}\n",
+                current_system,
+                d.file_name()
+                    .to_string_lossy()
+                    .split_once('.')
+                    .unwrap()
+                    .0
+                    .rsplit('_')
+                    .next()
+                    .unwrap()
+            )
+            .as_str(),
+        )?;
+        ssh_content = re.replace(&ssh_content, "").to_string();
+    }
+
+    std::fs::write(coman_ssh_config_path, ssh_content)?;
+
+    Ok(())
+}
+
+async fn store_ssh_information(
+    current_system: &str,
+    user_info: &UserInfo,
+    job_id: &i64,
+    job_name: &str,
+    secret_key: &SecretKey,
+) -> Result<String> {
+    let data_dir = get_data_dir();
+    std::fs::write(
+        data_dir.join(format!("{}_{}.endpoint", current_system, job_id)),
+        format!("{}", secret_key.public()),
+    )?;
+    let coman_ssh_config_path = data_dir.join("ssh_config");
+    let coman_ssh_config = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(coman_ssh_config_path.clone())?;
+    let connection_name = format!("{}-{}-{}", current_system, job_name, job_id);
+    let mut writer = BufWriter::new(coman_ssh_config);
+    write!(
+        writer,
+        "\n#Start {0}\nHost {0}\n    Hostname {1}\n    User {2}\n    ProxyCommand coman proxy {3}{4}\n#End {0}",
+        connection_name,
+        secret_key.public(),
+        user_info.name,
+        current_system,
+        job_id
+    )?;
+    let ssh_dir = dirs::home_dir().ok_or(eyre!("couldn't find home dir"))?.join(".ssh");
+    let ssh_config_path = ssh_dir.join("config");
+    let mut ssh_config = std::fs::OpenOptions::new()
+        .read(true)
+        .append(true)
+        .open(ssh_config_path)?;
+    let mut content = String::new();
+    ssh_config.read_to_string(&mut content)?;
+    if !content.contains(&format!("Include {}", coman_ssh_config_path.clone().display())) {
+        let mut writer = BufWriter::new(ssh_config);
+        write!(
+            writer,
+            "\n\n#coman include\nMatch all\nInclude {}",
+            coman_ssh_config_path.display()
+        )?;
+    }
+    Ok(connection_name)
 }
 
 async fn inject_coman_squash(
@@ -275,7 +378,8 @@ async fn inject_coman_squash(
     //upload squash file
     let transfer_data = api_client
         .transfer_upload(current_system, config.values.cscs.account, target.clone(), size as i64)
-        .await?;
+        .await
+        .wrap_err(eyre!("couldn't upload coman squash file"))?;
     let mut etags: Vec<String> = Vec::new();
     let client = reqwest::Client::new();
     let num_parts = transfer_data.1.num_parts;
@@ -520,46 +624,10 @@ pub async fn cscs_job_start(
 
             if let Some(secret_key) = secret_key {
                 // store connection information in data dir and set up ssh connection
-                let data_dir = get_data_dir();
-                std::fs::write(
-                    data_dir.join(format!("{}.endpoint", job_id)),
-                    format!("{}", secret_key.public()),
-                )?;
-                let coman_ssh_config_path = data_dir.join("ssh_config");
-                let coman_ssh_config = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(coman_ssh_config_path.clone())?;
-                let mut writer = BufWriter::new(coman_ssh_config);
-                write!(
-                    writer,
-                    "\nHost {}-{}\n    Hostname {}\n    User {}\n    ProxyCommand coman proxy {}\n",
-                    job_name,
-                    job_id,
-                    secret_key.public(),
-                    user_info.name,
-                    job_id
-                )?;
-                let ssh_dir = dirs::home_dir().ok_or(eyre!("couldn't find home dir"))?.join(".ssh");
-                let ssh_config_path = ssh_dir.join("config");
-                let mut ssh_config = std::fs::OpenOptions::new()
-                    .read(true)
-                    .append(true)
-                    .open(ssh_config_path)?;
-                let mut content = String::new();
-                ssh_config.read_to_string(&mut content)?;
-                if !content.contains(&format!("Include {}", coman_ssh_config_path.clone().display())) {
-                    let mut writer = BufWriter::new(ssh_config);
-                    write!(
-                        writer,
-                        "\n\n#coman include\nMatch all\nInclude {}",
-                        coman_ssh_config_path.display()
-                    )?;
-                }
-                println!(
-                    "Use ssh {}@{}-{} to connect to the job",
-                    user_info.name, job_name, job_id
-                );
+                garbage_collect_ssh(&api_client, current_system).await?;
+                let connection_name =
+                    store_ssh_information(current_system, &user_info, &job_id, &job_name, &secret_key).await?;
+                println!("Use ssh {}@{} to connect to the job", user_info.name, connection_name);
             }
 
             Ok(())
