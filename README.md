@@ -17,6 +17,7 @@ Table of contents
       * [Logging in](#logging-in)
       * [CLI](#cli)
       * [Terminal UI](#tui)
+      * [SSH](#ssh)
       * [coman.toml config file](#comantoml-config-file)
         * [Editing the config](#editing-the-config)
    * [Development](#development)
@@ -161,7 +162,8 @@ To execute a job on CSCS, run a command like
 coman cscs job submit -i ubuntu:latest -- echo test
 ```
 This will run the command `echo test` using the `ubuntu:latest` docker image and default settings.
-See `coman cscs job submit -h` for more options.
+See `coman cscs job submit -h` for more options. This will also automatically set up an ssh connection for
+the job (use `--no-ssh` to prevent this), see the [SSH](#ssh) section for more details.
 
 You can list your jobs using
 
@@ -270,7 +272,7 @@ name = "myproject" # the name of the project, used to generate job names
 current_system = "daint" # what system/cluster to execute commands on
 current_platform = "HPC" # what platform to execute commands on (valid: HPC, ML or CW)
 account = "..." # the project/group account to use on cscs
-
+ssh_key = "path/to/ssh/public/key.pub" # To use a different public key for SSH connections, other than the default auto-detected id_dsa, id_rsa or id_ecdsa
 
 image = "ubuntu" # default docker image to use
 
@@ -335,6 +337,27 @@ coman config get cscs.current_system
 ```shell
 coman config set cscs.current_system "daint"
 ```
+
+### SSH
+
+`coman cscs job submit` will automatically create an SSH connection for the job. It will search for an
+`id_dsa.pub`, `id_rsa.pub` or `id_ecdsa.pub` file in your `.ssh` folder and use that for the connection,
+unless you specify another key using the `--ssh-key` argument or the `cscs.ssh_key` setting in the config file.
+
+Creating the ssh connection involves several steps, all handled by coman:
+
+- Uploading your ssh public key into the remote coman project folder
+- Setting the public key in the [CSCS SSH hook](https://docs.cscs.ch/software/container-engine/resource-hook/#ssh-hook)
+- Uploading a squash file containing the coman executable to the remote coman project folder
+- Mounting the coman squash file into the container so the coman executable is available in the container
+- Creating an [iroh](https://github.com/n0-computer/iroh) secret key to use for the [QUIC tunnel](https://en.wikipedia.org/wiki/QUIC)
+- Using the coman executable as the entrypoint of the container (wrapping the original command), which
+  allows coman to create an iroh/QUIC tunnel for remote connections, as well as properly handling pid1
+  process signals in the container
+- Creating a local SSH config in the coman data dir (`~/.local/share/coman` by default) containing connection
+  information and the correct iroh proxy command
+- Including the SSH config in `.ssh/config` so it's accessible in other tools
+- Garbage collecting old SSH connections for jobs that are not running anymore
 
 ## Development
 

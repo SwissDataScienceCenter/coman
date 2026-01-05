@@ -73,7 +73,7 @@ pub enum CliCommands {
         command: Vec<String>,
     },
     #[clap(hide = true)]
-    Proxy { job_id: i64 },
+    Proxy { system: String, job_id: i64 },
 }
 
 #[derive(Subcommand, Debug)]
@@ -449,9 +449,9 @@ pub(crate) async fn cli_exec_command(command: Vec<String>) -> Result<()> {
 }
 
 /// Thin wrapper around iroh proxy
-pub(crate) async fn cli_proxy_command(job_id: i64) -> Result<()> {
+pub(crate) async fn cli_proxy_command(system: String, job_id: i64) -> Result<()> {
     let data_dir = get_data_dir();
-    let endpoint_id = std::fs::read_to_string(data_dir.join(format!("{}.endpoint", job_id)))?;
+    let endpoint_id = std::fs::read_to_string(data_dir.join(format!("{}_{}.endpoint", system, job_id)))?;
     println!("{}", endpoint_id);
     iroh_ssh::api::proxy_mode(iroh_ssh::ProxyArgs { node_id: endpoint_id })
         .await
