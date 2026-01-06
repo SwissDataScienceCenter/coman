@@ -1,9 +1,10 @@
 use tui_realm_stdlib::List;
 use tuirealm::{
-    Component, Event, MockComponent, State, StateValue,
+    AttrValue, Attribute, Component, Event, Frame, MockComponent, State, StateValue,
     command::{Cmd, CmdResult, Direction, Position},
-    event::{Key, KeyEvent},
+    event::{Key, KeyEvent, MouseButton, MouseEvent, MouseEventKind},
     props::{Alignment, BorderType, Borders, Color, TableBuilder, TextSpan},
+    ratatui::layout::{Position as RectPosition, Rect},
 };
 
 use crate::{
@@ -14,10 +15,29 @@ use crate::{
     cscs::api_client::types::System,
 };
 
-#[derive(MockComponent)]
 pub struct SystemSelectPopup {
     component: List,
     systems: Vec<System>,
+    current_rect: Rect,
+}
+
+impl MockComponent for SystemSelectPopup {
+    fn view(&mut self, frame: &mut Frame, area: Rect) {
+        self.current_rect = area;
+        self.component.view(frame, area);
+    }
+    fn query(&self, attr: Attribute) -> Option<AttrValue> {
+        self.component.query(attr)
+    }
+    fn attr(&mut self, query: Attribute, attr: AttrValue) {
+        self.component.attr(query, attr)
+    }
+    fn state(&self) -> State {
+        self.component.state()
+    }
+    fn perform(&mut self, cmd: Cmd) -> CmdResult {
+        self.component.perform(cmd)
+    }
 }
 
 impl SystemSelectPopup {
@@ -37,6 +57,18 @@ impl SystemSelectPopup {
                 .step(4)
                 .rows(rows.build()),
             systems,
+            current_rect: Rect::ZERO,
+        }
+    }
+
+    fn select_entry(&mut self) -> Option<Msg> {
+        if let State::One(StateValue::Usize(index)) = self.state() {
+            let selected_system = self.systems[index].clone();
+            Some(Msg::SystemSelectPopup(SystemSelectMsg::SystemSelected(
+                selected_system.name,
+            )))
+        } else {
+            Some(Msg::SystemSelectPopup(SystemSelectMsg::Closed))
         }
     }
 }
@@ -61,15 +93,33 @@ impl Component<Msg, UserEvent> for SystemSelectPopup {
                 return Some(Msg::SystemSelectPopup(SystemSelectMsg::Closed));
             }
             Event::Keyboard(KeyEvent { code: Key::Enter, .. }) => {
-                let msg = if let State::One(StateValue::Usize(index)) = self.state() {
-                    let selected_system = self.systems[index].clone();
-                    Some(Msg::SystemSelectPopup(SystemSelectMsg::SystemSelected(
-                        selected_system.name,
-                    )))
+                return self.select_entry();
+            }
+            Event::Mouse(MouseEvent {
+                kind, column: col, row, ..
+            }) => {
+                if !self.current_rect.contains(RectPosition { x: col, y: row }) {
+                    CmdResult::None
                 } else {
-                    Some(Msg::SystemSelectPopup(SystemSelectMsg::Closed))
-                };
-                return msg;
+                    let mut list_index = (row - self.current_rect.y) as usize;
+                    list_index = list_index.saturating_sub(1);
+                    if list_index >= self.component.states.list_len {
+                        list_index = self.component.states.list_len;
+                    }
+
+                    match kind {
+                        MouseEventKind::Moved => {
+                            self.component.states.list_index = list_index;
+                            CmdResult::Changed(self.component.state())
+                        }
+                        MouseEventKind::Down(MouseButton::Left) => {
+                            return self.select_entry();
+                        }
+                        MouseEventKind::ScrollUp => self.perform(Cmd::Move(Direction::Up)),
+                        MouseEventKind::ScrollDown => self.perform(Cmd::Move(Direction::Down)),
+                        _ => CmdResult::None,
+                    }
+                }
             }
 
             _ => CmdResult::None,
