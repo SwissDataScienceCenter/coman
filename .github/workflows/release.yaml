@@ -88,7 +88,7 @@ jobs:
             tar czvf ../../../${{ matrix.platform.name }} ${{ matrix.platform.bin }}
           fi
           if [[ "${{ matrix.platform.squash }}" == "true" ]]; then
-            mksquashfs coman coman_${{matrix.platform.os_name}}.sqsh
+            mksquashfs ${{ matrix.platform.bin }} ../../../coman_${{matrix.platform.os_name}}.sqsh
           fi
           cd -
       - name: Publish GitHub release
