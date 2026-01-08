@@ -21,6 +21,7 @@ jobs:
             bin: coman
             name: coman-Linux-x86_64-musl.tar.gz
             cargo_command: cargo
+            squash: true
 
           - os_name: Linux-aarch64
             os: ubuntu-24.04-arm
@@ -28,6 +29,7 @@ jobs:
             bin: coman
             name: coman-Linux-aarch64-musl.tar.gz
             cargo_command: cargo
+            squash: true
 
           - os_name: Windows-aarch64
             os: windows-latest
@@ -35,6 +37,7 @@ jobs:
             bin: coman.exe
             name: coman-Windows-aarch64.zip
             cargo_command: cargo
+            squash: false
 
           - os_name: macOS-x86_64
             os: macOS-latest
@@ -42,6 +45,7 @@ jobs:
             bin: coman
             name: coman-Darwin-x86_64.tar.gz
             cargo_command: cargo
+            squash: false
 
     runs-on: ${{ matrix.platform.os }}
     steps:
@@ -83,7 +87,7 @@ jobs:
           else
             tar czvf ../../../${{ matrix.platform.name }} ${{ matrix.platform.bin }}
           fi
-          if [[ "${{ matrix.platform.os }}" == "ubuntu-latest" ]]; then
+          if [[ "${{ matrix.platform.squash }}" == "true" ]]; then
             mksquashfs coman coman_${{matrix.platform.os_name}}.sqsh
           fi
           cd -
