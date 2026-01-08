@@ -62,6 +62,8 @@ pub struct CscsConfig {
     #[serde(default)]
     pub edf_file_template: String,
     #[serde(default)]
+    pub ssh_key: Option<PathBuf>,
+    #[serde(default)]
     pub command: Vec<String>,
 
     #[serde(default)]
@@ -72,6 +74,8 @@ pub struct CscsConfig {
 pub struct ComanConfig {
     #[serde(default)]
     pub name: Option<String>,
+    #[serde(default)]
+    pub coman_squash_path: Option<PathBuf>,
     #[serde(default)]
     pub cscs: CscsConfig,
 }
@@ -109,9 +113,8 @@ impl Layer {
         let root = self.data.as_item();
         let item = lookup_entry(key_path_parsed, root)?;
         let item = item
-            .map(|i| i.clone().into_value())
+            .map(|i| i.clone().into_value().map_err(|e| eyre!("{:?}", e)))
             .transpose()
-            .map_err(|e| eyre!(format!("{:?}", e)))
             .wrap_err("couldn't convert config item to value")?;
 
         Ok(item.map(|val| match val {

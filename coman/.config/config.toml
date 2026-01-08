@@ -6,7 +6,10 @@ current_platform = "HPC" # what platform to execute commands on (valid: HPC, ML 
 
 image = "ubuntu" # default docker image to use
 
-command = ["sleep", "1"] # command to execute within the container, i.e. the job you want to run
+command = [
+  "sleep",
+  "1",
+] # command to execute within the container, i.e. the job you want to run
 
 # the sbatch script you want to execute
 # this gets templated with values specified in the {{}} and {% %} expressions (see https://keats.github.io/tera/docs/#templates for
@@ -21,7 +24,7 @@ sbatch_script_template = """
 #SBATCH --job-name={{name}}
 #SBATCH --ntasks=1
 #SBATCH --time=1:00:00
-srun {% if environment_file %}--environment={{environment_file}}{% endif %} {{command}}
+srun {% if environment_file %}--environment={{environment_file}}{% endif %} {% if coman_squash %}/coman/coman exec {% endif %}{{command}}
 """
 
 # the edf environment toml file template
@@ -34,13 +37,26 @@ srun {% if environment_file %}--environment={{environment_file}}{% endif %} {{co
 #   mount: a dictionary of key/value pairs for folders to mount to the container, with key being the path in the cluster and value being the path in the container
 edf_file_template = """
 {% if edf_image %}image = "{{edf_image}}"{% endif %}
-mounts = [{% for source, target in mount %}"{{source}}:{{target}}",{% endfor %}]
+mounts = [
+  {% for source, target in mount %}"{{source}}:{{target}}",{% endfor %}
+  {% if coman_squash %}"{{coman_squash}}:/coman:sqsh"{% endif%}
+]
 workdir = "{{container_workdir}}"
 
 [env]
 {% for key, value in env %}
 {{key}} = "{{value}}"
 {% endfor %}
+{% if iroh_secret%}
+COMAN_IROH_SECRET="{{iroh_secret}}"
+{% endif %}
+
+[annotations]
+{% if ssh_public_key %}
+com.hooks.ssh.enabled = "true"
+com.hooks.ssh.authorize_ssh_key = "{{ ssh_public_key }}"
+com.hooks.ssh.port = "15263"
+{% endif %}
 """
 
 # set environment variables that should be passed to a job

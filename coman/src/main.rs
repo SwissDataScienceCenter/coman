@@ -17,7 +17,7 @@ use crate::{
         model::Model,
         user_events::{CscsEvent, FileEvent, StatusEvent, UserEvent},
     },
-    cli::{Cli, get_config, print_completions, set_config, version},
+    cli::{Cli, cli_exec_command, cli_proxy_command, get_config, print_completions, set_config, version},
     components::{
         file_tree::FileTree, global_listener::GlobalListener, status_bar::StatusBar, toolbar::Toolbar,
         workload_list::WorkloadList,
@@ -96,6 +96,9 @@ async fn main() -> Result<()> {
                         stderr,
                         edf_spec,
                         script_spec,
+                        no_ssh,
+                        ssh_key,
+                        no_coman,
                     } => {
                         cli_cscs_job_start(
                             name,
@@ -109,6 +112,9 @@ async fn main() -> Result<()> {
                                 stderr,
                                 edf_spec: edf_spec.unwrap_or_default().into(),
                                 script_spec: script_spec.unwrap_or_default().into(),
+                                no_ssh,
+                                ssh_key,
+                                no_coman,
                             },
                             system,
                             platform,
@@ -135,6 +141,8 @@ async fn main() -> Result<()> {
                 },
             },
             cli::CliCommands::Init { destination, name } => Config::create_project_config(destination, name)?,
+            cli::CliCommands::Exec { command } => cli_exec_command(command).await?,
+            cli::CliCommands::Proxy { system, job_id } => cli_proxy_command(system, job_id).await?,
         },
         None => run_tui(args.tick_rate)?,
     }

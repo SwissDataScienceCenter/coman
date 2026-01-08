@@ -1,8 +1,12 @@
-use std::{error::Error, path::PathBuf};
+use std::{error::Error, path::PathBuf, thread, time::Duration};
 
+use base64::prelude::*;
 use clap::{Args, Command, Parser, Subcommand, ValueHint, builder::TypedValueParser};
 use clap_complete::{Generator, Shell, generate};
-use color_eyre::Result;
+use color_eyre::{Result, eyre::eyre};
+use iroh_ssh::IrohSsh;
+use pid1::Pid1Settings;
+use rust_supervisor::{ChildType, Supervisor, SupervisorConfig};
 use strum::VariantNames;
 
 use crate::{
@@ -63,6 +67,13 @@ pub enum CliCommands {
         #[clap(value_enum)]
         generator: Shell,
     },
+    #[clap(about = "Execute a process/command through coman, with additional monitoring and side processes")]
+    Exec {
+        #[clap(trailing_var_arg = true, help = "The command to run", value_hint=ValueHint::Other)]
+        command: Vec<String>,
+    },
+    #[clap(hide = true)]
+    Proxy { system: String, job_id: i64 },
 }
 
 #[derive(Subcommand, Debug)]
@@ -234,6 +245,12 @@ pub enum CscsJobCommands {
         edf_spec: Option<EdfSpec>,
         #[command(flatten)]
         script_spec: Option<ScriptSpec>,
+        #[clap(long, action, help = "don't set up ssh integration")]
+        no_ssh: bool,
+        #[clap(short, long, help="ssh public key to use", value_hint=ValueHint::FilePath)]
+        ssh_key: Option<PathBuf>,
+        #[clap(long, action, help = "don't upload and inject coman into the container")]
+        no_coman: bool,
         #[clap(trailing_var_arg = true, help = "The command to run in the container", value_hint=ValueHint::Other)]
         command: Option<Vec<String>>,
     },
@@ -371,4 +388,72 @@ fn is_bare_string(value_str: &str) -> bool {
 
 pub fn print_completions<G: Generator>(generator: G, cmd: &mut Command) {
     generate(generator, cmd, cmd.get_name().to_string(), &mut std::io::stdout());
+}
+
+/// Runs a wrapped command in a container-safe way and potentially runs background processes like iroh-ssh
+pub(crate) async fn cli_exec_command(command: Vec<String>) -> Result<()> {
+    // Pid1 takes care of proper terminating of processes and signal handling when running in a container
+    Pid1Settings::new()
+        .enable_log(true)
+        .timeout(Duration::from_secs(2))
+        .launch()
+        .expect("Launch failed");
+
+    let mut supervisor = Supervisor::new(SupervisorConfig::default());
+    supervisor.add_process("iroh-ssh", ChildType::Permanent, || {
+        thread::spawn(|| {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("couldn't start tokio");
+
+            // Call the asynchronous connect method using the runtime.
+            rt.block_on(async move {
+                let mut builder = IrohSsh::builder().accept_incoming(true).accept_port(15263);
+                if let Ok(secret) = std::env::var("COMAN_IROH_SECRET") {
+                    let secret_key = BASE64_STANDARD.decode(secret).unwrap();
+                    let secret_key: &[u8; 32] = secret_key[0..32].try_into().unwrap();
+                    builder = builder.secret_key(secret_key);
+                }
+
+                let server = builder.build().await.expect("couldn't create iroh server");
+                println!("{}@{}", whoami::username(), server.node_id());
+                loop {
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                }
+            });
+        })
+    });
+    supervisor.add_process("main-process", ChildType::Temporary, move || {
+        let command = command.clone();
+        thread::spawn(move || {
+            let mut child = std::process::Command::new(command[0].clone())
+                .args(&command[1..])
+                .spawn()
+                .expect("Failed to start compute job");
+            child.wait().expect("Failed to wait on compute job");
+        })
+    });
+
+    let supervisor = supervisor.start_monitoring();
+    loop {
+        thread::sleep(Duration::from_secs(1));
+
+        if let Some(rust_supervisor::ProcessState::Failed | rust_supervisor::ProcessState::Stopped) =
+            supervisor.get_process_state("main-process")
+        {
+            break;
+        }
+    }
+    Ok(())
+}
+
+/// Thin wrapper around iroh proxy
+pub(crate) async fn cli_proxy_command(system: String, job_id: i64) -> Result<()> {
+    let data_dir = get_data_dir();
+    let endpoint_id = std::fs::read_to_string(data_dir.join(format!("{}_{}.endpoint", system, job_id)))?;
+    println!("{}", endpoint_id);
+    iroh_ssh::api::proxy_mode(iroh_ssh::ProxyArgs { node_id: endpoint_id })
+        .await
+        .map_err(|e| eyre!("couldn't proxy ssh connection: {:?}", e))
 }
