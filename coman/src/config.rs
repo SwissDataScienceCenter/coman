@@ -159,7 +159,7 @@ impl Layer {
 
     pub fn write(&self) -> Result<()> {
         let contents = self.data.to_string();
-        std::fs::write(&self.source, contents).wrap_err("couldn't write config")
+        std::fs::write(&self.source, contents).wrap_err(format!("couldn't write config {}", self.source.display()))
     }
 }
 
@@ -449,6 +449,7 @@ mod tests {
         assert_eq!(layer.data.to_string(), "[cscs]\nvalue=10\nother_value = 20\n");
     }
 
+    #[cfg(target_family = "unix")]
     #[test]
     fn test_config_read_write() {
         let project_dir = tempdir().expect("couldn't create temp dir");
@@ -465,6 +466,11 @@ mod tests {
 
         let home_dir = tempdir().expect("couldn't create temp dir");
         let global_config = home_dir.path().join(".config").join("coman").join("coman.toml");
+        println!(
+            "global: {}, project: {}",
+            global_config.display(),
+            project_config.display()
+        );
         std::fs::create_dir_all(global_config.parent().unwrap()).expect("couldn't create config dir");
         std::fs::write(&global_config, "[cscs]\ncurrent_system = \"global\"").expect("couldn't create config file");
 
