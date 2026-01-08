@@ -267,6 +267,21 @@ impl Config {
                 self.project_layer.as_ref().unwrap().write()?;
             }
         }
+
+        // reload config
+        let mut builder =
+            config::Config::builder().add_source(config::File::from_str(DEFAULT_CONFIG_TOML, config::FileFormat::Toml));
+        builder = builder.add_source(config::File::from_str(
+            &self.global_layer.data.to_string(),
+            config::FileFormat::Toml,
+        ));
+        if let Some(project_layer) = self.project_layer.clone() {
+            builder = builder.add_source(config::File::from_str(
+                &project_layer.data.to_string(),
+                config::FileFormat::Toml,
+            ));
+        }
+        self.values = builder.build()?.try_deserialize()?;
         Ok(())
     }
 
@@ -382,4 +397,85 @@ pub fn get_config_dir() -> PathBuf {
 
 fn project_directory() -> Option<ProjectDirs> {
     ProjectDirs::from("ch", "sdsc", env!("CARGO_PKG_NAME"))
+}
+#[cfg(test)]
+mod tests {
+    use claim::*;
+    use current_dir::*;
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[test]
+    fn test_get_project_local_config() {
+        let temp_dir = tempdir().expect("couldn't create temp dir");
+
+        let pwd = temp_dir.path().join("sub").join("folder");
+        std::fs::create_dir_all(pwd.clone()).expect("couldn't create dir");
+        let mut locked_cwd = Cwd::mutex().lock().expect("couldn't get cwd lock");
+        locked_cwd.set(&pwd).expect("couldn't set current dir");
+        assert_eq!(pwd, std::env::current_dir().expect("couldn't get current dir"));
+
+        let config = temp_dir.path().join("coman.toml");
+        std::fs::write(&config, "").expect("couldn't create config file");
+
+        let config_file = get_project_local_config_file();
+        assert_some!(config_file.clone());
+        assert_eq!(config_file.unwrap(), config);
+    }
+
+    #[test]
+    fn test_layer_from_path() {
+        let temp_dir = tempdir().expect("couldn't create temp dir");
+        let config = temp_dir.path().join("coman.toml");
+        let content = "#some comment[cscs]\nvalue=10\n";
+        std::fs::write(&config, content).expect("couldn't write config file");
+        let layer = Layer::from_path(config.clone()).expect("couldn't load config");
+        assert_eq!(layer.source, config);
+        assert_eq!(layer.data.to_string(), content);
+    }
+
+    #[test]
+    fn test_layer_get_set() {
+        let temp_dir = tempdir().expect("couldn't create temp dir");
+        let config = temp_dir.path().join("coman.toml");
+        let content = "[cscs]\nvalue=10\n";
+        std::fs::write(&config, content).expect("couldn't write config file");
+        let mut layer = Layer::from_path(config.clone()).expect("couldn't load config");
+        assert_eq!(layer.get("cscs.value").unwrap().unwrap(), "10");
+        assert_none!(layer.get("cscs.other_value").unwrap());
+        layer.set("cscs.other_value", 20).unwrap();
+        assert_eq!(layer.get("cscs.other_value").unwrap().unwrap(), "20");
+        assert_eq!(layer.data.to_string(), "[cscs]\nvalue=10\nother_value = 20\n");
+    }
+
+    #[test]
+    fn test_config_read_write() {
+        let project_dir = tempdir().expect("couldn't create temp dir");
+
+        let mut locked_cwd = Cwd::mutex().lock().expect("couldn't get cwd lock");
+        locked_cwd.set(&project_dir).expect("couldn't set current dir");
+        assert_eq!(
+            project_dir.path(),
+            std::env::current_dir().expect("couldn't get current dir")
+        );
+
+        let project_config = project_dir.path().join("coman.toml");
+        std::fs::write(&project_config, "[cscs]\ncurrent_system = \"project\"").expect("couldn't create config file");
+
+        let home_dir = tempdir().expect("couldn't create temp dir");
+        let global_config = home_dir.path().join(".config").join("coman").join("coman.toml");
+        std::fs::create_dir_all(global_config.parent().unwrap()).expect("couldn't create config dir");
+        std::fs::write(&global_config, "[cscs]\ncurrent_system = \"global\"").expect("couldn't create config file");
+
+        let _tmp_env = tmp_env::set_var("HOME", home_dir.path().as_os_str());
+        let mut conf = Config::new().expect("couldn't load config");
+        assert_eq!(conf.values.cscs.current_system, "project");
+        conf.set("cscs.current_system", "global2", true)
+            .expect("couldn't set global config value");
+        assert_eq!(conf.values.cscs.current_system, "project");
+        conf.set("cscs.current_system", "project2", false)
+            .expect("couldn't set global config value");
+        assert_eq!(conf.values.cscs.current_system, "project2");
+    }
 }
