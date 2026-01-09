@@ -1198,7 +1198,7 @@ checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
 
 [[package]]
 name = "coman"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "anyhow",
  "aws-sdk-s3",
@@ -1252,7 +1252,6 @@ dependencies = [
  "tabled",
  "tempfile",
  "tera",
- "tmp_env",
  "tokio",
  "tokio-util",
  "toml 0.9.7",
@@ -8144,15 +8143,6 @@ name = "tinyvec_macros"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
-
-[[package]]
-name = "tmp_env"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a56eb9e5a28c3c4f0a6aa8ea70a8ad2d6c53e4bf364571ce78f57945b6766843"
-dependencies = [
- "rand 0.8.5",
-]
 
 [[package]]
 name = "tokio"

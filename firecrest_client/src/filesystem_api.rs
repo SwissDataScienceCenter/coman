@@ -227,3 +227,14 @@ pub async fn post_filesystem_transfer_download(
     model.transfer_directives = transfer_dir;
     Ok(model)
 }
+
+pub async fn delete_filesystem_ops_rm(client: &FirecrestClient, system_name: &str, path: PathBuf) -> Result<()> {
+    let path = path.as_os_str().to_str().ok_or(eyre!("couldn't cast path to string"))?;
+    let _ = client
+        .delete(
+            format!("filesystem/{system_name}/ops/rm").as_str(),
+            Some(vec![("path", path)]),
+        )
+        .await?;
+    Ok(())
+}

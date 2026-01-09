@@ -9,9 +9,9 @@ use firecrest_client::{
         get_compute_system_jobs, post_compute_system_job,
     },
     filesystem_api::{
-        get_filesystem_ops_download, get_filesystem_ops_ls, get_filesystem_ops_stat, get_filesystem_ops_tail,
-        post_filesystem_ops_mkdir, post_filesystem_ops_upload, post_filesystem_transfer_download,
-        post_filesystem_transfer_upload, put_filesystem_ops_chmod,
+        delete_filesystem_ops_rm, get_filesystem_ops_download, get_filesystem_ops_ls, get_filesystem_ops_stat,
+        get_filesystem_ops_tail, post_filesystem_ops_mkdir, post_filesystem_ops_upload,
+        post_filesystem_transfer_download, post_filesystem_transfer_upload, put_filesystem_ops_chmod,
     },
     status_api::{get_status_systems, get_status_userinfo},
     types::DownloadFileResponseTransferDirectives,
@@ -161,6 +161,12 @@ impl CscsApi {
             .wrap_err("couldn't change directory permission")?;
         Ok(())
     }
+    pub async fn rm_path(&self, system_name: &str, path: PathBuf) -> Result<()> {
+        delete_filesystem_ops_rm(&self.client, system_name, path)
+            .await
+            .wrap_err("couldn't remove remote file")?;
+        Ok(())
+    }
     pub async fn upload(&self, system_name: &str, target: PathBuf, file: Vec<u8>) -> Result<()> {
         post_filesystem_ops_upload(&self.client, system_name, target, file)
             .await
@@ -242,8 +248,8 @@ impl CscsApi {
 mod tests {
     use claim::*;
     use firecrest_client::types::{
-        DownloadFileResponse, FirecrestFilesystemTransferModelsTransferJob, GetJobMetadataResponse, GetJobResponse,
-        GetSystemsResponse, HPCCluster, JobMetadataModel, JobModel, JobStatus, PostJobSubmissionResponse,
+        DownloadFileResponse, GetJobMetadataResponse, GetJobResponse, GetSystemsResponse, HPCCluster, JobMetadataModel,
+        JobModel, JobStatus, LibDatatransfersDatatransferBaseTransferJob, PostJobSubmissionResponse,
         S3TransferResponse, UploadFileResponse,
     };
     use injectorpp::interface::injector::*;
@@ -459,7 +465,7 @@ mod tests {
             ))
             .will_return_async(injectorpp::async_return!(
                 Ok(UploadFileResponse {
-                    transfer_job: FirecrestFilesystemTransferModelsTransferJob {
+                    transfer_job: LibDatatransfersDatatransferBaseTransferJob {
                         job_id: 1,
                         ..Default::default()
                     },
@@ -493,7 +499,7 @@ mod tests {
             ))
             .will_return_async(injectorpp::async_return!(
                 Ok(DownloadFileResponse {
-                    transfer_job: FirecrestFilesystemTransferModelsTransferJob {
+                    transfer_job: LibDatatransfersDatatransferBaseTransferJob {
                         job_id: 1,
                         ..Default::default()
                     },
