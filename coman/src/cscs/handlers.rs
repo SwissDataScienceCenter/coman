@@ -98,7 +98,7 @@ pub async fn cscs_job_list(system: Option<String>, platform: Option<ComputePlatf
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
             api_client
-                .list_jobs(&system.unwrap_or(config.values.cscs.current_system), Some(true))
+                .list_jobs(&system.unwrap_or(config.values.cscs.current_system), None)
                 .await
         }
         Err(e) => Err(e),
@@ -188,7 +188,7 @@ async fn setup_ssh(
         // try to figure our ssh key
         let ssh_dir = dirs::home_dir().ok_or(eyre!("couldn't find home dir"))?.join(".ssh");
         let mut ssh_path = None;
-        for file in ["id_dsa.pub", "id_ecdsa.pub", "id_rsa.pub"] {
+        for file in ["id_dsa.pub", "id_ecdsa.pub", "id_rsa.pub", "id_ed25519.pub"] {
             let path = ssh_dir.join(file);
             if path.exists() {
                 ssh_path = Some(path);
@@ -293,7 +293,7 @@ async fn store_ssh_information(
     let mut writer = BufWriter::new(coman_ssh_config);
     write!(
         writer,
-        "\n#Start {0}\nHost {0}\n    Hostname {1}\n    User {2}\n    ProxyCommand coman proxy {3}{4}\n#End {0}",
+        "\n#Start {0}\nHost {0}\n    Hostname {1}\n    User {2}\n    ProxyCommand coman proxy {3} {4}\n#End {0}",
         connection_name,
         secret_key.public(),
         user_info.name,
