@@ -500,8 +500,6 @@ async fn handle_edf(
             }
 
             let environment_file = tera.render("environment.toml", &context)?;
-            api_client.mkdir(current_system, base_path.to_path_buf()).await?;
-            api_client.chmod(current_system, base_path.to_path_buf(), "700").await?;
             api_client
                 .upload(current_system, environment_path.clone(), environment_file.into_bytes())
                 .await?;
@@ -605,6 +603,8 @@ pub async fn cscs_job_start(
                 .clone()
                 .unwrap_or(config.values.cscs.workdir.clone().unwrap_or("/scratch".to_owned()));
             let base_path = scratch.join(user_info.name.clone()).join(&job_name);
+            api_client.mkdir(current_system, base_path.to_path_buf()).await?;
+            api_client.chmod(current_system, base_path.to_path_buf(), "700").await?;
 
             let mut envvars = config.values.cscs.env.clone();
             envvars.extend(options.env.clone());

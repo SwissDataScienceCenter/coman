@@ -75,7 +75,7 @@ architecture = ["amd64"]
 architecture = ["amd64"]
 
 [cscs.systems.clariden]
-architecture = ["amd64"]
+architecture = ["arm64"]
 
 [cscs.systems.santis]
 architecture = ["arm64"]
