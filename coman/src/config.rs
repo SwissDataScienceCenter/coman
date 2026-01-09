@@ -159,7 +159,7 @@ impl Layer {
 
     pub fn write(&self) -> Result<()> {
         let contents = self.data.to_string();
-        std::fs::write(&self.source, contents).wrap_err("couldn't write config")
+        std::fs::write(&self.source, contents).wrap_err(format!("couldn't write config {}", self.source.display()))
     }
 }
 
@@ -465,11 +465,41 @@ mod tests {
 
         let home_dir = tempdir().expect("couldn't create temp dir");
         let global_config = home_dir.path().join(".config").join("coman").join("coman.toml");
+        println!(
+            "global: {}, project: {}",
+            global_config.display(),
+            project_config.display()
+        );
         std::fs::create_dir_all(global_config.parent().unwrap()).expect("couldn't create config dir");
         std::fs::write(&global_config, "[cscs]\ncurrent_system = \"global\"").expect("couldn't create config file");
 
-        let _tmp_env = tmp_env::set_var("HOME", home_dir.path().as_os_str());
-        let mut conf = Config::new().expect("couldn't load config");
+        let default_layer: DocumentMut = DEFAULT_CONFIG_TOML.parse().expect("couldn't parse default config");
+        let global_layer = Layer::from_path(global_config).expect("couldn't create global layer");
+        let project_layer = Layer::from_path(project_config).expect("couldn't create project layer");
+        let mut builder =
+            config::Config::builder().add_source(config::File::from_str(DEFAULT_CONFIG_TOML, config::FileFormat::Toml));
+        builder = builder
+            .add_source(config::File::from_str(
+                &global_layer.data.to_string(),
+                config::FileFormat::Toml,
+            ))
+            .add_source(config::File::from_str(
+                &project_layer.data.to_string(),
+                config::FileFormat::Toml,
+            ));
+
+        let cfg: ComanConfig = builder
+            .build()
+            .expect("couldn't build")
+            .try_deserialize()
+            .expect("couldn't deserialize");
+        let mut conf = Config {
+            values: cfg,
+            default_layer,
+            global_layer,
+            project_layer: Some(project_layer),
+        };
+
         assert_eq!(conf.values.cscs.current_system, "project");
         conf.set("cscs.current_system", "global2", true)
             .expect("couldn't set global config value");

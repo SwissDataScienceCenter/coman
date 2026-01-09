@@ -106,7 +106,7 @@ components:
     CompressResponse:
       properties:
         transferJob:
-          $ref: "#/components/schemas/firecrest__filesystem__transfer__models__TransferJob"
+          $ref: "#/components/schemas/lib__datatransfers__datatransfer_base__TransferJob"
       required:
         - transferJob
       title: CompressResponse
@@ -165,7 +165,7 @@ components:
     CopyResponse:
       properties:
         transferJob:
-          $ref: "#/components/schemas/firecrest__filesystem__transfer__models__TransferJob"
+          $ref: "#/components/schemas/lib__datatransfers__datatransfer_base__TransferJob"
       required:
         - transferJob
       title: CopyResponse
@@ -199,7 +199,7 @@ components:
     DeleteResponse:
       properties:
         transferJob:
-          $ref: "#/components/schemas/firecrest__filesystem__transfer__models__TransferJob"
+          $ref: "#/components/schemas/lib__datatransfers__datatransfer_base__TransferJob"
       required:
         - transferJob
       title: DeleteResponse
@@ -214,7 +214,7 @@ components:
           description: Data transfer parameters specific to the transfer method
           title: Transferdirectives
         transferJob:
-          $ref: "#/components/schemas/firecrest__filesystem__transfer__models__TransferJob"
+          $ref: "#/components/schemas/lib__datatransfers__datatransfer_base__TransferJob"
       required:
         - transferJob
         - transferDirectives
@@ -259,7 +259,7 @@ components:
     ExtractResponse:
       properties:
         transferJob:
-          $ref: "#/components/schemas/firecrest__filesystem__transfer__models__TransferJob"
+          $ref: "#/components/schemas/lib__datatransfers__datatransfer_base__TransferJob"
       required:
         - transferJob
       title: ExtractResponse
@@ -987,7 +987,7 @@ components:
     MoveResponse:
       properties:
         transferJob:
-          $ref: "#/components/schemas/firecrest__filesystem__transfer__models__TransferJob"
+          $ref: "#/components/schemas/lib__datatransfers__datatransfer_base__TransferJob"
       required:
         - transferJob
       title: MoveResponse
@@ -1231,6 +1231,8 @@ components:
       examples:
         - account: group
           sourcePath: /home/user/dir/file
+          transferDirectives:
+            transferMethod: s3
       properties:
         account:
           anyOf:
@@ -1812,6 +1814,12 @@ components:
             - type: "null"
           description: Scheduler API version.
           title: Apiversion
+        connectionMode:
+          anyOf:
+            - $ref: "#/components/schemas/SchedulerConnectionMode"
+            - type: "null"
+          default: ssh
+          description: Scheduler connection mode.
         timeout:
           anyOf:
             - type: integer
@@ -1831,6 +1839,14 @@ components:
         - version
       title: Scheduler
       type: object
+    SchedulerConnectionMode:
+      description: Modes to connect to the schedulers present in the system
+      enum:
+        - hybrid
+        - rest
+        - ssh
+      title: SchedulerConnectionMode
+      type: string
     SchedulerServiceHealth:
       description: Health check result for the job scheduler.
       properties:
@@ -2000,7 +2016,7 @@ components:
           description: Data transfer parameters specific to the transfer method
           title: Transferdirectives
         transferJob:
-          $ref: "#/components/schemas/firecrest__filesystem__transfer__models__TransferJob"
+          $ref: "#/components/schemas/lib__datatransfers__datatransfer_base__TransferJob"
       required:
         - transferJob
         - transferDirectives
@@ -2079,13 +2095,13 @@ components:
         - transferMethod
       title: WormholeTransferResponse
       type: object
-    firecrest__filesystem__transfer__models__TransferJob:
+    lib__datatransfers__datatransfer_base__TransferJob:
       properties:
         jobId:
           title: Jobid
           type: integer
         logs:
-          $ref: "#/components/schemas/firecrest__filesystem__transfer__models__TransferJobLogs"
+          $ref: "#/components/schemas/lib__datatransfers__datatransfer_base__TransferJobLogs"
         system:
           title: System
           type: string
@@ -2099,7 +2115,7 @@ components:
         - logs
       title: TransferJob
       type: object
-    firecrest__filesystem__transfer__models__TransferJobLogs:
+    lib__datatransfers__datatransfer_base__TransferJobLogs:
       properties:
         errorLog:
           title: Errorlog
@@ -2124,7 +2140,7 @@ components:
       type: http
 info:
   title: FirecREST
-  version: 2.4.1
+  version: 2.4.2
 openapi: 3.1.0
 paths:
   /compute/{system_name}/jobs:
@@ -2151,6 +2167,16 @@ paths:
               otherwise only the current user owned jobs
             title: Allusers
             type: boolean
+        - description: If specified, filter jobs by account name
+          in: query
+          name: account
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: "null"
+            description: If specified, filter jobs by account name
+            title: Account
       responses:
         "200":
           content:

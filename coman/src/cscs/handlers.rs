@@ -382,12 +382,17 @@ async fn inject_coman_squash(
     #[cfg(target_family = "windows")]
     let size = file_meta.file_size() as usize;
 
-    let existing = api_client.list_path(current_system, target.clone()).await?;
-    if !existing.is_empty() {
+    let response = api_client.list_path(current_system, target.clone()).await;
+    if let Ok(existing) = response
+        && !existing.is_empty()
+    {
         //squash file already present on remote, don't upload if it's the same
         let entry = existing.first().unwrap();
         if entry.size.unwrap_or_default() == size {
             return Ok(Some(target));
+        } else {
+            // remove file before upload
+            api_client.rm_path(current_system, target.clone()).await?;
         }
     }
     //upload squash file
@@ -421,7 +426,10 @@ async fn inject_coman_squash(
         .map(|(i, etag)| (i + 1, etag))
         .map(|(i, etag)| format!("<Part><PartNumber>{}</PartNumber><ETag>{}</ETag></Part>", i, etag))
         .join("");
-    let body = format!("<CompleteMultipartUpload>{}</CompleteMultipartUpload>", body);
+    let body = format!(
+        "<CompleteMultipartUpload xmlns=\"http://s3.amazonaws.com/doc/2006-03-01\">{}</CompleteMultipartUpload>",
+        body
+    );
     let req = client.post(transfer_data.1.complete_upload_url).body(body).build()?;
     let resp = client.execute(req).await?;
     resp.error_for_status()?;
