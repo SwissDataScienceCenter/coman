@@ -55,6 +55,7 @@ pub enum JobMsg {
     Log(usize),
     Details(JobDetail),
     GetDetails(usize),
+    Cancel(usize),
     Switch,
     Close,
 }

@@ -342,6 +342,18 @@ where
                 });
                 None
             }
+            JobMsg::Cancel(jobid) => {
+                let background_tx = self.background_task_tx.clone();
+                let event_tx = self.user_event_tx.clone();
+                tokio::spawn(async move {
+                    background_tx.send(BackgroundTask::CancelJob(jobid)).await.unwrap();
+                    event_tx
+                        .send(UserEvent::Status(StatusEvent::Info("cancelling job...".to_owned())))
+                        .await
+                        .unwrap();
+                });
+                None
+            }
             JobMsg::Details(jobdetail) => {
                 if self.app.mounted(&Id::WorkloadList) {
                     assert!(

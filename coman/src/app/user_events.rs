@@ -26,6 +26,10 @@ pub enum StatusEvent {
     Info(String),
     Warning(String),
 }
+#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord)]
+pub enum JobEvent {
+    Cancel,
+}
 
 #[derive(Debug, Eq, Clone, PartialOrd, Ord)]
 pub enum UserEvent {
@@ -33,6 +37,7 @@ pub enum UserEvent {
     File(FileEvent),
     Error(String),
     Info(String),
+    Job(JobEvent),
     Status(StatusEvent),
     SwitchedToView(View),
 }

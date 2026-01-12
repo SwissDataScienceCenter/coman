@@ -81,6 +81,15 @@ impl Component<Msg, UserEvent> for WorkloadList {
                 }
                 self.perform(Cmd::Change)
             }
+            Event::User(UserEvent::Job(crate::app::user_events::JobEvent::Cancel)) => {
+                if let State::One(StateValue::Usize(index)) = self.state()
+                    && !self.jobs.is_empty()
+                {
+                    let job = self.jobs[index].clone();
+                    return Some(Msg::Job(JobMsg::Cancel(job.id)));
+                }
+                CmdResult::None
+            }
             Event::Keyboard(KeyEvent { code: Key::Enter, .. }) => {
                 if let State::One(StateValue::Usize(index)) = self.state()
                     && !self.jobs.is_empty()
