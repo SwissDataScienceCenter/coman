@@ -628,7 +628,15 @@ pub async fn cscs_job_start(
                 setup_ssh(&api_client, &base_path, current_system, &options, &config)
                     .await?
                     .unzip();
+            if ssh_public_key_path.is_none() {
+                println!(
+                    "Warning: No ssh key found, specify it with --ssh-key if you want to use ssh connections through coman"
+                );
+            }
             let coman_squash = inject_coman_squash(&api_client, &base_path, current_system, &options).await?;
+            if coman_squash.is_none() {
+                println!("Warning: coman squash wasn't templated and is needed for ssh through coman to work");
+            }
 
             let environment_path = handle_edf(
                 &api_client,
