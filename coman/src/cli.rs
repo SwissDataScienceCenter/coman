@@ -98,10 +98,14 @@ pub enum ConfigCommands {
         #[clap(help = "Value to set", value_parser = parse_toml_value, value_hint=ValueHint::Other)]
         value: toml_edit::Value,
     },
+    #[clap(about = "Get config values")]
     Get {
         #[clap(help = "Config key path, e.g. `cscs.current_system`", value_hint=ValueHint::Other)]
         key_path: String,
     },
+
+    #[clap(about = "Show whole currently active config")]
+    Show,
 }
 
 #[allow(clippy::large_enum_variant)]

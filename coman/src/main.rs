@@ -71,6 +71,11 @@ async fn main() -> Result<()> {
                     global,
                 } => set_config(key_path, value, global)?,
                 cli::ConfigCommands::Get { key_path } => println!("{}", get_config(key_path)?),
+                cli::ConfigCommands::Show => {
+                    let config = Config::new()?;
+                    let content = toml::to_string_pretty(&config.values)?;
+                    println!("{}", content)
+                }
             },
             cli::CliCommands::Cscs {
                 command: cscs_command,
