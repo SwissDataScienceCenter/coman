@@ -459,35 +459,43 @@ async fn handle_edf(
             let mut mount: HashMap<String, String> = options.mount.clone().into_iter().collect();
             mount.entry("${SCRATCH}".to_owned()).or_insert("/scratch".to_owned());
 
-            let docker_image = options
-                .image
-                .clone()
-                .unwrap_or(config.values.cscs.image.clone().try_into()?);
-            let meta = docker_image.inspect().await?;
-            if let Some(system_info) = config.values.cscs.systems.get(current_system) {
-                let mut compatible = false;
-                for sys_platform in system_info.architecture.iter() {
-                    if meta.platforms.contains(&sys_platform.clone().into()) {
-                        compatible = true;
+            let mut context = tera::Context::new();
+
+            // check and validate image if set
+            let docker_image = if let Some(image) = options.image.clone() {
+                Some(image)
+            } else if let Some(image) = config.values.cscs.image {
+                let image = image.try_into()?;
+                Some(image)
+            } else {
+                None
+            };
+            if let Some(docker_image) = docker_image {
+                let meta = docker_image.inspect().await?;
+                if let Some(system_info) = config.values.cscs.systems.get(current_system) {
+                    let mut compatible = false;
+                    for sys_platform in system_info.architecture.iter() {
+                        if meta.platforms.contains(&sys_platform.clone().into()) {
+                            compatible = true;
+                        }
+                    }
+
+                    if !compatible {
+                        return Err(eyre!(
+                            "System {} only supports images with architecture(s) '{}' but the supplied image is for architecture(s) '{}'",
+                            current_system,
+                            system_info.architecture.join(","),
+                            meta.platforms
+                                .iter()
+                                .map(|p| p.to_string())
+                                .collect::<Vec<String>>()
+                                .join(",")
+                        ));
                     }
                 }
 
-                if !compatible {
-                    return Err(eyre!(
-                        "System {} only supports images with architecture(s) '{}' but the supplied image is for architecture(s) '{}'",
-                        current_system,
-                        system_info.architecture.join(","),
-                        meta.platforms
-                            .iter()
-                            .map(|p| p.to_string())
-                            .collect::<Vec<String>>()
-                            .join(",")
-                    ));
-                }
+                context.insert("edf_image", &docker_image.to_edf());
             }
-
-            let mut context = tera::Context::new();
-            context.insert("edf_image", &docker_image.to_edf());
             context.insert("container_workdir", &workdir);
             context.insert("env", &envvars);
             context.insert("mount", &mount);
