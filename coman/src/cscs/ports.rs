@@ -18,8 +18,8 @@ use crate::{
     cscs::{
         api_client::types::{JobStatus, PathEntry, PathType},
         handlers::{
-            cscs_file_download, cscs_file_list, cscs_job_cancel, cscs_job_details, cscs_job_list, cscs_job_log,
-            cscs_stat_path, cscs_system_list, cscs_user_info,
+            cscs_file_delete, cscs_file_download, cscs_file_list, cscs_job_cancel, cscs_job_details, cscs_job_list,
+            cscs_job_log, cscs_stat_path, cscs_system_list, cscs_user_info,
         },
         oauth2::{ACCESS_TOKEN_SECRET_NAME, REFRESH_TOKEN_SECRET_NAME, finish_cscs_device_login},
     },
@@ -221,9 +221,11 @@ impl PollAsync<UserEvent> for AsyncJobLogPort {
     }
 }
 
+#[derive(Debug)]
 pub enum BackgroundTask {
     ListPaths(PathBuf),
     DownloadFile(PathBuf, PathBuf),
+    DeleteFile(String),
     GetJobDetails(usize),
     CancelJob(usize),
 }
@@ -350,6 +352,16 @@ async fn download_file(
         ))))),
     }
 }
+async fn delete_file(id: String) -> Result<Option<Event<UserEvent>>> {
+    let remote = PathBuf::from(id.clone());
+    match cscs_file_delete(remote, None, None).await {
+        Ok(()) => Ok(Some(Event::User(UserEvent::File(FileEvent::DeleteSuccessful(id))))),
+        Err(e) => Ok(Some(Event::User(UserEvent::Error(format!(
+            "{:?}",
+            Err::<(), Report>(e).wrap_err("couldn't delete path")
+        ))))),
+    }
+}
 #[tuirealm::async_trait]
 impl PollAsync<UserEvent> for AsyncBackgroundTaskPort {
     async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
@@ -371,6 +383,13 @@ impl PollAsync<UserEvent> for AsyncBackgroundTaskPort {
                     Err(e) => Ok(Some(Event::User(UserEvent::Error(format!(
                         "{:?}",
                         Err::<(), Report>(e).wrap_err("couldn't download file")
+                    ))))),
+                },
+                BackgroundTask::DeleteFile(remote) => match delete_file(remote).await {
+                    Ok(event) => Ok(event),
+                    Err(e) => Ok(Some(Event::User(UserEvent::Error(format!(
+                        "{:?}",
+                        Err::<(), Report>(e).wrap_err("couldn't delete file")
                     ))))),
                 },
                 BackgroundTask::GetJobDetails(job_id) => match cscs_job_details(job_id as i64, None, None).await {

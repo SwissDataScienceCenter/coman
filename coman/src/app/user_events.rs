@@ -18,6 +18,8 @@ pub enum FileEvent {
     List(String, Vec<PathEntry>), // Id, Subpaths
     DownloadCurrentFile,
     DownloadSuccessful,
+    DeleteCurrentFile,
+    DeleteSuccessful(String),
 }
 
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord)]

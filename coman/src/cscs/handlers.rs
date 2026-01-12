@@ -700,6 +700,28 @@ pub async fn cscs_file_list(
     }
 }
 
+pub async fn cscs_file_delete(
+    remote: PathBuf,
+    system: Option<String>,
+    platform: Option<ComputePlatform>,
+) -> Result<()> {
+    match get_access_token().await {
+        Ok(access_token) => {
+            let api_client = CscsApi::new(access_token.0, platform).unwrap();
+            let config = Config::new().unwrap();
+            let current_system = &system.unwrap_or(config.values.cscs.current_system);
+            let paths = api_client.list_path(current_system, remote.clone()).await?;
+            let path = paths.first().ok_or(eyre!("remote path doesn't exist"))?;
+            if let PathType::Directory = path.path_type {
+                return Err(eyre!("remote path must be a file, not directory"));
+            }
+            api_client.rm_path(current_system, remote).await?;
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
+}
+
 pub async fn cscs_file_download(
     remote: PathBuf,
     local: PathBuf,

@@ -47,6 +47,8 @@ impl ContextMenu {
             .add_row()
             .add_col(TextSpan::from("Download").fg(Color::Cyan))
             .add_row()
+            .add_col(TextSpan::from("Delete").fg(Color::Cyan))
+            .add_row()
             .add_col(TextSpan::from("Quit").fg(Color::Cyan))
             .add_row()
             .build()
@@ -58,7 +60,8 @@ impl ContextMenu {
             2 => Some(Msg::Menu(MenuMsg::Event(UserEvent::File(
                 FileEvent::DownloadCurrentFile,
             )))),
-            3 => Some(Msg::AppClose),
+            3 => Some(Msg::Menu(MenuMsg::Event(UserEvent::File(FileEvent::DeleteCurrentFile)))),
+            4 => Some(Msg::AppClose),
             _ => Some(Msg::Menu(MenuMsg::Closed)),
         }
     }

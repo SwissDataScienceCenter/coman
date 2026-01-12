@@ -220,30 +220,18 @@ fn run_tui(tick_rate: f64) -> Result<()> {
     app.mount(
         Id::WorkloadList,
         Box::new(WorkloadList::default()),
-        vec![
-            Sub::new(
-                SubEventClause::Any,
-                SubClause::AndMany(vec![SubClause::IsMounted(Id::WorkloadList), popup_exclusion_clause()]),
-            ),
-            Sub::new(
-                SubEventClause::Discriminant(UserEvent::Job(app::user_events::JobEvent::Cancel)),
-                SubClause::AndMany(vec![SubClause::IsMounted(Id::WorkloadList), popup_exclusion_clause()]),
-            ),
-        ],
+        vec![Sub::new(
+            SubEventClause::Any,
+            SubClause::AndMany(vec![SubClause::IsMounted(Id::WorkloadList), popup_exclusion_clause()]),
+        )],
     )?;
     app.mount(
         Id::FileView,
         Box::new(FileTree::new(background_task_tx.clone())),
-        vec![
-            Sub::new(
-                SubEventClause::Discriminant(UserEvent::File(FileEvent::List("".to_owned(), vec![]))),
-                SubClause::Always,
-            ),
-            Sub::new(
-                SubEventClause::Any,
-                SubClause::AndMany(vec![SubClause::IsMounted(Id::FileView), popup_exclusion_clause()]),
-            ),
-        ],
+        vec![Sub::new(
+            SubEventClause::Any,
+            SubClause::AndMany(vec![SubClause::IsMounted(Id::FileView), popup_exclusion_clause()]),
+        )],
     )?;
     app.mount(
         Id::GlobalListener,
