@@ -6,6 +6,7 @@ use std::{
     collections::{HashMap, HashSet},
     io::{BufWriter, Read, Write},
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 use base64::prelude::*;
@@ -433,6 +434,26 @@ async fn inject_coman_squash(
     let req = client.post(transfer_data.1.complete_upload_url).body(body).build()?;
     let resp = client.execute(req).await?;
     resp.error_for_status()?;
+    // wait for transfer job to finish
+    loop {
+        match cscs_job_details(transfer_data.0, Some(current_system.to_string()), None).await? {
+            Some(JobDetail {
+                status: JobStatus::Finished,
+                ..
+            }) => break,
+            Some(JobDetail {
+                status: JobStatus::Cancelled | JobStatus::Failed | JobStatus::Timeout,
+                ..
+            }) => {
+                return Err(eyre!(
+                    "Uploading coman sqsh failed, check job {} for more details",
+                    transfer_data.0
+                ));
+            }
+            Some(_) | None => {}
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
     Ok(Some(target))
 }
 
