@@ -6,6 +6,7 @@ use std::{
     collections::{HashMap, HashSet},
     io::{BufWriter, Read, Write},
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 use base64::prelude::*;
@@ -433,6 +434,26 @@ async fn inject_coman_squash(
     let req = client.post(transfer_data.1.complete_upload_url).body(body).build()?;
     let resp = client.execute(req).await?;
     resp.error_for_status()?;
+    // wait for transfer job to finish
+    loop {
+        match cscs_job_details(transfer_data.0, Some(current_system.to_string()), None).await? {
+            Some(JobDetail {
+                status: JobStatus::Finished,
+                ..
+            }) => break,
+            Some(JobDetail {
+                status: JobStatus::Cancelled | JobStatus::Failed | JobStatus::Timeout,
+                ..
+            }) => {
+                return Err(eyre!(
+                    "Uploading coman sqsh failed, check job {} for more details",
+                    transfer_data.0
+                ));
+            }
+            Some(_) | None => {}
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
     Ok(Some(target))
 }
 
@@ -450,72 +471,74 @@ async fn handle_edf(
 ) -> Result<PathBuf> {
     let config = Config::new().unwrap();
     let environment_path = base_path.join("environment.toml");
-    match options.edf_spec.clone() {
-        EdfSpec::Generate => {
-            let mut tera = tera::Tera::default();
 
-            let environment_template = &config.values.cscs.edf_file_template;
-            tera.add_raw_template("environment.toml", environment_template)?;
-            let mut mount: HashMap<String, String> = options.mount.clone().into_iter().collect();
-            mount.entry("${SCRATCH}".to_owned()).or_insert("/scratch".to_owned());
+    let environment_template = match options.edf_spec.clone() {
+        EdfSpec::Generate => config.values.cscs.edf_file_template,
+        EdfSpec::Local(local_path) => std::fs::read_to_string(local_path.clone())?,
+        EdfSpec::Remote(path) => return Ok(path),
+    };
 
-            let docker_image = options
-                .image
-                .clone()
-                .unwrap_or(config.values.cscs.image.clone().try_into()?);
-            let meta = docker_image.inspect().await?;
-            if let Some(system_info) = config.values.cscs.systems.get(current_system) {
-                let mut compatible = false;
-                for sys_platform in system_info.architecture.iter() {
-                    if meta.platforms.contains(&sys_platform.clone().into()) {
-                        compatible = true;
-                    }
-                }
+    let mut tera = tera::Tera::default();
 
-                if !compatible {
-                    return Err(eyre!(
-                        "System {} only supports images with architecture(s) '{}' but the supplied image is for architecture(s) '{}'",
-                        current_system,
-                        system_info.architecture.join(","),
-                        meta.platforms
-                            .iter()
-                            .map(|p| p.to_string())
-                            .collect::<Vec<String>>()
-                            .join(",")
-                    ));
+    tera.add_raw_template("environment.toml", &environment_template)?;
+    let mut mount: HashMap<String, String> = options.mount.clone().into_iter().collect();
+    mount.entry("${SCRATCH}".to_owned()).or_insert("/scratch".to_owned());
+
+    let mut context = tera::Context::new();
+
+    // check and validate image if set
+    let docker_image = if let Some(image) = options.image.clone() {
+        Some(image)
+    } else if let Some(image) = config.values.cscs.image {
+        let image = image.try_into()?;
+        Some(image)
+    } else {
+        None
+    };
+    if let Some(docker_image) = docker_image {
+        let meta = docker_image.inspect().await?;
+        if let Some(system_info) = config.values.cscs.systems.get(current_system) {
+            let mut compatible = false;
+            for sys_platform in system_info.architecture.iter() {
+                if meta.platforms.contains(&sys_platform.clone().into()) {
+                    compatible = true;
                 }
             }
 
-            let mut context = tera::Context::new();
-            context.insert("edf_image", &docker_image.to_edf());
-            context.insert("container_workdir", &workdir);
-            context.insert("env", &envvars);
-            context.insert("mount", &mount);
-            context.insert("ssh_public_key", &ssh_public_key_path);
-            context.insert("coman_squash", &coman_squash);
-            if let Some(iroh_secret) = iroh_secret {
-                // set iroh secret key
-                let encoded_secret = BASE64_STANDARD.encode(iroh_secret.to_bytes());
-                context.insert("iroh_secret", &encoded_secret);
+            if !compatible {
+                return Err(eyre!(
+                    "System {} only supports images with architecture(s) '{}' but the supplied image is for architecture(s) '{}'",
+                    current_system,
+                    system_info.architecture.join(","),
+                    meta.platforms
+                        .iter()
+                        .map(|p| p.to_string())
+                        .collect::<Vec<String>>()
+                        .join(",")
+                ));
             }
+        }
 
-            let environment_file = tera.render("environment.toml", &context)?;
-            api_client
-                .upload(current_system, environment_path.clone(), environment_file.into_bytes())
-                .await?;
-            Ok(environment_path)
-        }
-        EdfSpec::Local(local_path) => {
-            let environment_file = std::fs::read_to_string(local_path.clone())?;
-            api_client.mkdir(current_system, base_path.to_path_buf()).await?;
-            api_client.chmod(current_system, base_path.to_path_buf(), "700").await?;
-            api_client
-                .upload(current_system, environment_path.clone(), environment_file.into_bytes())
-                .await?;
-            Ok(environment_path)
-        }
-        EdfSpec::Remote(path) => Ok(path),
+        context.insert("edf_image", &docker_image.to_edf());
     }
+    context.insert("container_workdir", &workdir);
+    context.insert("env", &envvars);
+    context.insert("mount", &mount);
+    context.insert("ssh_public_key", &ssh_public_key_path);
+    context.insert("coman_squash", &coman_squash);
+    if let Some(iroh_secret) = iroh_secret {
+        // set iroh secret key
+        let encoded_secret = BASE64_STANDARD.encode(iroh_secret.to_bytes());
+        context.insert("iroh_secret", &encoded_secret);
+    }
+
+    let environment_file = tera.render("environment.toml", &context)?;
+    api_client.mkdir(current_system, base_path.to_path_buf()).await?;
+    api_client.chmod(current_system, base_path.to_path_buf(), "700").await?;
+    api_client
+        .upload(current_system, environment_path.clone(), environment_file.into_bytes())
+        .await?;
+    Ok(environment_path)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -531,39 +554,31 @@ async fn handle_script(
 ) -> Result<PathBuf> {
     let config = Config::new().unwrap();
     let script_path = base_path.join("script.sh");
-    match options.script_spec.clone() {
-        ScriptSpec::Generate => {
-            let script_template = config.values.cscs.sbatch_script_template;
-            let mut tera = tera::Tera::default();
-            tera.add_raw_template("script.sh", &script_template)?;
-            let mut context = tera::Context::new();
-            context.insert("name", &job_name);
-            context.insert(
-                "command",
-                &options.command.clone().unwrap_or(config.values.cscs.command).join(" "),
-            );
-            context.insert("environment_file", &environment_path.to_path_buf());
-            context.insert("container_workdir", &workdir);
-            if let Some(path) = coman_squash {
-                context.insert("coman_squash", &path);
-            }
-            let script = tera.render("script.sh", &context)?;
-            api_client
-                .upload(current_system, script_path.clone(), script.into_bytes())
-                .await?;
+    let script_template = match options.script_spec.clone() {
+        ScriptSpec::Generate => config.values.cscs.sbatch_script_template,
+        ScriptSpec::Local(local_path) => std::fs::read_to_string(local_path)?,
+        ScriptSpec::Remote(script_path) => return Ok(script_path),
+    };
 
-            Ok(script_path)
-        }
-        ScriptSpec::Local(local_path) => {
-            let script = std::fs::read_to_string(local_path)?;
-            api_client
-                .upload(current_system, script_path.clone(), script.into_bytes())
-                .await?;
-
-            Ok(script_path)
-        }
-        ScriptSpec::Remote(script_path) => Ok(script_path),
+    let mut tera = tera::Tera::default();
+    tera.add_raw_template("script.sh", &script_template)?;
+    let mut context = tera::Context::new();
+    context.insert("name", &job_name);
+    context.insert(
+        "command",
+        &options.command.clone().unwrap_or(config.values.cscs.command).join(" "),
+    );
+    context.insert("environment_file", &environment_path.to_path_buf());
+    context.insert("container_workdir", &workdir);
+    if let Some(path) = coman_squash {
+        context.insert("coman_squash", &path);
     }
+    let script = tera.render("script.sh", &context)?;
+    api_client
+        .upload(current_system, script_path.clone(), script.into_bytes())
+        .await?;
+
+    Ok(script_path)
 }
 
 pub async fn cscs_job_start(
@@ -613,7 +628,15 @@ pub async fn cscs_job_start(
                 setup_ssh(&api_client, &base_path, current_system, &options, &config)
                     .await?
                     .unzip();
+            if ssh_public_key_path.is_none() {
+                println!(
+                    "Warning: No ssh key found, specify it with --ssh-key if you want to use ssh connections through coman"
+                );
+            }
             let coman_squash = inject_coman_squash(&api_client, &base_path, current_system, &options).await?;
+            if coman_squash.is_none() {
+                println!("Warning: coman squash wasn't templated and is needed for ssh through coman to work");
+            }
 
             let environment_path = handle_edf(
                 &api_client,
@@ -672,6 +695,28 @@ pub async fn cscs_file_list(
             api_client
                 .list_path(&system.unwrap_or(config.values.cscs.current_system), path)
                 .await
+        }
+        Err(e) => Err(e),
+    }
+}
+
+pub async fn cscs_file_delete(
+    remote: PathBuf,
+    system: Option<String>,
+    platform: Option<ComputePlatform>,
+) -> Result<()> {
+    match get_access_token().await {
+        Ok(access_token) => {
+            let api_client = CscsApi::new(access_token.0, platform).unwrap();
+            let config = Config::new().unwrap();
+            let current_system = &system.unwrap_or(config.values.cscs.current_system);
+            let paths = api_client.list_path(current_system, remote.clone()).await?;
+            let path = paths.first().ok_or(eyre!("remote path doesn't exist"))?;
+            if let PathType::Directory = path.path_type {
+                return Err(eyre!("remote path must be a file, not directory"));
+            }
+            api_client.rm_path(current_system, remote).await?;
+            Ok(())
         }
         Err(e) => Err(e),
     }

@@ -4,12 +4,12 @@ current_system = "daint" # what system/cluster to execute commands on
 current_platform = "HPC" # what platform to execute commands on (valid: HPC, ML or CW)
 
 
-image = "ubuntu" # default docker image to use
+# image = "ubuntu" # default docker image to use
 
-command = [
-  "sleep",
-  "1",
-] # command to execute within the container, i.e. the job you want to run
+# command = [
+#   "sleep",
+#   "1",
+# ] # command to execute within the container, i.e. the job you want to run
 
 # the sbatch script you want to execute
 # this gets templated with values specified in the {{}} and {% %} expressions (see https://keats.github.io/tera/docs/#templates for

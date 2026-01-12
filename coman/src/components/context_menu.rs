@@ -8,7 +8,7 @@ use tuirealm::{
 
 use crate::app::{
     messages::{MenuMsg, Msg, View},
-    user_events::{FileEvent, UserEvent},
+    user_events::{FileEvent, JobEvent, UserEvent},
 };
 
 #[derive(MockComponent)]
@@ -24,6 +24,8 @@ impl ContextMenu {
             .add_row()
             .add_col(TextSpan::from("Switch System").fg(Color::Cyan))
             .add_row()
+            .add_col(TextSpan::from("Cancel Job").fg(Color::Cyan))
+            .add_row()
             .add_col(TextSpan::from("Quit").fg(Color::Cyan))
             .add_row()
             .build()
@@ -32,7 +34,8 @@ impl ContextMenu {
         match index {
             0 => Some(Msg::Menu(MenuMsg::CscsLogin)),
             1 => Some(Msg::Menu(MenuMsg::CscsSwitchSystem)),
-            2 => Some(Msg::AppClose),
+            2 => Some(Msg::Menu(MenuMsg::Event(UserEvent::Job(JobEvent::Cancel)))),
+            3 => Some(Msg::AppClose),
             _ => Some(Msg::Menu(MenuMsg::Closed)),
         }
     }
@@ -43,6 +46,8 @@ impl ContextMenu {
             .add_col(TextSpan::from("Switch System").fg(Color::Cyan))
             .add_row()
             .add_col(TextSpan::from("Download").fg(Color::Cyan))
+            .add_row()
+            .add_col(TextSpan::from("Delete").fg(Color::Cyan))
             .add_row()
             .add_col(TextSpan::from("Quit").fg(Color::Cyan))
             .add_row()
@@ -55,7 +60,8 @@ impl ContextMenu {
             2 => Some(Msg::Menu(MenuMsg::Event(UserEvent::File(
                 FileEvent::DownloadCurrentFile,
             )))),
-            3 => Some(Msg::AppClose),
+            3 => Some(Msg::Menu(MenuMsg::Event(UserEvent::File(FileEvent::DeleteCurrentFile)))),
+            4 => Some(Msg::AppClose),
             _ => Some(Msg::Menu(MenuMsg::Closed)),
         }
     }

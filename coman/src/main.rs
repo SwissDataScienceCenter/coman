@@ -71,6 +71,11 @@ async fn main() -> Result<()> {
                     global,
                 } => set_config(key_path, value, global)?,
                 cli::ConfigCommands::Get { key_path } => println!("{}", get_config(key_path)?),
+                cli::ConfigCommands::Show => {
+                    let config = Config::new()?;
+                    let content = toml::to_string_pretty(&config.values)?;
+                    println!("{}", content)
+                }
             },
             cli::CliCommands::Cscs {
                 command: cscs_command,
@@ -223,16 +228,10 @@ fn run_tui(tick_rate: f64) -> Result<()> {
     app.mount(
         Id::FileView,
         Box::new(FileTree::new(background_task_tx.clone())),
-        vec![
-            Sub::new(
-                SubEventClause::Discriminant(UserEvent::File(FileEvent::List("".to_owned(), vec![]))),
-                SubClause::Always,
-            ),
-            Sub::new(
-                SubEventClause::Any,
-                SubClause::AndMany(vec![SubClause::IsMounted(Id::FileView), popup_exclusion_clause()]),
-            ),
-        ],
+        vec![Sub::new(
+            SubEventClause::Any,
+            SubClause::AndMany(vec![SubClause::IsMounted(Id::FileView), popup_exclusion_clause()]),
+        )],
     )?;
     app.mount(
         Id::GlobalListener,

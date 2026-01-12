@@ -15,6 +15,7 @@ use crate::{
         user_events::{FileEvent, UserEvent},
     },
     cscs::{api_client::types::PathType, ports::BackgroundTask},
+    trace_dbg,
 };
 
 #[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Clone)]
@@ -173,6 +174,27 @@ impl Component<Msg, UserEvent> for FileTree {
                     return Some(Msg::DownloadPopup(DownloadPopupMsg::Opened(path)));
                 }
                 CmdResult::None
+            }
+            Event::User(UserEvent::File(FileEvent::DeleteCurrentFile)) => {
+                if let State::One(StateValue::String(id)) = self.state() {
+                    let tree_tx = self.file_tree_tx.clone();
+                    let id = trace_dbg!(id);
+                    tokio::spawn(async move {
+                        tree_tx.send(BackgroundTask::DeleteFile(id)).await.unwrap();
+                    });
+                }
+                CmdResult::None
+            }
+            Event::User(UserEvent::File(FileEvent::DeleteSuccessful(id))) => {
+                let mut selected_id = id.clone();
+                let tree = self.component.tree_mut();
+                let parent = tree.root_mut().parent_mut(&id);
+                if let Some(parent) = parent {
+                    parent.remove_child(&id);
+                    selected_id = parent.id().clone();
+                }
+                self.attr(Attribute::Custom(TREE_INITIAL_NODE), AttrValue::String(selected_id));
+                CmdResult::Changed(self.component.state())
             }
             _ => CmdResult::None,
         };
