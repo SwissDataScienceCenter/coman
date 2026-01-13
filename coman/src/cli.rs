@@ -138,7 +138,7 @@ pub enum CscsCommands {
 pub struct ScriptSpec {
     #[arg(
         long,
-        help = "generate and upload script file based on template (on by default unless `--local` or `--remote` are passed)"
+        help = "generate and upload script file based on template (on by default unless `--local-script` or `--remote-script` are passed)"
     )]
     generate_script: bool,
     #[arg(long, value_name = "PATH", help = "upload local script file", value_hint=ValueHint::FilePath)]
@@ -173,7 +173,7 @@ impl From<ScriptSpec> for ScriptSpecEnum {
 pub struct EdfSpec {
     #[arg(
         long,
-        help = "generate and upload edf file based on template (on by default unless `--local` or `--remote` are passed)"
+        help = "generate and upload edf file based on template (on by default unless `--local-edf` or `--remote-edf` are passed)"
     )]
     generate_edf: bool,
     #[arg(long, value_name = "PATH", help = "upload local edf file", value_hint=ValueHint::FilePath)]
@@ -465,7 +465,7 @@ pub(crate) async fn cli_proxy_command(system: String, job_id: i64) -> Result<()>
     if job_info.is_none() {
         return Err(eyre!("remote job does not exist!"));
     } else if let Some(job_info) = job_info
-        && job_info.status == JobStatus::Running
+        && job_info.status != JobStatus::Running
     {
         return Err(eyre!("remote job is not in running state, connection not available"));
     }
