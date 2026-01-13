@@ -159,7 +159,7 @@ impl Layer {
 
     pub fn write(&self) -> Result<()> {
         let contents = self.data.to_string();
-        std::fs::create_dir_all(&self.source.parent().unwrap())?;
+        std::fs::create_dir_all(self.source.parent().unwrap())?;
         std::fs::write(&self.source, contents).wrap_err(format!("couldn't write config {}", self.source.display()))
     }
 }

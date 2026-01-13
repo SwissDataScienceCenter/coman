@@ -281,6 +281,11 @@ pub enum CscsFileCommands {
         #[arg(help ="remote path to list", value_hint=ValueHint::Other)]
         path: PathBuf,
     },
+    #[clap(alias("rm"), about = "Remove remote files or folders [aliases: rm]")]
+    Remove {
+        #[arg(help ="remote path to remove", value_hint=ValueHint::Other)]
+        path: PathBuf,
+    },
     #[clap(alias("dl"), about = "Download a remote file [aliases: dl]")]
     Download {
         #[clap(help = "The path in the cluster to download", value_hint=ValueHint::Other)]

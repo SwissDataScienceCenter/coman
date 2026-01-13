@@ -20,8 +20,8 @@ use crate::{
     cscs::{
         api_client::{client::JobStartOptions, types::JobStatus},
         handlers::{
-            cscs_file_download, cscs_file_list, cscs_file_upload, cscs_job_cancel, cscs_job_details, cscs_job_list,
-            cscs_job_log, cscs_job_start, cscs_login, cscs_system_list, cscs_system_set,
+            cscs_file_delete, cscs_file_download, cscs_file_list, cscs_file_upload, cscs_job_cancel, cscs_job_details,
+            cscs_job_list, cscs_job_log, cscs_job_start, cscs_login, cscs_system_list, cscs_system_set,
         },
     },
 };
@@ -149,6 +149,19 @@ pub(crate) async fn cli_cscs_file_list(
             let mut table = tabled::Table::new(path_entries);
             table.with(tabled::settings::Style::empty());
             println!("{}", table);
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
+}
+pub(crate) async fn cli_cscs_file_delete(
+    path: PathBuf,
+    system: Option<String>,
+    platform: Option<ComputePlatform>,
+) -> Result<()> {
+    match cscs_file_delete(path, system, platform).await {
+        Ok(()) => {
+            println!("Path removed");
             Ok(())
         }
         Err(e) => Err(e),
