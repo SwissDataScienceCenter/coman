@@ -1,10 +1,11 @@
-use std::{error::Error, path::PathBuf, thread, time::Duration};
+use std::{error::Error, path::PathBuf, str::FromStr, thread, time::Duration};
 
 use base64::prelude::*;
 use clap::{Args, Command, Parser, Subcommand, ValueHint, builder::TypedValueParser};
 use clap_complete::{ArgValueCompleter, CompletionCandidate, Generator, Shell, generate};
-use color_eyre::{Result, eyre::eyre};
+use color_eyre::{Report, Result, eyre::eyre};
 use iroh_ssh::IrohSsh;
+use itertools::Itertools;
 use pid1::Pid1Settings;
 use rust_supervisor::{ChildType, Supervisor, SupervisorConfig};
 use strum::VariantNames;
@@ -17,7 +18,7 @@ use crate::{
             client::{EdfSpec as EdfSpecEnum, ScriptSpec as ScriptSpecEnum},
             types::{JobStatus, PathType},
         },
-        handlers::{cscs_file_list, cscs_job_details, file_system_roots},
+        handlers::{cscs_file_list, cscs_job_details, cscs_job_list, file_system_roots},
     },
     util::types::DockerImageUrl,
 };
@@ -205,6 +206,22 @@ impl From<EdfSpec> for EdfSpecEnum {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum JobIdOrName {
+    Id(i64),
+    Name(String),
+}
+
+impl FromStr for JobIdOrName {
+    type Err = Report;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(s.parse::<i64>()
+            .map(JobIdOrName::Id)
+            .unwrap_or_else(|_| JobIdOrName::Name(s.to_string())))
+    }
+}
+
 #[allow(clippy::large_enum_variant)]
 #[derive(Subcommand, Debug)]
 pub enum CscsJobCommands {
@@ -212,15 +229,15 @@ pub enum CscsJobCommands {
     List,
     #[clap(alias("g"), about = "Get metadata for a specific job [aliases: g]")]
     Get {
-        #[arg(help="id of the job", value_hint=ValueHint::Other)]
-        job_id: i64,
+        #[arg(help="id or name of the job (name uses newest job of that name)", add = ArgValueCompleter::new(job_id_or_name_completer))]
+        job: JobIdOrName,
     },
     #[clap(about = "Get the stdout of a job")]
     Log {
         #[clap(short, long, action, help = "whether to get stderr instead of stdout")]
         stderr: bool,
-        #[arg(help="id of the job", value_hint=ValueHint::Other)]
-        job_id: i64,
+        #[arg(help="id or name of the job (name uses newest job of that name)", add = ArgValueCompleter::new(job_id_or_name_completer))]
+        job: JobIdOrName,
     },
 
     #[clap(alias("s"), about = "Submit a new compute job [aliases: s]")]
@@ -270,9 +287,63 @@ pub enum CscsJobCommands {
         about = "Cancel a running job, fails if the job isn't running [aliases: c]"
     )]
     Cancel {
-        #[clap(help="id of the job", value_hint=ValueHint::Other)]
-        job_id: i64,
+        #[clap(help="id or name of the job (name uses newest job of that name)",  add = ArgValueCompleter::new(job_id_or_name_completer))]
+        job: JobIdOrName,
     },
+}
+fn job_id_or_name_completer(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
+    let mut completions = vec![];
+    let Some(current) = current.to_str() else {
+        return completions;
+    };
+    let jn = JobIdOrName::from_str(current).unwrap();
+    // the tokio shenanigans here are to be able to call async code from this sync method,
+    // with an already running async runtime from tokio::main, and getting back the result,
+    // all without blocking the async runtime in sync code (hence the extra thread).
+    let (send, mut recv) = mpsc::unbounded_channel();
+    match jn {
+        JobIdOrName::Id(id) => {
+            tokio::spawn(async move {
+                let jobs = cscs_job_list(None, None).await.unwrap();
+                let partial_id = id.to_string();
+                let ids: Vec<_> = jobs
+                    .iter()
+                    .map(|j| (j.id.to_string(), j.name.clone()))
+                    .filter(|i| i.0.starts_with(&partial_id))
+                    .sorted_by_key(|i| i.0.clone())
+                    .collect();
+                for (id, name) in ids {
+                    send.send(CompletionCandidate::new(id).help(Some(name.into()))).unwrap();
+                }
+            });
+        }
+        JobIdOrName::Name(name) => {
+            tokio::spawn(async move {
+                let jobs = cscs_job_list(None, None).await.unwrap();
+                let names: Vec<_> = jobs
+                    .into_iter()
+                    .map(|j| j.name)
+                    .filter(|n| n.starts_with(&name))
+                    .sorted()
+                    .dedup()
+                    .collect();
+                for name in names {
+                    send.send(CompletionCandidate::new(name)).unwrap();
+                }
+            });
+        }
+    }
+    let sync_recv = thread::spawn(move || {
+        let mut completions = vec![];
+        while let Some(candidate) = recv.blocking_recv() {
+            completions.push(candidate);
+        }
+        completions
+    });
+    let comp = sync_recv.join().unwrap();
+    completions.extend(comp);
+
+    completions
 }
 
 #[derive(Subcommand, Debug)]

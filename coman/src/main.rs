@@ -88,9 +88,9 @@ async fn main() -> Result<()> {
                 cli::CscsCommands::Login => cli_cscs_login().await?,
                 cli::CscsCommands::Job { command } => match command {
                     cli::CscsJobCommands::List => cli_cscs_job_list(system, platform).await?,
-                    cli::CscsJobCommands::Get { job_id } => cli_cscs_job_detail(job_id, system, platform).await?,
-                    cli::CscsJobCommands::Log { job_id, stderr } => {
-                        cli_cscs_job_log(job_id, stderr, system, platform).await?
+                    cli::CscsJobCommands::Get { job } => cli_cscs_job_detail(job, system, platform).await?,
+                    cli::CscsJobCommands::Log { job, stderr } => {
+                        cli_cscs_job_log(job, stderr, system, platform).await?
                     }
                     cli::CscsJobCommands::Submit {
                         name,
@@ -129,7 +129,7 @@ async fn main() -> Result<()> {
                         )
                         .await?
                     }
-                    cli::CscsJobCommands::Cancel { job_id } => cli_cscs_job_cancel(job_id, system, platform).await?,
+                    cli::CscsJobCommands::Cancel { job } => cli_cscs_job_cancel(job, system, platform).await?,
                 },
                 cli::CscsCommands::File { command } => match command {
                     cli::CscsFileCommands::List { path } => cli_cscs_file_list(path, system, platform).await?,
