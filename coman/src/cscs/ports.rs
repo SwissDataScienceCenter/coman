@@ -14,12 +14,11 @@ use tuirealm::{
 
 use crate::{
     app::user_events::{CscsEvent, FileEvent, StatusEvent, UserEvent},
-    config::Config,
     cscs::{
-        api_client::types::{JobStatus, PathEntry, PathType},
+        api_client::types::JobStatus,
         handlers::{
             cscs_file_delete, cscs_file_download, cscs_file_list, cscs_job_cancel, cscs_job_details, cscs_job_list,
-            cscs_job_log, cscs_stat_path, cscs_system_list, cscs_user_info,
+            cscs_job_log, cscs_system_list, file_system_roots,
         },
         oauth2::{ACCESS_TOKEN_SECRET_NAME, REFRESH_TOKEN_SECRET_NAME, finish_cscs_device_login},
     },
@@ -249,41 +248,14 @@ async fn list_files(id: PathBuf) -> Result<Option<Event<UserEvent>>> {
         .map_err(|_| eyre!("couldn't convert id to string".to_owned()))?;
     if id_str == "/" {
         // load file system roots
-        let config = Config::new().expect("couldn't load config");
-        let user_info = cscs_user_info(None, None).await?;
-        let systems = cscs_system_list(None).await?;
-        let system = systems
-            .iter()
-            .find(|s| s.name == config.values.cscs.current_system)
-            .unwrap_or_else(|| panic!("couldn't get info for system {}", config.values.cscs.current_system));
-        // listing big directories fails in the api and we might not actually be allowed to
-        // access the roots of the storage.
-        // So we try to append the user name to the paths and use that, if it works
-        let mut subpaths = vec![];
-        for fs in system.file_systems.clone() {
-            let entry =
-                match cscs_stat_path(PathBuf::from(fs.path.clone()).join(user_info.name.clone()), None, None).await {
-                    Ok(Some(_)) => PathEntry {
-                        name: format!("{}/{}", fs.path.clone(), user_info.name),
-                        path_type: PathType::Directory,
-                        permissions: None,
-                        size: None,
-                    },
-                    _ => PathEntry {
-                        name: fs.path.clone(),
-                        path_type: PathType::Directory,
-                        permissions: None,
-                        size: None,
-                    },
-                };
-            subpaths.push(entry);
-        }
+        let subpaths = file_system_roots().await?;
         Ok(Some(Event::User(UserEvent::File(FileEvent::List(id_str, subpaths)))))
     } else {
         let subpaths = cscs_file_list(id, None, None).await?;
         Ok(Some(Event::User(UserEvent::File(FileEvent::List(id_str, subpaths)))))
     }
 }
+
 async fn download_file(
     remote: PathBuf,
     local: PathBuf,

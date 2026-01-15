@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use clap::{CommandFactory, Parser};
+use clap_complete::CompleteEnv;
 use color_eyre::Result;
 use keyring::set_global_service_name;
 use tokio::{runtime::Handle, sync::mpsc};
@@ -54,6 +55,7 @@ extern crate tuirealm;
 async fn main() -> Result<()> {
     set_global_service_name(env!("CARGO_PKG_NAME"));
     crate::logging::init()?;
+    CompleteEnv::with_factory(Cli::command).complete();
     let args = Cli::parse();
     match args.command {
         Some(command) => match command {

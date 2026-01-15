@@ -2,21 +2,22 @@ use std::{error::Error, path::PathBuf, thread, time::Duration};
 
 use base64::prelude::*;
 use clap::{Args, Command, Parser, Subcommand, ValueHint, builder::TypedValueParser};
-use clap_complete::{Generator, Shell, generate};
+use clap_complete::{ArgValueCompleter, CompletionCandidate, Generator, Shell, generate};
 use color_eyre::{Result, eyre::eyre};
 use iroh_ssh::IrohSsh;
 use pid1::Pid1Settings;
 use rust_supervisor::{ChildType, Supervisor, SupervisorConfig};
 use strum::VariantNames;
+use tokio::sync::mpsc;
 
 use crate::{
     config::{ComputePlatform, Config, get_config_dir, get_data_dir, get_project_local_config_file},
     cscs::{
         api_client::{
             client::{EdfSpec as EdfSpecEnum, ScriptSpec as ScriptSpecEnum},
-            types::JobStatus,
+            types::{JobStatus, PathType},
         },
-        handlers::cscs_job_details,
+        handlers::{cscs_file_list, cscs_job_details, file_system_roots},
     },
     util::types::DockerImageUrl,
 };
@@ -143,7 +144,7 @@ pub struct ScriptSpec {
     generate_script: bool,
     #[arg(long, value_name = "PATH", help = "upload local script file", value_hint=ValueHint::FilePath)]
     local_script: Option<PathBuf>,
-    #[arg(long, value_name = "PATH", help = "use script file already present on remote", value_hint=ValueHint::Other)]
+    #[arg(long, value_name = "PATH", help = "use script file already present on remote", add = ArgValueCompleter::new(remote_path_completer))]
     remote_script: Option<PathBuf>,
 }
 impl Default for ScriptSpec {
@@ -178,7 +179,7 @@ pub struct EdfSpec {
     generate_edf: bool,
     #[arg(long, value_name = "PATH", help = "upload local edf file", value_hint=ValueHint::FilePath)]
     local_edf: Option<PathBuf>,
-    #[arg(long, value_name = "PATH", help = "use edf file already present on remote", value_hint=ValueHint::Other)]
+    #[arg(long, value_name = "PATH", help = "use edf file already present on remote", add = ArgValueCompleter::new(remote_path_completer))]
     remote_edf: Option<PathBuf>,
 }
 
@@ -278,17 +279,17 @@ pub enum CscsJobCommands {
 pub enum CscsFileCommands {
     #[clap(alias("ls"), about = "List folders and files in a remote path [aliases: ls]")]
     List {
-        #[arg(help ="remote path to list", value_hint=ValueHint::Other)]
+        #[arg(help ="remote path to list", add = ArgValueCompleter::new(remote_path_completer))]
         path: PathBuf,
     },
     #[clap(alias("rm"), about = "Remove remote files or folders [aliases: rm]")]
     Remove {
-        #[arg(help ="remote path to remove", value_hint=ValueHint::Other)]
+        #[arg(help ="remote path to remove", add = ArgValueCompleter::new(remote_path_completer))]
         path: PathBuf,
     },
     #[clap(alias("dl"), about = "Download a remote file [aliases: dl]")]
     Download {
-        #[clap(help = "The path in the cluster to download", value_hint=ValueHint::Other)]
+        #[clap(help = "The path in the cluster to download", add = ArgValueCompleter::new(remote_path_completer))]
         remote: PathBuf,
         #[clap(help = "The local path to download the file to", value_hint=ValueHint::AnyPath)]
         local: PathBuf,
@@ -298,11 +299,78 @@ pub enum CscsFileCommands {
         #[clap(help = "The local path to upload to the cluster", value_hint=ValueHint::AnyPath)]
         local: PathBuf,
 
-        #[clap(help = "the path in the cluster to upload to", value_hint=ValueHint::Other)]
+        #[clap(help = "the path in the cluster to upload to", add = ArgValueCompleter::new(remote_path_completer))]
         remote: PathBuf,
     },
 }
 
+fn remote_path_completer(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
+    let mut completions = vec![];
+    let Some(current) = current.to_str() else {
+        return completions;
+    };
+
+    // the tokio shenanigans here are to be able to call async code from this sync method,
+    // with an already running async runtime from tokio::main, and getting back the result,
+    // all without blocking the async runtime in sync code (hence the extra thread).
+    let (send, mut recv) = mpsc::unbounded_channel();
+    if current.is_empty() || current == "/" {
+        tokio::spawn(async move {
+            let roots = file_system_roots().await;
+            if let Ok(roots) = roots {
+                for root in roots {
+                    send.send(CompletionCandidate::new(root.name.clone())).unwrap();
+                }
+            }
+        });
+    } else {
+        let current = PathBuf::from(current);
+        tokio::spawn(async move {
+            let parent = current.parent().unwrap();
+            let roots = cscs_file_list(current.clone(), None, None).await;
+            if let Ok(roots) = roots {
+                for root in roots {
+                    if root.path_type == PathType::File {
+                        send.send(CompletionCandidate::new(current.join(root.name.clone())))
+                            .unwrap();
+                    } else {
+                        // joining with "" ensures trailing slash
+                        send.send(CompletionCandidate::new(current.join(root.name.clone()).join("")))
+                            .unwrap();
+                    }
+                }
+            } else {
+                // file listing only work for full paths, so if we want to complet a partial result, we need
+                // to list the parent folder and take it from there
+                if let Ok(roots) = cscs_file_list(parent.to_path_buf(), None, None).await {
+                    let partial = current.file_name().unwrap().to_string_lossy().into_owned();
+                    for root in roots {
+                        if root.name.starts_with(&partial) {
+                            if root.path_type == PathType::File {
+                                send.send(CompletionCandidate::new(parent.join(root.name))).unwrap();
+                            } else {
+                                // joining with "" ensures trailing slash
+                                send.send(CompletionCandidate::new(parent.join(root.name.clone()).join("")))
+                                    .unwrap();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+    let sync_recv = thread::spawn(move || {
+        let mut completions = vec![];
+        while let Some(candidate) = recv.blocking_recv() {
+            completions.push(candidate);
+        }
+        completions
+    });
+    let comp = sync_recv.join().unwrap();
+    completions.extend(comp);
+
+    completions
+}
 #[derive(Subcommand, Debug)]
 pub enum CscsSystemCommands {
     #[clap(alias("ls"), about = "List available compute systems [aliases: ls]")]

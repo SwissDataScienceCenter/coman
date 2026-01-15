@@ -73,7 +73,7 @@ openssl = { version = "0.10.75", features = ["vendored"] }
 tui-realm-treeview = "3.0.0"
 aws-sdk-s3 = "1.115.0"
 toml_edit = "0.23.9"
-clap_complete = "4.5.61"
+clap_complete = { version = "4.5.61", features = ["unstable-dynamic"] }
 pid1 = "0.1.5"
 rust_supervisor = "0.2.0"
 iroh-ssh = "0.2.7"
