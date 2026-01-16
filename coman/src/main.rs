@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use clap::{CommandFactory, Parser};
+use clap_complete::CompleteEnv;
 use color_eyre::Result;
 use keyring::set_global_service_name;
 use tokio::{runtime::Handle, sync::mpsc};
@@ -54,6 +55,7 @@ extern crate tuirealm;
 async fn main() -> Result<()> {
     set_global_service_name(env!("CARGO_PKG_NAME"));
     crate::logging::init()?;
+    CompleteEnv::with_factory(Cli::command).complete();
     let args = Cli::parse();
     match args.command {
         Some(command) => match command {
@@ -86,9 +88,9 @@ async fn main() -> Result<()> {
                 cli::CscsCommands::Login => cli_cscs_login().await?,
                 cli::CscsCommands::Job { command } => match command {
                     cli::CscsJobCommands::List => cli_cscs_job_list(system, platform).await?,
-                    cli::CscsJobCommands::Get { job_id } => cli_cscs_job_detail(job_id, system, platform).await?,
-                    cli::CscsJobCommands::Log { job_id, stderr } => {
-                        cli_cscs_job_log(job_id, stderr, system, platform).await?
+                    cli::CscsJobCommands::Get { job } => cli_cscs_job_detail(job, system, platform).await?,
+                    cli::CscsJobCommands::Log { job, stderr } => {
+                        cli_cscs_job_log(job, stderr, system, platform).await?
                     }
                     cli::CscsJobCommands::Submit {
                         name,
@@ -127,7 +129,7 @@ async fn main() -> Result<()> {
                         )
                         .await?
                     }
-                    cli::CscsJobCommands::Cancel { job_id } => cli_cscs_job_cancel(job_id, system, platform).await?,
+                    cli::CscsJobCommands::Cancel { job } => cli_cscs_job_cancel(job, system, platform).await?,
                 },
                 cli::CscsCommands::File { command } => match command {
                     cli::CscsFileCommands::List { path } => cli_cscs_file_list(path, system, platform).await?,
