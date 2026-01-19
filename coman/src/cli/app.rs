@@ -253,6 +253,12 @@ pub enum CscsJobCommands {
             help="Environment variables to set in the container",
             value_hint=ValueHint::Other)]
         env: Vec<(String, String)>,
+        #[clap(short='P',
+            value_name="SOURCE=TARGET",
+            value_parser=parse_key_val::<u16,u16>,
+            help="Ports to forward from the container",
+            value_hint=ValueHint::Other)]
+        port_forward: Vec<(u16, u16)>,
         #[clap(short='M',
             value_name="PATH:CONTAINER_PATH",
             value_parser=parse_key_val_colon::<String,String>,

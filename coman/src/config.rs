@@ -58,6 +58,8 @@ pub struct CscsConfig {
     #[serde(default)]
     pub env: HashMap<String, String>,
     #[serde(default)]
+    pub port_forward: Vec<String>,
+    #[serde(default)]
     pub image: Option<String>,
     #[serde(default)]
     pub edf_file_template: String,

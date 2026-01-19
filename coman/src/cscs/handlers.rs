@@ -521,6 +521,21 @@ async fn handle_edf(
 
         context.insert("edf_image", &docker_image.to_edf());
     }
+
+    if !options.port_forward.is_empty() {
+        let port_forward = options.port_forward.iter().map(|(_, d)| d.to_string()).join(",");
+        context.insert("port_forward", &port_forward);
+    } else if !config.values.cscs.port_forward.is_empty() {
+        let port_forward = config
+            .values
+            .cscs
+            .port_forward
+            .iter()
+            .map(|f| f.split_once(":").expect("couldn't parse portforward").1.to_string())
+            .join(",");
+        context.insert("port_forward", &port_forward);
+    }
+
     context.insert("container_workdir", &workdir);
     context.insert("env", &envvars);
     context.insert("mount", &mount);
