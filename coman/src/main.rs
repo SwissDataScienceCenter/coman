@@ -18,7 +18,14 @@ use crate::{
         model::Model,
         user_events::{CscsEvent, FileEvent, StatusEvent, UserEvent},
     },
-    cli::{Cli, cli_exec_command, cli_proxy_command, get_config, print_completions, set_config, version},
+    cli::{
+        app::{
+            Cli, CliCommands, ConfigCommands, CscsCommands, CscsFileCommands, CscsJobCommands, CscsSystemCommands,
+            get_config, print_completions, set_config, version,
+        },
+        exec::cli_exec_command,
+        proxy::cli_proxy_command,
+    },
     components::{
         file_tree::FileTree, global_listener::GlobalListener, status_bar::StatusBar, toolbar::Toolbar,
         workload_list::WorkloadList,
@@ -59,40 +66,38 @@ async fn main() -> Result<()> {
     let args = Cli::parse();
     match args.command {
         Some(command) => match command {
-            cli::CliCommands::Version => println!("{}", version()),
-            cli::CliCommands::Completions { generator } => {
+            CliCommands::Version => println!("{}", version()),
+            CliCommands::Completions { generator } => {
                 let mut cmd = Cli::command();
                 print_completions(generator, &mut cmd);
             }
-            cli::CliCommands::Config {
+            CliCommands::Config {
                 command: config_command,
             } => match config_command {
-                cli::ConfigCommands::Set {
+                ConfigCommands::Set {
                     key_path,
                     value,
                     global,
                 } => set_config(key_path, value, global)?,
-                cli::ConfigCommands::Get { key_path } => println!("{}", get_config(key_path)?),
-                cli::ConfigCommands::Show => {
+                ConfigCommands::Get { key_path } => println!("{}", get_config(key_path)?),
+                ConfigCommands::Show => {
                     let config = Config::new()?;
                     let content = toml::to_string_pretty(&config.values)?;
                     println!("{}", content)
                 }
             },
-            cli::CliCommands::Cscs {
+            CliCommands::Cscs {
                 command: cscs_command,
                 system,
                 platform,
                 account,
             } => match cscs_command {
-                cli::CscsCommands::Login => cli_cscs_login().await?,
-                cli::CscsCommands::Job { command } => match command {
-                    cli::CscsJobCommands::List => cli_cscs_job_list(system, platform).await?,
-                    cli::CscsJobCommands::Get { job } => cli_cscs_job_detail(job, system, platform).await?,
-                    cli::CscsJobCommands::Log { job, stderr } => {
-                        cli_cscs_job_log(job, stderr, system, platform).await?
-                    }
-                    cli::CscsJobCommands::Submit {
+                CscsCommands::Login => cli_cscs_login().await?,
+                CscsCommands::Job { command } => match command {
+                    CscsJobCommands::List => cli_cscs_job_list(system, platform).await?,
+                    CscsJobCommands::Get { job } => cli_cscs_job_detail(job, system, platform).await?,
+                    CscsJobCommands::Log { job, stderr } => cli_cscs_job_log(job, stderr, system, platform).await?,
+                    CscsJobCommands::Submit {
                         name,
                         image,
                         command,
@@ -129,28 +134,26 @@ async fn main() -> Result<()> {
                         )
                         .await?
                     }
-                    cli::CscsJobCommands::Cancel { job } => cli_cscs_job_cancel(job, system, platform).await?,
+                    CscsJobCommands::Cancel { job } => cli_cscs_job_cancel(job, system, platform).await?,
                 },
-                cli::CscsCommands::File { command } => match command {
-                    cli::CscsFileCommands::List { path } => cli_cscs_file_list(path, system, platform).await?,
-                    cli::CscsFileCommands::Remove { path } => cli_cscs_file_delete(path, system, platform).await?,
-                    cli::CscsFileCommands::Download { remote, local } => {
+                CscsCommands::File { command } => match command {
+                    CscsFileCommands::List { path } => cli_cscs_file_list(path, system, platform).await?,
+                    CscsFileCommands::Remove { path } => cli_cscs_file_delete(path, system, platform).await?,
+                    CscsFileCommands::Download { remote, local } => {
                         cli_cscs_file_download(remote, local, account, system, platform).await?
                     }
-                    cli::CscsFileCommands::Upload { local, remote } => {
+                    CscsFileCommands::Upload { local, remote } => {
                         cli_cscs_file_upload(local, remote, account, system, platform).await?
                     }
                 },
-                cli::CscsCommands::System { command } => match command {
-                    cli::CscsSystemCommands::List => cli_cscs_system_list(platform).await?,
-                    cli::CscsSystemCommands::Set { system_name, global } => {
-                        cli_cscs_set_system(system_name, global).await?
-                    }
+                CscsCommands::System { command } => match command {
+                    CscsSystemCommands::List => cli_cscs_system_list(platform).await?,
+                    CscsSystemCommands::Set { system_name, global } => cli_cscs_set_system(system_name, global).await?,
                 },
             },
-            cli::CliCommands::Init { destination, name } => Config::create_project_config(destination, name)?,
-            cli::CliCommands::Exec { command } => cli_exec_command(command).await?,
-            cli::CliCommands::Proxy { system, job_id } => cli_proxy_command(system, job_id).await?,
+            CliCommands::Init { destination, name } => Config::create_project_config(destination, name)?,
+            CliCommands::Exec { command } => cli_exec_command(command).await?,
+            CliCommands::Proxy { system, job_id } => cli_proxy_command(system, job_id).await?,
         },
         None => run_tui(args.tick_rate)?,
     }

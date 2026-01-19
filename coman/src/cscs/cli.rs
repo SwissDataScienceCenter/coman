@@ -16,7 +16,7 @@ use tokio::{
 };
 
 use crate::{
-    cli::JobIdOrName,
+    cli::app::JobIdOrName,
     config::ComputePlatform,
     cscs::{
         api_client::{client::JobStartOptions, types::JobStatus},
