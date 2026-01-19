@@ -16,6 +16,7 @@ use tokio::{
 };
 
 use crate::{
+    cli::JobIdOrName,
     config::ComputePlatform,
     cscs::{
         api_client::{client::JobStartOptions, types::JobStatus},
@@ -49,11 +50,33 @@ pub(crate) async fn cli_cscs_job_list(system: Option<String>, platform: Option<C
         Err(e) => Err(e),
     }
 }
+
+async fn maybe_job_id_from_name(
+    j: JobIdOrName,
+    system: Option<String>,
+    platform: Option<ComputePlatform>,
+) -> Result<i64> {
+    match j {
+        JobIdOrName::Id(id) => Ok(id),
+        JobIdOrName::Name(name) => match cscs_job_list(system, platform).await {
+            Ok(jobs) => {
+                let job = jobs
+                    .iter()
+                    .filter(|j| j.name == name)
+                    .sorted_by_key(|j| std::cmp::Reverse(j.start_date.unwrap_or_default()))
+                    .next();
+                job.map(|j| j.id as i64).ok_or(eyre!("no job found matching name"))
+            }
+            Err(e) => Err(e).wrap_err("couldn't list jobs"),
+        },
+    }
+}
 pub(crate) async fn cli_cscs_job_detail(
-    job_id: i64,
+    job_id: JobIdOrName,
     system: Option<String>,
     platform: Option<ComputePlatform>,
 ) -> Result<()> {
+    let job_id = maybe_job_id_from_name(job_id, system.clone(), platform.clone()).await?;
     match cscs_job_details(job_id, system, platform).await {
         Ok(Some(job)) => {
             let data = &[
@@ -85,11 +108,12 @@ pub(crate) async fn cli_cscs_job_detail(
 }
 
 pub(crate) async fn cli_cscs_job_log(
-    job_id: i64,
+    job_id: JobIdOrName,
     stderr: bool,
     system: Option<String>,
     platform: Option<ComputePlatform>,
 ) -> Result<()> {
+    let job_id = maybe_job_id_from_name(job_id, system.clone(), platform.clone()).await?;
     match cscs_job_log(job_id, stderr, system, platform).await {
         Ok(content) => {
             println!("{}", content);
@@ -117,10 +141,11 @@ pub(crate) async fn cli_cscs_job_start(
 }
 
 pub(crate) async fn cli_cscs_job_cancel(
-    job_id: i64,
+    job_id: JobIdOrName,
     system: Option<String>,
     platform: Option<ComputePlatform>,
 ) -> Result<()> {
+    let job_id = maybe_job_id_from_name(job_id, system.clone(), platform.clone()).await?;
     cscs_job_cancel(job_id, system, platform).await
 }
 

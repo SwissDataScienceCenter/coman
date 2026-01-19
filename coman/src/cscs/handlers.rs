@@ -699,6 +699,35 @@ pub async fn cscs_file_list(
         Err(e) => Err(e),
     }
 }
+pub async fn file_system_roots() -> Result<Vec<PathEntry>> {
+    let config = Config::new().expect("couldn't load config");
+    let user_info = cscs_user_info(None, None).await?;
+    let systems = cscs_system_list(None).await?;
+    let system = systems
+        .iter()
+        .find(|s| s.name == config.values.cscs.current_system)
+        .unwrap_or_else(|| panic!("couldn't get info for system {}", config.values.cscs.current_system));
+    let mut subpaths = vec![];
+    for fs in system.file_systems.clone() {
+        let entry = match cscs_stat_path(PathBuf::from(fs.path.clone()).join(user_info.name.clone()), None, None).await
+        {
+            Ok(Some(_)) => PathEntry {
+                name: format!("{}/{}", fs.path.clone(), user_info.name),
+                path_type: PathType::Directory,
+                permissions: None,
+                size: None,
+            },
+            _ => PathEntry {
+                name: fs.path.clone(),
+                path_type: PathType::Directory,
+                permissions: None,
+                size: None,
+            },
+        };
+        subpaths.push(entry);
+    }
+    Ok(subpaths)
+}
 
 pub async fn cscs_file_delete(
     remote: PathBuf,
