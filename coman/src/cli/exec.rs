@@ -2,7 +2,10 @@ use std::{thread, time::Duration};
 
 use base64::prelude::*;
 use color_eyre::Result;
-use iroh::{Endpoint, SecretKey};
+use iroh::{
+    Endpoint, SecretKey,
+    protocol::{ProtocolHandler, Router},
+};
 use iroh_ssh::IrohSsh;
 use pid1::Pid1Settings;
 use rust_supervisor::{ChildType, Supervisor, SupervisorConfig};
@@ -29,11 +32,55 @@ async fn run_ssh() -> Result<()> {
     }
     let server = builder.build().await.expect("couldn't create iroh server");
     println!("{}@{}", whoami::username(), server.node_id());
-    loop {
-        tokio::time::sleep(Duration::from_secs(60)).await;
-    }
+    tokio::signal::ctrl_c().await?;
+    Ok(())
 }
 
+#[derive(Debug)]
+struct PortForwardHandler {
+    port: u16,
+}
+
+impl ProtocolHandler for PortForwardHandler {
+    async fn accept(&self, connection: iroh::endpoint::Connection) -> Result<(), iroh::protocol::AcceptError> {
+        let endpoint_id = connection.remote_id();
+        let port = self.port;
+
+        match connection.accept_bi().await {
+            Ok((mut iroh_send, mut iroh_recv)) => {
+                println!("Accepted bidirectional stream from {endpoint_id}");
+
+                match TcpStream::connect(format!("127.0.0.1:{}", port)).await {
+                    Ok(mut output_stream) => {
+                        println!("Connected to local server on port {}", port);
+
+                        let (mut local_read, mut local_write) = output_stream.split();
+
+                        let a_to_b = async move { tokio::io::copy(&mut local_read, &mut iroh_send).await };
+                        let b_to_a = async move { tokio::io::copy(&mut iroh_recv, &mut local_write).await };
+
+                        tokio::select! {
+                            result = a_to_b => {
+                                println!("{port}->Iroh stream ended: {result:?}");
+                            },
+                            result = b_to_a => {
+                                println!("Iroh->{port} stream ended: {result:?}");
+                            },
+                        };
+                    }
+                    Err(e) => {
+                        println!("Failed to connect to local server {port}: {e}");
+                    }
+                }
+            }
+            Err(e) => {
+                println!("Failed to accept bidirectional stream {port}: {e}");
+            }
+        }
+
+        Ok(())
+    }
+}
 #[tokio::main]
 async fn port_forward() -> Result<()> {
     let Some(secret_key) = get_secret_key() else {
@@ -42,45 +89,22 @@ async fn port_forward() -> Result<()> {
     let secret_key: &[u8; 32] = secret_key[0..32].try_into().unwrap();
     let secret_key = SecretKey::from_bytes(secret_key);
     if let Ok(forwarded_ports) = std::env::var(PORT_FORWARD_ENV) {
+        println!("setting up port forwarding...");
         let mut join_set = JoinSet::new();
         for port in forwarded_ports.split(',') {
             let alpn: Vec<u8> = format!("/coman/{port}").into_bytes();
             let endpoint = Endpoint::builder()
                 .secret_key(secret_key.clone())
-                .alpns(vec![alpn])
+                .alpns(vec![alpn.clone()])
                 .bind()
                 .await?;
+
             let port = port.to_owned();
             join_set.spawn(async move {
-                while let Some(incoming) = endpoint.accept().await {
-                    let connection = incoming.await.unwrap();
-                    match connection.accept_bi().await {
-                        Ok((mut iroh_send, mut iroh_recv)) => {
-                            match TcpStream::connect(format!("127.0.0.1:{port}")).await {
-                                Ok(mut stream) => {
-                                    let (mut local_read, mut local_write) = stream.split();
-                                    let a_to_b = async move { tokio::io::copy(&mut local_read, &mut iroh_send).await };
-                                    let b_to_a = async move { tokio::io::copy(&mut iroh_recv, &mut local_write).await };
-
-                                    tokio::select! {
-                                        result = a_to_b => {
-                                            println!("{port}->Iroh stream ended: {result:?}");
-                                        },
-                                        result = b_to_a => {
-                                            println!("Iroh->{port} stream ended: {result:?}");
-                                        },
-                                    };
-                                }
-                                Err(e) => {
-                                    println!("Failed to connect to {port}: {e:?}");
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            println!("Failed to accept stream to {port}: {e:?}");
-                        }
-                    }
-                }
+                let handler = PortForwardHandler {
+                    port: port.parse::<u16>().expect("couldn't parse port"),
+                };
+                Router::builder(endpoint.clone()).accept(&alpn, handler).spawn();
             });
         }
         while let Some(res) = join_set.join_next().await {

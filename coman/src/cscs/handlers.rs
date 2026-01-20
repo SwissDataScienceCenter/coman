@@ -14,7 +14,7 @@ use base64::prelude::*;
 use color_eyre::{Result, eyre::eyre};
 use eyre::Context;
 use futures::StreamExt;
-use iroh::{Endpoint, EndpointId, SecretKey};
+use iroh::{Endpoint, EndpointId, SecretKey, protocol::Router};
 use itertools::Itertools;
 use regex::Regex;
 use reqwest::Url;
@@ -189,6 +189,7 @@ pub async fn cscs_port_forward(
         return Err(eyre!("invalid endpoint id length"));
     })?;
     let listener = TcpListener::bind(format!("127.0.0.1:{source_port}")).await?;
+    println!("forwarding connection for port {source_port}");
 
     loop {
         let (socket, _) = listener.accept().await?;
@@ -197,9 +198,11 @@ pub async fn cscs_port_forward(
 }
 
 async fn process_port_forward(endpoint_id: EndpointId, destination_port: u16, mut socket: TcpStream) -> Result<()> {
+    println!("accepted connection for destination port {destination_port}");
     let alpn: Vec<u8> = format!("/coman/{destination_port}").into_bytes();
-
-    let endpoint = Endpoint::bind().await?;
+    let secret_key = SecretKey::generate(&mut rand::rng());
+    let endpoint = Endpoint::builder().secret_key(secret_key).bind().await?;
+    Router::builder(endpoint.clone()).spawn(); // start local iroh listener
 
     match endpoint.connect(endpoint_id, &alpn).await {
         Ok(connection) => {
@@ -207,6 +210,7 @@ async fn process_port_forward(endpoint_id: EndpointId, destination_port: u16, mu
             let (mut local_read, mut local_write) = socket.split();
             let a_to_b = async move { tokio::io::copy(&mut local_read, &mut iroh_send).await };
             let b_to_a = async move { tokio::io::copy(&mut iroh_recv, &mut local_write).await };
+            println!("connection open");
 
             tokio::select! {
                 result = a_to_b => {
@@ -216,6 +220,7 @@ async fn process_port_forward(endpoint_id: EndpointId, destination_port: u16, mu
                     let _ = result;
                 },
             };
+            println!("connection closed");
 
             Ok(())
         }
