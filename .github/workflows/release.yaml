@@ -100,7 +100,11 @@ jobs:
           cd -
       - uses: actions/upload-artifact@v4
         with:
-          path: "coman*"
+          name: "${{matrix.platform.os_name}}"
+          path: |
+            coman*.gz
+            coman*.zip
+            coman*.sqsh
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v1
         with:
