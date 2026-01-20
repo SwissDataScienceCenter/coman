@@ -5,6 +5,8 @@ on:
       - "main"
     tags:
       - "v*"
+  workflow_dispatch:
+
 env:
   CRATE_NAME: coman
   GITHUB_TOKEN: ${{ github.token }}
@@ -91,6 +93,9 @@ jobs:
             mksquashfs ${{ matrix.platform.bin }} ../../../coman_${{matrix.platform.os_name}}.sqsh
           fi
           cd -
+      - uses: actions/upload-artifact@v4
+        with:
+          path: "coman*"
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v1
         with:
