@@ -4,15 +4,16 @@ use base64::prelude::*;
 use color_eyre::Result;
 use iroh::{
     Endpoint, SecretKey,
+    endpoint::ConnectionError,
     protocol::{ProtocolHandler, Router},
 };
-use iroh_ssh::IrohSsh;
 use pid1::Pid1Settings;
 use rust_supervisor::{ChildType, Supervisor, SupervisorConfig};
-use tokio::{net::TcpStream, task::JoinSet};
+use tokio::{io::AsyncWriteExt, net::TcpStream};
 
 const SECRET_KEY_ENV: &str = "COMAN_IROH_SECRET";
 const PORT_FORWARD_ENV: &str = "COMAN_FORWARDED_PORTS";
+const SSH_PORT: u16 = 15263;
 
 fn get_secret_key() -> Option<Vec<u8>> {
     if let Ok(secret) = std::env::var(SECRET_KEY_ENV) {
@@ -21,19 +22,6 @@ fn get_secret_key() -> Option<Vec<u8>> {
     } else {
         None
     }
-}
-
-#[tokio::main]
-async fn run_ssh() -> Result<()> {
-    let mut builder = IrohSsh::builder().accept_incoming(true).accept_port(15263);
-    if let Some(secret_key) = get_secret_key() {
-        let secret_key: &[u8; 32] = secret_key[0..32].try_into().unwrap();
-        builder = builder.secret_key(secret_key);
-    }
-    let server = builder.build().await.expect("couldn't create iroh server");
-    println!("{}@{}", whoami::username(), server.node_id());
-    tokio::signal::ctrl_c().await?;
-    Ok(())
 }
 
 #[derive(Debug)]
@@ -56,7 +44,15 @@ impl ProtocolHandler for PortForwardHandler {
 
                         let (mut local_read, mut local_write) = output_stream.split();
 
-                        let a_to_b = async move { tokio::io::copy(&mut local_read, &mut iroh_send).await };
+                        let a_to_b = async move {
+                            let res = tokio::io::copy(&mut local_read, &mut iroh_send).await;
+                            if res.is_ok() {
+                                iroh_send.flush().await.expect("couldn't flush stream");
+                                iroh_send.finish().expect("couldn't finish stream");
+                                iroh_send.stopped().await.expect("stream not properly stopped");
+                            }
+                            res
+                        };
                         let b_to_a = async move { tokio::io::copy(&mut iroh_recv, &mut local_write).await };
 
                         tokio::select! {
@@ -67,6 +63,19 @@ impl ProtocolHandler for PortForwardHandler {
                                 println!("Iroh->{port} stream ended: {result:?}");
                             },
                         };
+                        // wait for client to close connection so we don't close prematurely
+                        let res = tokio::time::timeout(Duration::from_secs(3), async move {
+                            let closed = connection.closed().await;
+                            if !matches!(closed, ConnectionError::ApplicationClosed(_)) {
+                                println!("endpoint disconnected witn an error: {closed:#}");
+                            } else {
+                                println!("connection closed");
+                            }
+                        })
+                        .await;
+                        if res.is_err() {
+                            println!("endpoint did not disconnect within 3 seconds");
+                        }
                     }
                     Err(e) => {
                         println!("Failed to connect to local server {port}: {e}");
@@ -88,30 +97,35 @@ async fn port_forward() -> Result<()> {
     };
     let secret_key: &[u8; 32] = secret_key[0..32].try_into().unwrap();
     let secret_key = SecretKey::from_bytes(secret_key);
-    if let Ok(forwarded_ports) = std::env::var(PORT_FORWARD_ENV) {
-        println!("setting up port forwarding...");
-        let mut join_set = JoinSet::new();
-        for port in forwarded_ports.split(',') {
-            let alpn: Vec<u8> = format!("/coman/{port}").into_bytes();
-            let endpoint = Endpoint::builder()
-                .secret_key(secret_key.clone())
-                .alpns(vec![alpn.clone()])
-                .bind()
-                .await?;
-
-            let port = port.to_owned();
-            join_set.spawn(async move {
-                let handler = PortForwardHandler {
-                    port: port.parse::<u16>().expect("couldn't parse port"),
-                };
-                Router::builder(endpoint.clone()).accept(&alpn, handler).spawn();
-            });
-        }
-        while let Some(res) = join_set.join_next().await {
-            println!("Task joined: {res:?}");
-        }
+    let mut forwarded_ports = vec!["ssh".to_owned()];
+    if let Ok(env_ports) = std::env::var(PORT_FORWARD_ENV) {
+        forwarded_ports.extend(env_ports.split(',').map(|p| p.to_owned()).collect::<Vec<String>>());
     }
+    let endpoint = Endpoint::builder().secret_key(secret_key.clone()).bind().await?;
+    let id = endpoint.id();
+    println!("endpoint: {id}");
 
+    println!("setting up port forwarding...");
+    let mut builder = Router::builder(endpoint.clone());
+    for port in forwarded_ports {
+        let (port, alpn) = if port == "ssh" {
+            (SSH_PORT, "/iroh/ssh".to_string())
+        } else {
+            (
+                port.parse::<u16>().expect("couldn't parse port"),
+                format!("/coman/{port}"),
+            )
+        };
+
+        let handler = PortForwardHandler { port };
+        builder = builder.accept(alpn.clone().into_bytes(), handler);
+        println!("set up port forwarding for port {port} ({alpn})");
+    }
+    let _router = builder.spawn();
+    println!("port forwarding started");
+
+    let _ = tokio::signal::ctrl_c().await;
+    println!("port forwarding stopped");
     Ok(())
 }
 
@@ -125,11 +139,6 @@ pub(crate) async fn cli_exec_command(command: Vec<String>) -> Result<()> {
         .expect("Launch failed");
 
     let mut supervisor = Supervisor::new(SupervisorConfig::default());
-    supervisor.add_process("iroh-ssh", ChildType::Permanent, || {
-        thread::spawn(|| {
-            let _ = run_ssh();
-        })
-    });
     supervisor.add_process("port-forward", ChildType::Permanent, || {
         thread::spawn(|| {
             let _ = port_forward();

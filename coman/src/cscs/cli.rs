@@ -132,6 +132,7 @@ pub(crate) async fn cli_cscs_port_forward(
     platform: Option<ComputePlatform>,
 ) -> Result<()> {
     let job_id = maybe_job_id_from_name(job, system.clone(), platform.clone()).await?;
+    println!("running port forward for job {job_id}");
     cscs_port_forward(job_id, source_port, destination_port, system).await
 }
 

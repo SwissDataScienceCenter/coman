@@ -14,7 +14,7 @@ use base64::prelude::*;
 use color_eyre::{Result, eyre::eyre};
 use eyre::Context;
 use futures::StreamExt;
-use iroh::{Endpoint, EndpointId, SecretKey, protocol::Router};
+use iroh::{Endpoint, EndpointId, SecretKey};
 use itertools::Itertools;
 use regex::Regex;
 use reqwest::Url;
@@ -202,22 +202,28 @@ async fn process_port_forward(endpoint_id: EndpointId, destination_port: u16, mu
     let alpn: Vec<u8> = format!("/coman/{destination_port}").into_bytes();
     let secret_key = SecretKey::generate(&mut rand::rng());
     let endpoint = Endpoint::builder().secret_key(secret_key).bind().await?;
-    Router::builder(endpoint.clone()).spawn(); // start local iroh listener
+    // let _router = Router::builder(endpoint.clone()).spawn(); // start local iroh listener
 
     match endpoint.connect(endpoint_id, &alpn).await {
         Ok(connection) => {
             let (mut iroh_send, mut iroh_recv) = connection.open_bi().await?;
             let (mut local_read, mut local_write) = socket.split();
             let a_to_b = async move { tokio::io::copy(&mut local_read, &mut iroh_send).await };
-            let b_to_a = async move { tokio::io::copy(&mut iroh_recv, &mut local_write).await };
+            let b_to_a = async move {
+                let res = tokio::io::copy(&mut iroh_recv, &mut local_write).await;
+                if res.is_ok() {
+                    local_write.flush().await.expect("couldn't flush socket");
+                }
+                res
+            };
             println!("connection open");
 
             tokio::select! {
                 result = a_to_b => {
-                    let _ = result;
+                    let _= result;
                 },
                 result = b_to_a => {
-                    let _ = result;
+                    let _= result;
                 },
             };
             println!("connection closed");
