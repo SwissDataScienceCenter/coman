@@ -47,7 +47,7 @@ pub struct JobStartOptions {
     pub stderr: Option<PathBuf>,
     pub container_workdir: Option<String>,
     pub env: Vec<(String, String)>,
-    pub port_forward: Vec<(u16, u16)>,
+    pub port_forward: Vec<u16>,
     pub mount: Vec<(String, String)>,
     pub edf_spec: EdfSpec,
     pub script_spec: ScriptSpec,

@@ -36,7 +36,7 @@ use crate::{
         cli::{
             cli_cscs_file_delete, cli_cscs_file_download, cli_cscs_file_list, cli_cscs_file_upload,
             cli_cscs_job_cancel, cli_cscs_job_detail, cli_cscs_job_list, cli_cscs_job_log, cli_cscs_job_start,
-            cli_cscs_login, cli_cscs_set_system, cli_cscs_system_list,
+            cli_cscs_login, cli_cscs_port_forward, cli_cscs_set_system, cli_cscs_system_list,
         },
         ports::{
             AsyncBackgroundTaskPort, AsyncFetchWorkloadsPort, AsyncJobLogPort, AsyncSelectSystemPort,
@@ -152,6 +152,11 @@ async fn main() -> Result<()> {
                     CscsSystemCommands::List => cli_cscs_system_list(platform).await?,
                     CscsSystemCommands::Set { system_name, global } => cli_cscs_set_system(system_name, global).await?,
                 },
+                CscsCommands::PortForward {
+                    source_port,
+                    destination_port,
+                    job,
+                } => cli_cscs_port_forward(source_port, destination_port, job, system, platform).await?,
             },
             CliCommands::Init { destination, name } => Config::create_project_config(destination, name)?,
             CliCommands::Exec { command } => cli_exec_command(command).await?,

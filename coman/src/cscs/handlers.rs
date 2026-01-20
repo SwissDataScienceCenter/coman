@@ -6,6 +6,7 @@ use std::{
     collections::{HashMap, HashSet},
     io::{BufWriter, Read, Write},
     path::{Path, PathBuf},
+    str::FromStr,
     time::Duration,
 };
 
@@ -13,11 +14,15 @@ use base64::prelude::*;
 use color_eyre::{Result, eyre::eyre};
 use eyre::Context;
 use futures::StreamExt;
-use iroh::SecretKey;
+use iroh::{Endpoint, EndpointId, SecretKey};
 use itertools::Itertools;
 use regex::Regex;
 use reqwest::Url;
-use tokio::{fs::File, io::AsyncWriteExt};
+use tokio::{
+    fs::File,
+    io::AsyncWriteExt,
+    net::{TcpListener, TcpStream},
+};
 
 use super::api_client::client::{EdfSpec, ScriptSpec};
 use crate::{
@@ -155,6 +160,66 @@ pub async fn cscs_job_log(
             api_client.tail(current_system, path, 100).await
         }
         Err(e) => Err(e),
+    }
+}
+
+pub async fn cscs_port_forward(
+    job_id: i64,
+    source_port: u16,
+    destination_port: u16,
+    system: Option<String>,
+) -> Result<()> {
+    let data_dir = get_data_dir();
+    let config = Config::new().unwrap();
+    let current_system = &system.unwrap_or(config.values.cscs.current_system);
+    let job_info = cscs_job_details(job_id, Some(current_system.clone()), None).await?;
+    if job_info.is_none() {
+        return Err(eyre!("remote job does not exist!"));
+    } else if let Some(job_info) = job_info
+        && job_info.status != JobStatus::Running
+    {
+        return Err(eyre!("remote job is not in running state, connection not available"));
+    }
+    let endpoint_id = std::fs::read_to_string(data_dir.join(format!("{}_{}.endpoint", current_system, job_id)))?;
+    let endpoint_id = EndpointId::from_str(if endpoint_id.len() == 64 {
+        &endpoint_id
+    } else if endpoint_id.len() > 64 {
+        &endpoint_id[endpoint_id.len() - 64..]
+    } else {
+        return Err(eyre!("invalid endpoint id length"));
+    })?;
+    let listener = TcpListener::bind(format!("127.0.0.1:{source_port}")).await?;
+
+    loop {
+        let (socket, _) = listener.accept().await?;
+        process_port_forward(endpoint_id, destination_port, socket).await?;
+    }
+}
+
+async fn process_port_forward(endpoint_id: EndpointId, destination_port: u16, mut socket: TcpStream) -> Result<()> {
+    let alpn: Vec<u8> = format!("/coman/{destination_port}").into_bytes();
+
+    let endpoint = Endpoint::bind().await?;
+
+    match endpoint.connect(endpoint_id, &alpn).await {
+        Ok(connection) => {
+            let (mut iroh_send, mut iroh_recv) = connection.open_bi().await?;
+            let (mut local_read, mut local_write) = socket.split();
+            let a_to_b = async move { tokio::io::copy(&mut local_read, &mut iroh_send).await };
+            let b_to_a = async move { tokio::io::copy(&mut iroh_recv, &mut local_write).await };
+
+            tokio::select! {
+                result = a_to_b => {
+                    let _ = result;
+                },
+                result = b_to_a => {
+                    let _ = result;
+                },
+            };
+
+            Ok(())
+        }
+        Err(e) => Err(e).wrap_err("couldn't establish tunnel to remote"),
     }
 }
 
@@ -523,16 +588,10 @@ async fn handle_edf(
     }
 
     if !options.port_forward.is_empty() {
-        let port_forward = options.port_forward.iter().map(|(_, d)| d.to_string()).join(",");
+        let port_forward = options.port_forward.iter().map(|f| f.to_string()).join(",");
         context.insert("port_forward", &port_forward);
     } else if !config.values.cscs.port_forward.is_empty() {
-        let port_forward = config
-            .values
-            .cscs
-            .port_forward
-            .iter()
-            .map(|f| f.split_once(":").expect("couldn't parse portforward").1.to_string())
-            .join(",");
+        let port_forward = config.values.cscs.port_forward.iter().map(|f| f.to_string()).join(",");
         context.insert("port_forward", &port_forward);
     }
 

@@ -58,7 +58,7 @@ pub struct CscsConfig {
     #[serde(default)]
     pub env: HashMap<String, String>,
     #[serde(default)]
-    pub port_forward: Vec<String>,
+    pub port_forward: Vec<u16>,
     #[serde(default)]
     pub image: Option<String>,
     #[serde(default)]

@@ -129,6 +129,18 @@ pub enum CscsCommands {
         #[command(subcommand)]
         command: CscsSystemCommands,
     },
+    #[clap(
+        alias("pf"),
+        about = "Forward a local port to a remote port for a job. Note that the port needs to have been exposed with the -P flag on job submission [aliases: pf]"
+    )]
+    PortForward {
+        #[arg(short, long, help = "Local port to forward from")]
+        source_port: u16,
+        #[arg(short, long, help = "Remote port to forward to")]
+        destination_port: u16,
+        #[arg(help="id or name of the job (name uses newest job of that name)", add = ArgValueCompleter::new(job_id_or_name_completer))]
+        job: JobIdOrName,
+    },
 }
 
 #[derive(Args, Clone, Debug)]
@@ -254,11 +266,10 @@ pub enum CscsJobCommands {
             value_hint=ValueHint::Other)]
         env: Vec<(String, String)>,
         #[clap(short='P',
-            value_name="SOURCE=TARGET",
-            value_parser=parse_key_val::<u16,u16>,
+            value_name="TARGET",
             help="Ports to forward from the container",
             value_hint=ValueHint::Other)]
-        port_forward: Vec<(u16, u16)>,
+        port_forward: Vec<u16>,
         #[clap(short='M',
             value_name="PATH:CONTAINER_PATH",
             value_parser=parse_key_val_colon::<String,String>,
