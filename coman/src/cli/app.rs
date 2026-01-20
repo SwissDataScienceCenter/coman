@@ -1,13 +1,9 @@
-use std::{error::Error, path::PathBuf, str::FromStr, thread, time::Duration};
+use std::{error::Error, path::PathBuf, str::FromStr, thread};
 
-use base64::prelude::*;
 use clap::{Args, Command, Parser, Subcommand, ValueHint, builder::TypedValueParser};
 use clap_complete::{ArgValueCompleter, CompletionCandidate, Generator, Shell, generate};
-use color_eyre::{Report, Result, eyre::eyre};
-use iroh_ssh::IrohSsh;
+use color_eyre::{Report, Result};
 use itertools::Itertools;
-use pid1::Pid1Settings;
-use rust_supervisor::{ChildType, Supervisor, SupervisorConfig};
 use strum::VariantNames;
 use tokio::sync::mpsc;
 
@@ -16,9 +12,9 @@ use crate::{
     cscs::{
         api_client::{
             client::{EdfSpec as EdfSpecEnum, ScriptSpec as ScriptSpecEnum},
-            types::{JobStatus, PathType},
+            types::PathType,
         },
-        handlers::{cscs_file_list, cscs_job_details, cscs_job_list, file_system_roots},
+        handlers::{cscs_file_list, cscs_job_list, file_system_roots},
     },
     util::types::DockerImageUrl,
 };
@@ -132,6 +128,18 @@ pub enum CscsCommands {
     System {
         #[command(subcommand)]
         command: CscsSystemCommands,
+    },
+    #[clap(
+        alias("pf"),
+        about = "Forward a local port to a remote port for a job. Note that the port needs to have been exposed with the -P flag on job submission [aliases: pf]"
+    )]
+    PortForward {
+        #[arg(short, long, help = "Local port to forward from")]
+        source_port: u16,
+        #[arg(short, long, help = "Remote port to forward to")]
+        destination_port: u16,
+        #[arg(help="id or name of the job (name uses newest job of that name)", add = ArgValueCompleter::new(job_id_or_name_completer))]
+        job: JobIdOrName,
     },
 }
 
@@ -257,6 +265,11 @@ pub enum CscsJobCommands {
             help="Environment variables to set in the container",
             value_hint=ValueHint::Other)]
         env: Vec<(String, String)>,
+        #[clap(short='P',
+            value_name="TARGET",
+            help="Ports to forward from the container",
+            value_hint=ValueHint::Other)]
+        port_forward: Vec<u16>,
         #[clap(short='M',
             value_name="PATH:CONTAINER_PATH",
             value_parser=parse_key_val_colon::<String,String>,
@@ -542,80 +555,4 @@ fn is_bare_string(value_str: &str) -> bool {
 
 pub fn print_completions<G: Generator>(generator: G, cmd: &mut Command) {
     generate(generator, cmd, cmd.get_name().to_string(), &mut std::io::stdout());
-}
-
-/// Runs a wrapped command in a container-safe way and potentially runs background processes like iroh-ssh
-pub(crate) async fn cli_exec_command(command: Vec<String>) -> Result<()> {
-    // Pid1 takes care of proper terminating of processes and signal handling when running in a container
-    Pid1Settings::new()
-        .enable_log(true)
-        .timeout(Duration::from_secs(2))
-        .launch()
-        .expect("Launch failed");
-
-    let mut supervisor = Supervisor::new(SupervisorConfig::default());
-    supervisor.add_process("iroh-ssh", ChildType::Permanent, || {
-        thread::spawn(|| {
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("couldn't start tokio");
-
-            // Call the asynchronous connect method using the runtime.
-            rt.block_on(async move {
-                let mut builder = IrohSsh::builder().accept_incoming(true).accept_port(15263);
-                if let Ok(secret) = std::env::var("COMAN_IROH_SECRET") {
-                    let secret_key = BASE64_STANDARD.decode(secret).unwrap();
-                    let secret_key: &[u8; 32] = secret_key[0..32].try_into().unwrap();
-                    builder = builder.secret_key(secret_key);
-                }
-
-                let server = builder.build().await.expect("couldn't create iroh server");
-                println!("{}@{}", whoami::username(), server.node_id());
-                loop {
-                    tokio::time::sleep(Duration::from_secs(60)).await;
-                }
-            });
-        })
-    });
-    supervisor.add_process("main-process", ChildType::Temporary, move || {
-        let command = command.clone();
-        thread::spawn(move || {
-            let mut child = std::process::Command::new(command[0].clone())
-                .args(&command[1..])
-                .spawn()
-                .expect("Failed to start compute job");
-            child.wait().expect("Failed to wait on compute job");
-        })
-    });
-
-    let supervisor = supervisor.start_monitoring();
-    loop {
-        thread::sleep(Duration::from_secs(1));
-
-        if let Some(rust_supervisor::ProcessState::Failed | rust_supervisor::ProcessState::Stopped) =
-            supervisor.get_process_state("main-process")
-        {
-            break;
-        }
-    }
-    Ok(())
-}
-
-/// Thin wrapper around iroh proxy
-pub(crate) async fn cli_proxy_command(system: String, job_id: i64) -> Result<()> {
-    let data_dir = get_data_dir();
-    let job_info = cscs_job_details(job_id, Some(system.clone()), None).await?;
-    if job_info.is_none() {
-        return Err(eyre!("remote job does not exist!"));
-    } else if let Some(job_info) = job_info
-        && job_info.status != JobStatus::Running
-    {
-        return Err(eyre!("remote job is not in running state, connection not available"));
-    }
-    let endpoint_id = std::fs::read_to_string(data_dir.join(format!("{}_{}.endpoint", system, job_id)))?;
-    println!("{}", endpoint_id);
-    iroh_ssh::api::proxy_mode(iroh_ssh::ProxyArgs { node_id: endpoint_id })
-        .await
-        .map_err(|e| eyre!("couldn't proxy ssh connection: {:?}", e))
 }

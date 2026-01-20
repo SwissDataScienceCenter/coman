@@ -50,6 +50,9 @@ workdir = "{{container_workdir}}"
 {% if iroh_secret%}
 COMAN_IROH_SECRET="{{iroh_secret}}"
 {% endif %}
+{% if port_forward %}
+COMAN_FORWARDED_PORTS="{{port_forward}}"
+{% endif %}
 
 [annotations]
 {% if ssh_public_key %}
