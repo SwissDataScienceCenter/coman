@@ -57,6 +57,11 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform.target }}
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v0-rust"
+          cache-workspace-crates: "true"
       - name: Install oas3-gen
         run: cargo install oas3-gen@0.21.1
       - name: Install build dependencies on Linux
