@@ -279,6 +279,8 @@ command = ["sleep", "1"] # command to execute within the container, i.e. the job
 
 workdir = "/scratch" # working directory within container
 
+port_forward = [12345, 8080] # ports to open in container for port-forwarding
+
 # the sbatch script you want to execute
 # this gets templated with values specified in the {{}} and {% %} expressions (see https://keats.github.io/tera/docs/#templates for
 # more information on the template language). Note, this can also just be hardcoded without any template parameters.
@@ -357,6 +359,24 @@ Creating the ssh connection involves several steps, all handled by coman:
   information and the correct iroh proxy command
 - Including the SSH config in `.ssh/config` so it's accessible in other tools
 - Garbage collecting old SSH connections for jobs that are not running anymore
+
+### Port Forwarding
+
+Port forwarding consists of two steps:
+- configuring ports in the container that can be forwarded to
+- forwarding a local port to one of the configured ports
+
+To configure forwardable ports in the container, either use the `-P <port>` flag or the `cscs.port_forward` config value.
+
+To forward a local port, use the `coman cscs port-forward` command.
+
+Example:
+```shell
+coman cscs job submit -i python -P 32100 -n myjob -- python3 -m http.server 32100 # run python built-in http server and add port for forwarding.
+coman cscs port-forward -s 32100 -d 32100 myjob # forward local 32100 to remote 32100 for job `myjob`
+
+# open http://localhost:32100 in your browser, you should see a file listing
+```
 
 ## Development
 
