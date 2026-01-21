@@ -5,10 +5,10 @@ use eyre::{Result, eyre};
 use crate::{
     client::FirecrestClient,
     types::{
-        DownloadFileResponse, DownloadFileResponseTransferDirectives, GetDirectoryLsResponse, GetFileStatResponse,
-        GetFileTailResponse, PostFileDownloadRequest, PostFileDownloadRequestTransferDirectives, PostFileUploadRequest,
-        PostMakeDirRequest, PostMkdirResponse, PutFileChmodRequest, PutFileChmodResponse, S3TransferRequest,
-        S3TransferResponse, UploadFileResponse,
+        DownloadFileResponse, DownloadFileResponseTransferDirectives, GetDirectoryLsResponse, GetFileChecksumResponse,
+        GetFileStatResponse, GetFileTailResponse, PostFileDownloadRequest, PostFileDownloadRequestTransferDirectives,
+        PostFileUploadRequest, PostMakeDirRequest, PostMkdirResponse, PutFileChmodRequest, PutFileChmodResponse,
+        S3TransferRequest, S3TransferResponse, UploadFileResponse,
     },
 };
 
@@ -237,4 +237,21 @@ pub async fn delete_filesystem_ops_rm(client: &FirecrestClient, system_name: &st
         )
         .await?;
     Ok(())
+}
+
+pub async fn get_filesystem_ops_checksum(
+    client: &FirecrestClient,
+    system_name: &str,
+    path: PathBuf,
+) -> Result<Option<String>> {
+    let path = path.as_os_str().to_str().ok_or(eyre!("couldn't cast path to string"))?;
+    let response = client
+        .get(
+            format!("filesystem/{system_name}/ops/checksum").as_str(),
+            Some(vec![("path", path)]),
+        )
+        .await?;
+    let model: GetFileChecksumResponse = serde_json::from_str(response.as_str())?;
+
+    Ok(model.output.map(|o| o.checksum))
 }
