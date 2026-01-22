@@ -127,6 +127,7 @@ impl Component<Msg, UserEvent> for FileTree {
                         }
                     }
                     PathType::File => CmdResult::None,
+                    PathType::Link => CmdResult::None,
                 }
             }
             Event::Keyboard(KeyEvent {

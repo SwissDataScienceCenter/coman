@@ -414,12 +414,12 @@ fn remote_path_completer(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> 
             let roots = cscs_file_list(current.clone(), None, None).await;
             if let Ok(roots) = roots {
                 for root in roots {
-                    if root.path_type == PathType::File {
-                        send.send(CompletionCandidate::new(current.join(root.name.clone())))
-                            .unwrap();
-                    } else {
+                    if root.path_type == PathType::Directory {
                         // joining with "" ensures trailing slash
                         send.send(CompletionCandidate::new(current.join(root.name.clone()).join("")))
+                            .unwrap();
+                    } else {
+                        send.send(CompletionCandidate::new(current.join(root.name.clone())))
                             .unwrap();
                     }
                 }
@@ -430,12 +430,12 @@ fn remote_path_completer(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> 
                     let partial = current.file_name().unwrap().to_string_lossy().into_owned();
                     for root in roots {
                         if root.name.starts_with(&partial) {
-                            if root.path_type == PathType::File {
-                                send.send(CompletionCandidate::new(parent.join(root.name))).unwrap();
-                            } else {
+                            if root.path_type == PathType::Directory {
                                 // joining with "" ensures trailing slash
                                 send.send(CompletionCandidate::new(parent.join(root.name.clone()).join("")))
                                     .unwrap();
+                            } else {
+                                send.send(CompletionCandidate::new(parent.join(root.name))).unwrap();
                             }
                         }
                     }
