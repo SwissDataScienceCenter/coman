@@ -78,6 +78,7 @@ impl From<CSCSFileSystem> for FileSystem {
 pub enum PathType {
     Directory,
     File,
+    Link,
 }
 
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, tabled::Tabled)]
@@ -113,6 +114,7 @@ impl From<CSCSFile> for PathEntry {
             path_type: match value.r#type.as_str() {
                 "d" => PathType::Directory,
                 "-" => PathType::File,
+                "l" => PathType::Link,
                 _ => panic!("Unknown file type: {}", value.r#type),
             },
             permissions: Some(value.permissions),
