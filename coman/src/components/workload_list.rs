@@ -11,7 +11,7 @@ use tuirealm::{
 use crate::{
     app::{
         messages::{JobMsg, Msg},
-        user_events::{CscsEvent, UserEvent},
+        user_events::{CscsEvent, JobEvent, UserEvent},
     },
     cscs::api_client::types::Job,
 };
@@ -81,7 +81,7 @@ impl Component<Msg, UserEvent> for WorkloadList {
                 }
                 self.perform(Cmd::Change)
             }
-            Event::User(UserEvent::Job(crate::app::user_events::JobEvent::Cancel)) => {
+            Event::User(UserEvent::Job(JobEvent::Cancel)) => {
                 if let State::One(StateValue::Usize(index)) = self.state()
                     && !self.jobs.is_empty()
                 {
