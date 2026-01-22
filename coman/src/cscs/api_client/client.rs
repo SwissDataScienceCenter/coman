@@ -9,8 +9,8 @@ use firecrest_client::{
         get_compute_system_jobs, post_compute_system_job,
     },
     filesystem_api::{
-        delete_filesystem_ops_rm, get_filesystem_ops_download, get_filesystem_ops_ls, get_filesystem_ops_stat,
-        get_filesystem_ops_tail, post_filesystem_ops_mkdir, post_filesystem_ops_upload,
+        delete_filesystem_ops_rm, get_filesystem_ops_checksum, get_filesystem_ops_download, get_filesystem_ops_ls,
+        get_filesystem_ops_stat, get_filesystem_ops_tail, post_filesystem_ops_mkdir, post_filesystem_ops_upload,
         post_filesystem_transfer_download, post_filesystem_transfer_upload, put_filesystem_ops_chmod,
     },
     status_api::{get_status_systems, get_status_userinfo},
@@ -230,6 +230,11 @@ impl CscsApi {
             Some(entries) => Ok(entries.into_iter().map(|e| e.into()).collect()),
             None => Ok(vec![]),
         }
+    }
+    pub async fn checksum(&self, system_name: &str, path: PathBuf) -> Result<Option<String>> {
+        get_filesystem_ops_checksum(&self.client, system_name, path)
+            .await
+            .wrap_err("couldn't stat file")
     }
     pub async fn stat_path(&self, system_name: &str, path: PathBuf) -> Result<Option<FileStat>> {
         let result = get_filesystem_ops_stat(&self.client, system_name, path)

@@ -14,10 +14,11 @@ use base64::prelude::*;
 use color_eyre::{Result, eyre::eyre};
 use eyre::Context;
 use futures::StreamExt;
-use iroh::{Endpoint, EndpointId, SecretKey, protocol::Router};
+use iroh::{Endpoint, EndpointId, SecretKey};
 use itertools::Itertools;
 use regex::Regex;
 use reqwest::Url;
+use sha2::{Digest, Sha256};
 use tokio::{
     fs::File,
     io::AsyncWriteExt,
@@ -26,6 +27,7 @@ use tokio::{
 
 use super::api_client::client::{EdfSpec, ScriptSpec};
 use crate::{
+    cli::app::COMAN_VERSION,
     config::{ComputePlatform, Config, get_data_dir},
     cscs::{
         api_client::{
@@ -202,22 +204,28 @@ async fn process_port_forward(endpoint_id: EndpointId, destination_port: u16, mu
     let alpn: Vec<u8> = format!("/coman/{destination_port}").into_bytes();
     let secret_key = SecretKey::generate(&mut rand::rng());
     let endpoint = Endpoint::builder().secret_key(secret_key).bind().await?;
-    Router::builder(endpoint.clone()).spawn(); // start local iroh listener
+    // let _router = Router::builder(endpoint.clone()).spawn(); // start local iroh listener
 
     match endpoint.connect(endpoint_id, &alpn).await {
         Ok(connection) => {
             let (mut iroh_send, mut iroh_recv) = connection.open_bi().await?;
             let (mut local_read, mut local_write) = socket.split();
             let a_to_b = async move { tokio::io::copy(&mut local_read, &mut iroh_send).await };
-            let b_to_a = async move { tokio::io::copy(&mut iroh_recv, &mut local_write).await };
+            let b_to_a = async move {
+                let res = tokio::io::copy(&mut iroh_recv, &mut local_write).await;
+                if res.is_ok() {
+                    local_write.flush().await.expect("couldn't flush socket");
+                }
+                res
+            };
             println!("connection open");
 
             tokio::select! {
                 result = a_to_b => {
-                    let _ = result;
+                    let _= result;
                 },
                 result = b_to_a => {
-                    let _ = result;
+                    let _= result;
                 },
             };
             println!("connection closed");
@@ -390,6 +398,82 @@ async fn store_ssh_information(
     Ok(connection_name)
 }
 
+async fn maybe_download_latest_squash(current_system: &str, config: &Config) -> Result<PathBuf, eyre::Error> {
+    if let Some(path) = config.values.coman_squash_path.clone() {
+        return Ok(path);
+    }
+    //download from github for architecture
+    let system = config
+        .values
+        .cscs
+        .systems
+        .get(current_system)
+        .ok_or(eyre!("couldn't find architecture for system {}", current_system))?;
+    let architecture = system
+        .architecture
+        .first()
+        .ok_or(eyre!("no architecture set for {}", current_system))?;
+    let target_path = get_data_dir().join(format!("coman_{}.sqsh", architecture));
+    let arch = match architecture.as_str() {
+        "arm64" => "aarch64",
+        "amd64" => "x86_64",
+        _ => {
+            return Err(eyre!("unsupported architecture {}", architecture));
+        }
+    };
+    if target_path.exists() {
+        // if file exists, check checksum against newest version and delete if no match
+        let mut hasher = Sha256::new();
+        let mut file = std::fs::File::open(&target_path)?;
+        let _n = std::io::copy(&mut file, &mut hasher)?;
+        let hash = hasher.finalize();
+        let hash = format!("{hash:02x}");
+
+        let client = reqwest::Client::new();
+        let resp = client
+            .get(format!(
+                "https://api.github.com/repos/SwissDataScienceCenter/coman/releases/tags/v{}",
+                COMAN_VERSION
+            ))
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", format!("coman cli {COMAN_VERSION}"))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            let body = resp.text().await?;
+            let body: serde_json::Value = serde_json::from_str(&body)?;
+            if let Some(assets) = body["assets"].as_array() {
+                for asset in assets {
+                    if asset["name"].as_str() == Some(format!("coman_Linux-{arch}.sqsh").as_str())
+                        && let Some(remote_hash) = asset["digest"].as_str()
+                        && remote_hash.strip_prefix("sha256:").unwrap() != hash.as_str()
+                    {
+                        std::fs::remove_file(&target_path)?;
+                    }
+                }
+            }
+        }
+    }
+    if !target_path.exists() {
+        let url = format!(
+            "https://github.com/SwissDataScienceCenter/coman/releases/download/v{COMAN_VERSION}/coman_Linux-{arch}.sqsh"
+        );
+        let mut out = File::create(target_path.clone()).await?;
+        let resp = reqwest::get(url).await?;
+        match resp.error_for_status() {
+            Ok(resp) => {
+                let mut stream = resp.bytes_stream();
+                while let Some(chunk_result) = stream.next().await {
+                    let chunk = chunk_result?;
+                    out.write_all(&chunk).await?;
+                }
+                out.flush().await?;
+            }
+            Err(e) => return Err(eyre!("couldn't download coman squash file: {}", e)),
+        }
+    }
+    Ok(target_path)
+}
 async fn inject_coman_squash(
     api_client: &CscsApi,
     base_path: &Path,
@@ -400,50 +484,7 @@ async fn inject_coman_squash(
         return Ok(None);
     }
     let config = Config::new().unwrap();
-    let local_squash_path = match config.values.coman_squash_path.clone() {
-        Some(path) => path,
-        None => {
-            //download from github for architecture
-            let system = config
-                .values
-                .cscs
-                .systems
-                .get(current_system)
-                .ok_or(eyre!("couldn't find architecture for system {}", current_system))?;
-            let architecture = system
-                .architecture
-                .first()
-                .ok_or(eyre!("no architecture set for {}", current_system))?;
-            let target_path = get_data_dir().join(format!("coman_{}.sqsh", architecture));
-            if !target_path.exists() {
-                let url = match architecture.as_str() {
-                    "arm64" => {
-                        "https://github.com/SwissDataScienceCenter/coman/releases/latest/download/coman_Linux-aarch64.sqsh"
-                    }
-                    "amd64" => {
-                        "https://github.com/SwissDataScienceCenter/coman/releases/latest/download/coman_Linux-x86_64.sqsh"
-                    }
-                    _ => {
-                        return Err(eyre!("unsupported architecture {}", architecture));
-                    }
-                };
-                let mut out = File::create(target_path.clone()).await?;
-                let resp = reqwest::get(url).await?;
-                match resp.error_for_status() {
-                    Ok(resp) => {
-                        let mut stream = resp.bytes_stream();
-                        while let Some(chunk_result) = stream.next().await {
-                            let chunk = chunk_result?;
-                            out.write_all(&chunk).await?;
-                        }
-                        out.flush().await?;
-                    }
-                    Err(e) => return Err(eyre!("couldn't download coman squash file: {}", e)),
-                }
-            }
-            target_path
-        }
-    };
+    let local_squash_path = maybe_download_latest_squash(current_system, &config).await?;
     let target = base_path.join("coman.sqsh");
     let file_meta = std::fs::metadata(local_squash_path.clone())?;
 
@@ -453,13 +494,16 @@ async fn inject_coman_squash(
     #[cfg(target_family = "windows")]
     let size = file_meta.file_size() as usize;
 
-    let response = api_client.list_path(current_system, target.clone()).await;
-    if let Ok(existing) = response
-        && !existing.is_empty()
-    {
+    let mut hasher = Sha256::new();
+    let mut file = std::fs::File::open(&local_squash_path)?;
+    let _n = std::io::copy(&mut file, &mut hasher)?;
+    let hash = hasher.finalize();
+    let hash = format!("{hash:02x}");
+
+    let response = api_client.checksum(current_system, target.clone()).await;
+    if let Ok(Some(remote_hash)) = response {
         //squash file already present on remote, don't upload if it's the same
-        let entry = existing.first().unwrap();
-        if entry.size.unwrap_or_default() == size {
+        if hash == remote_hash {
             return Ok(Some(target));
         } else {
             // remove file before upload

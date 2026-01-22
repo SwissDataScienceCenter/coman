@@ -1248,6 +1248,7 @@ dependencies = [
  "rust_supervisor",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "signal-hook",
  "strip-ansi-escapes",
  "strum 0.26.3",

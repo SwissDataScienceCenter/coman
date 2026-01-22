@@ -471,6 +471,8 @@ pub enum CscsSystemCommands {
     },
 }
 
+pub const COMAN_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 const VERSION_MESSAGE: &str = concat!(
     env!("CARGO_PKG_VERSION"),
     "-",
