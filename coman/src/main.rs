@@ -16,7 +16,7 @@ use crate::{
         ids::Id,
         messages::{Msg, View},
         model::Model,
-        user_events::{CscsEvent, FileEvent, StatusEvent, UserEvent},
+        user_events::{CscsEvent, FileEvent, JobEvent, StatusEvent, UserEvent},
     },
     cli::{
         app::{
@@ -233,17 +233,23 @@ fn run_tui(tick_rate: f64) -> Result<()> {
     app.mount(
         Id::WorkloadList,
         Box::new(WorkloadList::default()),
-        vec![Sub::new(
-            SubEventClause::Any,
-            SubClause::AndMany(vec![SubClause::IsMounted(Id::WorkloadList), popup_exclusion_clause()]),
-        )],
+        vec![
+            Sub::new(
+                SubEventClause::Discriminant(UserEvent::Cscs(CscsEvent::LoggedIn)),
+                SubClause::Always,
+            ),
+            Sub::new(
+                SubEventClause::Discriminant(UserEvent::Job(JobEvent::Cancel)),
+                SubClause::Always,
+            ),
+        ],
     )?;
     app.mount(
         Id::FileView,
         Box::new(FileTree::new(background_task_tx.clone())),
         vec![Sub::new(
-            SubEventClause::Any,
-            SubClause::AndMany(vec![SubClause::IsMounted(Id::FileView), popup_exclusion_clause()]),
+            SubEventClause::Discriminant(UserEvent::File(FileEvent::DownloadCurrentFile)),
+            SubClause::Always,
         )],
     )?;
     app.mount(

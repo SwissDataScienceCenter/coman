@@ -410,6 +410,14 @@ where
     }
     fn change_view(&mut self, view: View) {
         self.current_view = view;
+        match self.current_view {
+            View::Workloads => {
+                assert!(self.app.active(&Id::WorkloadList).is_ok());
+            }
+            View::Files => {
+                assert!(self.app.active(&Id::FileView).is_ok());
+            }
+        }
     }
 }
 
