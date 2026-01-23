@@ -8,7 +8,7 @@ use tokio::{runtime::Handle, sync::mpsc};
 use tuirealm::{
     Application, EventListenerCfg, PollStrategy, Sub, SubClause, SubEventClause, Update,
     event::{Key, KeyEvent, KeyModifiers},
-    terminal::{CrosstermTerminalAdapter, TerminalBridge},
+    terminal::{CrosstermTerminalAdapter, TerminalAdapter, TerminalBridge},
 };
 
 use crate::{
@@ -171,8 +171,10 @@ async fn main() -> Result<()> {
 fn run_tui(tick_rate: f64) -> Result<()> {
     crate::errors::init()?;
     //we initialize the terminal early so the panic handler that restores the terminal is correctly set up
-    let adapter = CrosstermTerminalAdapter::new()?;
-    let bridge = TerminalBridge::init(adapter).expect("Cannot initialize terminal");
+    let mut adapter = CrosstermTerminalAdapter::new()?;
+    adapter.enable_mouse_capture()?;
+    let mut bridge = TerminalBridge::init(adapter).expect("Cannot initialize terminal");
+    bridge.enable_mouse_capture()?;
     let handle = Handle::current();
 
     let (select_system_tx, select_system_rx) = mpsc::channel(100);
