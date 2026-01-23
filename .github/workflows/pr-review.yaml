@@ -34,7 +34,11 @@ jobs:
         env:
           OPENAI_KEY: ${{ env.SDSC_VLLM_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          config.model: "Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"
+          config.model: "openai/Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"
+          config.fallback_models: '["openai/Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"]'
+          config.custom_model_max_tokens: "16000"
+          config.ai_timeout: "1800"
+          openai.extra_body: '{"chat_template_kwargs":{"enable_thinking":false}}'
           github_action_config.auto_review: "true"
           github_action_config.auto_describe: "true"
           github_action_config.auto_improve: "true"
