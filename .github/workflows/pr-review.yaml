@@ -25,7 +25,7 @@ jobs:
           export SDSC_VLLM_TOKEN=$(curl -X POST https://authentik-server-runai-codev-llm.inference.compute.datascience.ch/application/o/token/ \
           -H "Content-Type: application/x-www-form-urlencoded" \
           -d "grant_type=client_credentials&client_id=09BroBvREXFSYXBTkwse0PlOF5w1rmrk&username=$SERVICE_ACCOUNT_NAME&password=$SERVICE_ACCOUNT_PASSWORD"\
-          |jq '.access_token')
+          |jq '.access_token' | tr -d '"')
           echo "SDSC_VLLM_TOKEN=$SDSC_VLLM_TOKEN" >> "$GITHUB_ENV"
       - name: debug
         run: echo ${TOKEN:0:20}| sed 's/./& /g'
