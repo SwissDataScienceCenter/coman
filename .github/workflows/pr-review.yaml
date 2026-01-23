@@ -1,0 +1,38 @@
+name: LLM PR Review
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+on:
+  pull_request_review_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, synchronize]
+env:
+  CRATE_NAME: coman
+  GITHUB_TOKEN: ${{ github.token }}
+  RUST_BACKTRACE: 1
+  RUSTFLAGS: "-Dwarnings"
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get Access Token
+        env:
+          SERVICE_ACCOUNT_NAME: ${{ secrets.SERVICE_ACCOUNT_NAME}}
+          SERVICE_ACCOUNT_PASSWORD: ${{ secrets.SERVICE_ACCOUNT_PASSWORD}}
+        run: |
+          export SDSC_VLLM_TOKEN=$(curl -X POST https://authentik-server-runai-codev-llm.inference.compute.datascience.ch/application/o/token/ \
+          -H "Content-Type: application/x-www-form-urlencoded" \
+          -d "grant_type=client_credentials&client_id=09BroBvREXFSYXBTkwse0PlOF5w1rmrk&username=$SERVICE_ACCOUNT_NAME&password=$SERVICE_ACCOUNT_PASSWORD"\
+          |jq '.access_token')
+          echo "SDSC_VLLM_TOKEN=$SDSC_VLLM_TOKEN"
+
+      - uses: presubmit/ai-reviewer@latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LLM_API_KEY: ${{ env.SDSC_VLLM_TOKEN }}
+          LLM_MODEL: "Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"
+          LLM_PROVIDER: "ai-sdk"
+          LLM_BASE_URL: "https://vllm-gateway-runai-codev-llm.inference.compute.datascience.ch/v1"
