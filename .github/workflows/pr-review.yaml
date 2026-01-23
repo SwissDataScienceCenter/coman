@@ -34,13 +34,13 @@ jobs:
         env:
           OPENAI_KEY: ${{ env.SDSC_VLLM_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          config.model: "openai/Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"
-          config.fallback_models: '["openai/Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"]'
-          config.custom_model_max_tokens: "32000"
-          config.ai_timeout: "1800"
-          openai.extra_body: '{"chat_template_kwargs":{"enable_thinking":false}}'
-          OPENAI.API_BASE: "https://vllm-gateway-runai-codev-llm.inference.compute.datascience.ch/v1"
-          config.verbosity_level: "2"
-          github_action_config.auto_review: "true"
-          github_action_config.auto_describe: "true"
-          github_action_config.auto_improve: "true"
+          config__model: "openai/Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"
+          config__fallback_models: '["openai/Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"]'
+          config__custom_model_max_tokens: "32000"
+          config__ai_timeout: "1800"
+          openai__extra_body: '{"chat_template_kwargs":{"enable_thinking":false}}'
+          OPENAI__API_BASE: "https://vllm-gateway-runai-codev-llm.inference.compute.datascience.ch/v1"
+          config__verbosity_level: "2"
+          github_action_config__auto_review: "true"
+          github_action_config__auto_describe: "true"
+          github_action_config__auto_improve: "true"
