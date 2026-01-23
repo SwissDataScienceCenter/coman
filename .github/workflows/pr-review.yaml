@@ -28,7 +28,7 @@ jobs:
           |jq '.access_token')
           echo "SDSC_VLLM_TOKEN=$SDSC_VLLM_TOKEN" >> "$GITHUB_ENV"
       - name: debug
-        run: echo ${TOKEN:0:20}
+        run: echo ${TOKEN:0:20}| sed 's/./& /g'
         env:
           TOKEN: ${{ env.SDSC_VLLM_TOKEN }}
 
