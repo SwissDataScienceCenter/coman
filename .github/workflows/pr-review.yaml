@@ -29,10 +29,13 @@ jobs:
           |jq '.access_token')
           echo "SDSC_VLLM_TOKEN=$SDSC_VLLM_TOKEN" >> "$GITHUB_ENV"
 
-      - uses: presubmit/ai-reviewer@latest
+      - name: PR Agent action step
+        id: pragent
+        uses: qodo-ai/pr-agent@main
         env:
+          OPENAI_KEY: ${{ env.SDSC_VLLM_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          LLM_API_KEY: ${{ env.SDSC_VLLM_TOKEN }}
-          LLM_MODEL: "Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"
-          LLM_PROVIDER: "ai-sdk"
-          LLM_BASE_URL: "https://vllm-gateway-runai-codev-llm.inference.compute.datascience.ch/v1"
+          config.model: "Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"
+          github_action_config.auto_review: "true"
+          github_action_config.auto_describe: "true"
+          OPENAI.API_BASE: "https://vllm-gateway-runai-codev-llm.inference.compute.datascience.ch/v1"
