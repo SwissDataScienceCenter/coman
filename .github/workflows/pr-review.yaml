@@ -17,6 +17,9 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Get Access Token
         env:
           SERVICE_ACCOUNT_NAME: ${{ secrets.SERVICE_ACCOUNT_NAME}}
@@ -44,3 +47,22 @@ jobs:
           github_action_config__auto_review: "true"
           github_action_config__auto_describe: "true"
           github_action_config__auto_improve: "true"
+      - name: AI-Review Step
+        uses: Nikita-Filonov/ai-review@v0.51.0
+        with:
+          review-command: run-inline
+        env:
+          # --- LLM configuration ---
+          LLM__PROVIDER: "OPENAI"
+          LLM__META__MODEL: "Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"
+          LLM__META__MAX_TOKENS: "32000"
+          LLM__HTTP_CLIENT__API_URL: "https://vllm-gateway-runai-codev-llm.inference.compute.datascience.ch/v1"
+          LLM__HTTP_CLIENT__API_TOKEN: ${{ env.SDSC_VLLM_TOKEN }}
+
+          # --- GitHub integration ---
+          VCS__PROVIDER: "GITHUB"
+          VCS__PIPELINE__OWNER: ${{ github.repository_owner }}
+          VCS__PIPELINE__REPO: ${{ github.event.repository.name }}
+          VCS__PIPELINE__PULL_NUMBER: ${{ github.event.number}}
+          VCS__HTTP_CLIENT__API_URL: "https://api.github.com"
+          VCS__HTTP_CLIENT__API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
