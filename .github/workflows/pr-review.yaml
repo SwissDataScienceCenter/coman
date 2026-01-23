@@ -27,7 +27,7 @@ jobs:
           -H "Content-Type: application/x-www-form-urlencoded" \
           -d "grant_type=client_credentials&client_id=09BroBvREXFSYXBTkwse0PlOF5w1rmrk&username=$SERVICE_ACCOUNT_NAME&password=$SERVICE_ACCOUNT_PASSWORD"\
           |jq '.access_token')
-          echo "SDSC_VLLM_TOKEN=$SDSC_VLLM_TOKEN"
+          echo "SDSC_VLLM_TOKEN=$SDSC_VLLM_TOKEN" >> "$GITHUB_ENV"
 
       - uses: presubmit/ai-reviewer@latest
         env:
