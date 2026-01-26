@@ -303,6 +303,14 @@ pub enum CscsJobCommands {
         #[clap(help="id or name of the job (name uses newest job of that name)",  add = ArgValueCompleter::new(job_id_or_name_completer))]
         job: JobIdOrName,
     },
+    #[clap(
+        alias = "ru",
+        about = "show current resource usage of the job, needs coman to be injected in the session [aliases: ru]"
+    )]
+    ResourceUsage {
+        #[clap(help="id or name of the job (name uses newest job of that name)",  add = ArgValueCompleter::new(job_id_or_name_completer))]
+        job: JobIdOrName,
+    },
 }
 fn job_id_or_name_completer(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
     let mut completions = vec![];

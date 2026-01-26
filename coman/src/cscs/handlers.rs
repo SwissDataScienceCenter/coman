@@ -19,15 +19,18 @@ use itertools::Itertools;
 use regex::Regex;
 use reqwest::Url;
 use sha2::{Digest, Sha256};
+use tarpc::{client, context, serde_transport, tokio_serde::formats::Bincode};
 use tokio::{
     fs::File,
     io::AsyncWriteExt,
     net::{TcpListener, TcpStream},
 };
+use tokio_duplex::Duplex;
+use tokio_util::codec::LengthDelimitedCodec;
 
 use super::api_client::client::{EdfSpec, ScriptSpec};
 use crate::{
-    cli::app::COMAN_VERSION,
+    cli::{app::COMAN_VERSION, rpc::ComanRPCClient},
     config::{ComputePlatform, Config, get_data_dir},
     cscs::{
         api_client::{
@@ -165,12 +168,47 @@ pub async fn cscs_job_log(
     }
 }
 
+pub async fn cscs_resource_usage(job_id: i64, system: Option<String>) -> Result<()> {
+    let endpoint_id = get_endpoint_id(job_id, system).await?;
+
+    let alpn: Vec<u8> = "/coman/rpc".to_string().into_bytes();
+    let secret_key = SecretKey::generate(&mut rand::rng());
+    let endpoint = Endpoint::builder().secret_key(secret_key).bind().await?;
+
+    match endpoint.connect(endpoint_id, &alpn).await {
+        Ok(connection) => {
+            let (iroh_send, iroh_recv) = connection.open_bi().await?;
+            let combined = Duplex::new(iroh_recv, iroh_send);
+            let codec_builder = LengthDelimitedCodec::builder();
+            let framed = codec_builder.new_framed(combined);
+            let transport = serde_transport::new(framed, Bincode::default());
+            let client = ComanRPCClient::new(client::Config::default(), transport);
+            let result = client.spawn().version(context::current()).await?;
+            let _ = dbg!(result);
+
+            Ok(())
+        }
+        Err(e) => Err(e).wrap_err("couldn't establish tunnel to remote"),
+    }
+}
+
 pub async fn cscs_port_forward(
     job_id: i64,
     source_port: u16,
     destination_port: u16,
     system: Option<String>,
 ) -> Result<()> {
+    let endpoint_id = get_endpoint_id(job_id, system).await?;
+    let listener = TcpListener::bind(format!("127.0.0.1:{source_port}")).await?;
+    println!("forwarding connection for port {source_port}");
+
+    loop {
+        let (socket, _) = listener.accept().await?;
+        process_port_forward(endpoint_id, destination_port, socket).await?;
+    }
+}
+
+async fn get_endpoint_id(job_id: i64, system: Option<String>) -> Result<iroh::PublicKey, eyre::Error> {
     let data_dir = get_data_dir();
     let config = Config::new().unwrap();
     let current_system = &system.unwrap_or(config.values.cscs.current_system);
@@ -190,13 +228,7 @@ pub async fn cscs_port_forward(
     } else {
         return Err(eyre!("invalid endpoint id length"));
     })?;
-    let listener = TcpListener::bind(format!("127.0.0.1:{source_port}")).await?;
-    println!("forwarding connection for port {source_port}");
-
-    loop {
-        let (socket, _) = listener.accept().await?;
-        process_port_forward(endpoint_id, destination_port, socket).await?;
-    }
+    Ok(endpoint_id)
 }
 
 async fn process_port_forward(endpoint_id: EndpointId, destination_port: u16, mut socket: TcpStream) -> Result<()> {
@@ -204,7 +236,6 @@ async fn process_port_forward(endpoint_id: EndpointId, destination_port: u16, mu
     let alpn: Vec<u8> = format!("/coman/{destination_port}").into_bytes();
     let secret_key = SecretKey::generate(&mut rand::rng());
     let endpoint = Endpoint::builder().secret_key(secret_key).bind().await?;
-    // let _router = Router::builder(endpoint.clone()).spawn(); // start local iroh listener
 
     match endpoint.connect(endpoint_id, &alpn).await {
         Ok(connection) => {

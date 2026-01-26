@@ -84,6 +84,13 @@ iroh = "0.95.1"
 rand = "0.9.2"
 regex = "1.12.2"
 sha2 = "0.10.9"
+tarpc = { version = "0.37.0", features = [
+  "serde-transport",
+  "serde-transport-bincode",
+  "tcp",
+  "tokio1",
+] }
+tokio-duplex = "1.0.1"
 
 [build-dependencies]
 anyhow = "1.0.90"

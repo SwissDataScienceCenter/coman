@@ -35,8 +35,8 @@ use crate::{
         api_client::client::JobStartOptions,
         cli::{
             cli_cscs_file_delete, cli_cscs_file_download, cli_cscs_file_list, cli_cscs_file_upload,
-            cli_cscs_job_cancel, cli_cscs_job_detail, cli_cscs_job_list, cli_cscs_job_log, cli_cscs_job_start,
-            cli_cscs_login, cli_cscs_port_forward, cli_cscs_set_system, cli_cscs_system_list,
+            cli_cscs_job_cancel, cli_cscs_job_detail, cli_cscs_job_list, cli_cscs_job_log, cli_cscs_job_resource_usage,
+            cli_cscs_job_start, cli_cscs_login, cli_cscs_port_forward, cli_cscs_set_system, cli_cscs_system_list,
         },
         ports::{
             AsyncBackgroundTaskPort, AsyncFetchWorkloadsPort, AsyncJobLogPort, AsyncSelectSystemPort,
@@ -137,6 +137,9 @@ async fn main() -> Result<()> {
                         .await?
                     }
                     CscsJobCommands::Cancel { job } => cli_cscs_job_cancel(job, system, platform).await?,
+                    CscsJobCommands::ResourceUsage { job } => {
+                        cli_cscs_job_resource_usage(job, system, platform).await?
+                    }
                 },
                 CscsCommands::File { command } => match command {
                     CscsFileCommands::List { path } => cli_cscs_file_list(path, system, platform).await?,
