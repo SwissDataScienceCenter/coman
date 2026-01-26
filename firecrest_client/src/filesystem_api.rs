@@ -21,7 +21,7 @@ pub async fn get_filesystem_ops_ls(
     let response = client
         .get(
             format!("filesystem/{system_name}/ops/ls").as_str(),
-            Some(vec![("path", path)]),
+            Some(vec![("path", path), ("showHidden", "true")]),
         )
         .await?;
     let model: GetDirectoryLsResponse = serde_json::from_str(response.as_str())?;

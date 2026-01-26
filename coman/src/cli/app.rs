@@ -408,7 +408,7 @@ fn remote_path_completer(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> 
     let (send, mut recv) = mpsc::unbounded_channel();
     if current.is_empty() || current == "/" {
         tokio::spawn(async move {
-            let roots = file_system_roots().await;
+            let roots = file_system_roots(None).await;
             if let Ok(roots) = roots {
                 for root in roots {
                     send.send(CompletionCandidate::new(root.name.clone())).unwrap();

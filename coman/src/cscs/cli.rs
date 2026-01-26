@@ -4,6 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use bytesize::ByteSize;
 use color_eyre::{Result, eyre::Context};
 use eyre::eyre;
 use futures::StreamExt;
@@ -142,8 +143,16 @@ pub(crate) async fn cli_cscs_job_resource_usage(
     platform: Option<ComputePlatform>,
 ) -> Result<()> {
     let job_id = maybe_job_id_from_name(job, system.clone(), platform.clone()).await?;
-    println!("running port forward for job {job_id}");
-    cscs_resource_usage(job_id, system).await
+    let result = cscs_resource_usage(job_id, system).await?;
+    println!(
+        "CPU: {}%, Memory: RSS {} VSS {}, GPU: {}",
+        result.cpu,
+        ByteSize::b(result.rss).display().iec(),
+        ByteSize::b(result.vss).display().iec(),
+        result.gpu.map(|g| g.to_string()).unwrap_or("N/A".to_string())
+    );
+
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]

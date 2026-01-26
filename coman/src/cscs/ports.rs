@@ -248,7 +248,7 @@ async fn list_files(id: PathBuf) -> Result<Option<Event<UserEvent>>> {
         .map_err(|_| eyre!("couldn't convert id to string".to_owned()))?;
     if id_str == "/" {
         // load file system roots
-        let subpaths = file_system_roots().await?;
+        let subpaths = file_system_roots(None).await?;
         Ok(Some(Event::User(UserEvent::File(FileEvent::List(id_str, subpaths)))))
     } else {
         let subpaths = cscs_file_list(id, None, None).await?;

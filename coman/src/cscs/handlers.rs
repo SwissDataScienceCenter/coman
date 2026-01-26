@@ -52,6 +52,7 @@ use crate::{
 };
 
 const CSCS_MAX_DIRECT_SIZE: usize = 5242880;
+const DCGM_ENROOT_HOOK: &str = include_str!("./dcgm_enroot_hook.sh");
 
 async fn get_access_token() -> Result<Secret> {
     let client_id = match get_secret(CLIENT_ID_SECRET_NAME).await {
@@ -750,6 +751,30 @@ async fn handle_script(
 
     Ok(script_path)
 }
+async fn setup_dcgm_hook(api_client: &CscsApi, current_system: &str) -> Result<()> {
+    let user_dirs = file_system_roots(Some(FileSystemType::Users)).await?;
+    let user_dir = user_dirs
+        .first()
+        .ok_or(eyre!("couldn't find user root directory on remote"))?;
+    let path = PathBuf::from(user_dir.name.clone())
+        .join(".config")
+        .join("enroot")
+        .join("hooks.d")
+        .join("cscs_jobreport_dcgm_hook.sh");
+
+    let response = api_client.checksum(current_system, path.clone()).await;
+    if let Ok(Some(_)) = response {
+        // file exists
+        return Ok(());
+    }
+    api_client
+        .mkdir(current_system, path.parent().unwrap().to_path_buf())
+        .await?;
+    api_client
+        .upload(current_system, path, DCGM_ENROOT_HOOK.as_bytes().to_vec())
+        .await
+        .wrap_err("couldn't upload dcgm enroot hook ".to_string())
+}
 
 pub async fn cscs_job_start(
     name: Option<String>,
@@ -807,7 +832,9 @@ pub async fn cscs_job_start(
             if coman_squash.is_none() {
                 println!("Warning: coman squash wasn't templated and is needed for ssh through coman to work");
             }
-
+            if let Err(e) = setup_dcgm_hook(&api_client, current_system).await {
+                println!("Warning: couldn't set up dcgm hook: {e:?}");
+            }
             let environment_path = handle_edf(
                 &api_client,
                 &base_path,
@@ -869,7 +896,7 @@ pub async fn cscs_file_list(
         Err(e) => Err(e),
     }
 }
-pub async fn file_system_roots() -> Result<Vec<PathEntry>> {
+pub async fn file_system_roots(type_filter: Option<FileSystemType>) -> Result<Vec<PathEntry>> {
     let config = Config::new().expect("couldn't load config");
     let user_info = cscs_user_info(None, None).await?;
     let systems = cscs_system_list(None).await?;
@@ -878,7 +905,17 @@ pub async fn file_system_roots() -> Result<Vec<PathEntry>> {
         .find(|s| s.name == config.values.cscs.current_system)
         .unwrap_or_else(|| panic!("couldn't get info for system {}", config.values.cscs.current_system));
     let mut subpaths = vec![];
-    for fs in system.file_systems.clone() {
+    let filesystems = if let Some(filter) = type_filter {
+        system
+            .file_systems
+            .clone()
+            .into_iter()
+            .filter(|fs| fs.data_type == filter)
+            .collect()
+    } else {
+        system.file_systems.clone()
+    };
+    for fs in filesystems {
         let entry = match cscs_stat_path(PathBuf::from(fs.path.clone()).join(user_info.name.clone()), None, None).await
         {
             Ok(Some(_)) => PathEntry {

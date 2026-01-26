@@ -60,6 +60,7 @@ com.hooks.ssh.enabled = "true"
 com.hooks.ssh.authorize_ssh_key = "{{ ssh_public_key }}"
 com.hooks.ssh.port = "15263"
 {% endif %}
+com.hooks.dcgm.enabled = "true"
 """
 
 # set environment variables that should be passed to a job
