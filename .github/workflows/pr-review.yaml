@@ -66,3 +66,4 @@ jobs:
           VCS__PIPELINE__PULL_NUMBER: ${{ github.event.number}}
           VCS__HTTP_CLIENT__API_URL: "https://api.github.com"
           VCS__HTTP_CLIENT__API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REVIEW__IGNORE_CHANGES: '["Cargo.lock"]'

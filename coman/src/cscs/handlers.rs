@@ -30,7 +30,10 @@ use tokio_util::codec::LengthDelimitedCodec;
 
 use super::api_client::client::{EdfSpec, ScriptSpec};
 use crate::{
-    cli::{app::COMAN_VERSION, rpc::ComanRPCClient},
+    cli::{
+        app::COMAN_VERSION,
+        rpc::{ComanRPCClient, ResourceUsage},
+    },
     config::{ComputePlatform, Config, get_data_dir},
     cscs::{
         api_client::{
@@ -168,10 +171,10 @@ pub async fn cscs_job_log(
     }
 }
 
-pub async fn cscs_resource_usage(job_id: i64, system: Option<String>) -> Result<()> {
+pub async fn cscs_resource_usage(job_id: i64, system: Option<String>) -> Result<ResourceUsage> {
     let endpoint_id = get_endpoint_id(job_id, system).await?;
 
-    let alpn: Vec<u8> = "/coman/rpc".to_string().into_bytes();
+    let alpn: Vec<u8> = b"/coman/rpc".to_vec();
     let secret_key = SecretKey::generate(&mut rand::rng());
     let endpoint = Endpoint::builder().secret_key(secret_key).bind().await?;
 
@@ -183,10 +186,11 @@ pub async fn cscs_resource_usage(job_id: i64, system: Option<String>) -> Result<
             let framed = codec_builder.new_framed(combined);
             let transport = serde_transport::new(framed, Bincode::default());
             let client = ComanRPCClient::new(client::Config::default(), transport);
-            let result = client.spawn().version(context::current()).await?;
-            let _ = dbg!(result);
-
-            Ok(())
+            client
+                .spawn()
+                .resource_usage(context::current())
+                .await
+                .wrap_err("couldn't get resource usage from remote")
         }
         Err(e) => Err(e).wrap_err("couldn't establish tunnel to remote"),
     }
@@ -296,7 +300,10 @@ async fn setup_ssh(
         path.canonicalize().map(Some).wrap_err("couldn't get ssh key path")?
     } else {
         // try to figure our ssh key
-        let ssh_dir = dirs::home_dir().ok_or(eyre!("couldn't find home dir"))?.join(".ssh");
+        let ssh_dir = directories::UserDirs::new()
+            .ok_or(eyre!("couldn't find home dir"))?
+            .home_dir()
+            .join(".ssh");
         let mut ssh_path = None;
         for file in ["id_dsa.pub", "id_ecdsa.pub", "id_rsa.pub", "id_ed25519.pub"] {
             let path = ssh_dir.join(file);
@@ -410,7 +417,10 @@ async fn store_ssh_information(
         current_system,
         job_id
     )?;
-    let ssh_dir = dirs::home_dir().ok_or(eyre!("couldn't find home dir"))?.join(".ssh");
+    let ssh_dir = directories::UserDirs::new()
+        .ok_or(eyre!("couldn't find home dir"))?
+        .home_dir()
+        .join(".ssh");
     let ssh_config_path = ssh_dir.join("config");
     let mut ssh_config = std::fs::OpenOptions::new()
         .read(true)
@@ -517,7 +527,7 @@ async fn inject_coman_squash(
     let config = Config::new().unwrap();
     let local_squash_path = maybe_download_latest_squash(current_system, &config).await?;
     let target = base_path.join("coman.sqsh");
-    let file_meta = std::fs::metadata(local_squash_path.clone())?;
+    let file_meta = std::fs::metadata(local_squash_path.clone()).wrap_err("couldn't load coman squash file")?;
 
     #[cfg(target_family = "unix")]
     let size = file_meta.size() as usize;
@@ -641,26 +651,32 @@ async fn handle_edf(
         None
     };
     if let Some(docker_image) = docker_image {
-        let meta = docker_image.inspect().await?;
-        if let Some(system_info) = config.values.cscs.systems.get(current_system) {
-            let mut compatible = false;
-            for sys_platform in system_info.architecture.iter() {
-                if meta.platforms.contains(&sys_platform.clone().into()) {
-                    compatible = true;
+        match docker_image.inspect().await {
+            Ok(meta) => {
+                if let Some(system_info) = config.values.cscs.systems.get(current_system) {
+                    let mut compatible = false;
+                    for sys_platform in system_info.architecture.iter() {
+                        if meta.platforms.contains(&sys_platform.clone().into()) {
+                            compatible = true;
+                        }
+                    }
+
+                    if !compatible {
+                        return Err(eyre!(
+                            "System {} only supports images with architecture(s) '{}' but the supplied image is for architecture(s) '{}'",
+                            current_system,
+                            system_info.architecture.join(","),
+                            meta.platforms
+                                .iter()
+                                .map(|p| p.to_string())
+                                .collect::<Vec<String>>()
+                                .join(",")
+                        ));
+                    }
                 }
             }
-
-            if !compatible {
-                return Err(eyre!(
-                    "System {} only supports images with architecture(s) '{}' but the supplied image is for architecture(s) '{}'",
-                    current_system,
-                    system_info.architecture.join(","),
-                    meta.platforms
-                        .iter()
-                        .map(|p| p.to_string())
-                        .collect::<Vec<String>>()
-                        .join(",")
-                ));
+            Err(e) => {
+                println!("couldn't get image information, skipping checks: {e:?}");
             }
         }
 

@@ -7,7 +7,6 @@ use iroh::{
     endpoint::ConnectionError,
     protocol::{ProtocolHandler, Router},
 };
-use nom::AsBytes;
 use pid1::Pid1Settings;
 use rust_supervisor::{ChildType, Supervisor, SupervisorConfig};
 use tokio::{io::AsyncWriteExt, net::TcpStream};
@@ -127,7 +126,7 @@ async fn port_forward() -> Result<()> {
 
     // add rpc server
     let rpc_handler = RpcHandler;
-    builder = builder.accept(b"/coman/rpc/".as_bytes(), rpc_handler);
+    builder = builder.accept(b"/coman/rpc", rpc_handler);
     let _router = builder.spawn();
     println!("port forwarding started");
 
