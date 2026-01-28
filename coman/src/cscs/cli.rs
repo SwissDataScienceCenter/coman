@@ -144,12 +144,26 @@ pub(crate) async fn cli_cscs_job_resource_usage(
 ) -> Result<()> {
     let job_id = maybe_job_id_from_name(job, system.clone(), platform.clone()).await?;
     let result = cscs_resource_usage(job_id, system).await?;
+    println!("CPU: {:.1}%", result.cpu);
     println!(
-        "CPU: {}%, Memory: RSS {} VSS {}, GPU: {}",
-        result.cpu,
+        "Memory: RSS {:.1}, VSS: {:.1}",
         ByteSize::b(result.rss).display().iec(),
         ByteSize::b(result.vss).display().iec(),
-        result.gpu.map(|g| g.to_string()).unwrap_or("N/A".to_string())
+    );
+    println!(
+        "GPU: {}",
+        result
+            .gpu
+            .map(|g| g
+                .into_iter()
+                .map(|(total, used)| format!(
+                    "{}/{}({:.1}%)",
+                    ByteSize::b(used).display().iec(),
+                    ByteSize::b(total).display().iec(),
+                    used as f64 / total as f64 * 100.0
+                ))
+                .join(", "))
+            .unwrap_or("N/A".to_string())
     );
 
     Ok(())

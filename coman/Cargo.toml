@@ -91,7 +91,6 @@ tarpc = { version = "0.37.0", features = [
 ] }
 tokio-duplex = "1.0.1"
 sysinfo = "0.38.0"
-nvml-wrapper = "0.11.0"
 bytesize = "2.3.1"
 
 [build-dependencies]

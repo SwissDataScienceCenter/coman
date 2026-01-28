@@ -52,7 +52,6 @@ use crate::{
 };
 
 const CSCS_MAX_DIRECT_SIZE: usize = 5242880;
-const DCGM_ENROOT_HOOK: &str = include_str!("./dcgm_enroot_hook.sh");
 
 async fn get_access_token() -> Result<Secret> {
     let client_id = match get_secret(CLIENT_ID_SECRET_NAME).await {
@@ -751,30 +750,6 @@ async fn handle_script(
 
     Ok(script_path)
 }
-async fn setup_dcgm_hook(api_client: &CscsApi, current_system: &str) -> Result<()> {
-    let user_dirs = file_system_roots(Some(FileSystemType::Users)).await?;
-    let user_dir = user_dirs
-        .first()
-        .ok_or(eyre!("couldn't find user root directory on remote"))?;
-    let path = PathBuf::from(user_dir.name.clone())
-        .join(".config")
-        .join("enroot")
-        .join("hooks.d")
-        .join("cscs_jobreport_dcgm_hook.sh");
-
-    let response = api_client.checksum(current_system, path.clone()).await;
-    if let Ok(Some(_)) = response {
-        // file exists
-        return Ok(());
-    }
-    api_client
-        .mkdir(current_system, path.parent().unwrap().to_path_buf())
-        .await?;
-    api_client
-        .upload(current_system, path, DCGM_ENROOT_HOOK.as_bytes().to_vec())
-        .await
-        .wrap_err("couldn't upload dcgm enroot hook ".to_string())
-}
 
 pub async fn cscs_job_start(
     name: Option<String>,
@@ -832,9 +807,6 @@ pub async fn cscs_job_start(
             if coman_squash.is_none() {
                 println!("Warning: coman squash wasn't templated and is needed for ssh through coman to work");
             }
-            if let Err(e) = setup_dcgm_hook(&api_client, current_system).await {
-                println!("Warning: couldn't set up dcgm hook: {e:?}");
-            }
             let environment_path = handle_edf(
                 &api_client,
                 &base_path,
@@ -890,7 +862,7 @@ pub async fn cscs_file_list(
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
             api_client
-                .list_path(&system.unwrap_or(config.values.cscs.current_system), path)
+                .list_path(&system.unwrap_or(config.values.cscs.current_system), path, false)
                 .await
         }
         Err(e) => Err(e),
@@ -946,7 +918,7 @@ pub async fn cscs_file_delete(
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
             let current_system = &system.unwrap_or(config.values.cscs.current_system);
-            let paths = api_client.list_path(current_system, remote.clone()).await?;
+            let paths = api_client.list_path(current_system, remote.clone(), false).await?;
             let path = paths.first().ok_or(eyre!("remote path doesn't exist"))?;
             if let PathType::Directory = path.path_type {
                 return Err(eyre!("remote path must be a file, not directory"));
@@ -975,7 +947,7 @@ pub async fn cscs_file_download(
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
             let current_system = &system.unwrap_or(config.values.cscs.current_system);
-            let paths = api_client.list_path(current_system, remote.clone()).await?;
+            let paths = api_client.list_path(current_system, remote.clone(), false).await?;
             let path = paths.first().ok_or(eyre!("remote path doesn't exist"))?;
             if let PathType::Directory = path.path_type {
                 return Err(eyre!("remote path must be a file, not directory"));
@@ -1008,7 +980,7 @@ pub async fn cscs_file_upload(
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
             let current_system = &system.unwrap_or(config.values.cscs.current_system);
-            let existing = api_client.list_path(current_system, remote.clone()).await?;
+            let existing = api_client.list_path(current_system, remote.clone(), false).await?;
             let remote = if !existing.is_empty() {
                 if existing.len() == 1 && existing[0].path_type == PathType::File {
                     return Err(eyre!("remote file already exists"));

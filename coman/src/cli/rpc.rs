@@ -1,6 +1,6 @@
+use bytesize::ByteSize;
 use futures::StreamExt;
 use iroh::protocol::ProtocolHandler;
-use nvml_wrapper::Nvml;
 use serde::{Deserialize, Serialize};
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, get_current_pid};
 use tarpc::{
@@ -16,7 +16,7 @@ pub struct ResourceUsage {
     pub cpu: f32,
     pub rss: u64,
     pub vss: u64,
-    pub gpu: Option<u64>,
+    pub gpu: Option<Vec<(u64, u64)>>,
 }
 
 #[tarpc::service]
@@ -43,25 +43,30 @@ impl ComanRPC for RpcServer {
         let Some(process) = sys.process(pid) else {
             return ResourceUsage::default();
         };
-        let gpu_usage = match Nvml::init() {
-            Ok(nvml) => match nvml.device_by_index(0) {
-                Ok(device) => match device.memory_info() {
-                    Ok(memory_info) => Some(memory_info.used),
-                    Err(e) => {
-                        println!("Couldn't get GPU memory info: {e:?}");
-                        None
-                    }
-                },
-                Err(e) => {
-                    println!("couldn't load nvidia device 0: {e:?}");
-                    None
-                }
-            },
-            Err(e) => {
-                println!("Nvidia Device Info not available: {e:?}");
-                None
-            }
+        let gpu_usage = if let Ok(output) = std::process::Command::new("nvidia-smi")
+            .args(vec![
+                "--query-gpu=memory.total,memory.used",
+                "--format=csv,noheader,nounits",
+            ])
+            .output()
+        {
+            let output = String::from_utf8_lossy(&output.stdout);
+            let usage = output
+                .lines()
+                .map(|l| l.split_once(",").unwrap())
+                .map(|(total, used)| {
+                    (
+                        ByteSize::mib(total.trim().parse::<u64>().unwrap()).as_u64(),
+                        ByteSize::mib(used.trim().parse::<u64>().unwrap()).as_u64(),
+                    )
+                })
+                .collect();
+            Some(usage)
+        } else {
+            println!("Failed to execute nvidia-smi, maybe it's not installed");
+            None
         };
+
         ResourceUsage {
             cpu: process.cpu_usage() / sys.cpus().len() as f32,
             rss: process.memory(),

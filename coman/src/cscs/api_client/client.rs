@@ -222,8 +222,8 @@ impl CscsApi {
             None => Ok("".to_string()),
         }
     }
-    pub async fn list_path(&self, system_name: &str, path: PathBuf) -> Result<Vec<PathEntry>> {
-        let result = get_filesystem_ops_ls(&self.client, system_name, path)
+    pub async fn list_path(&self, system_name: &str, path: PathBuf, show_hidden: bool) -> Result<Vec<PathEntry>> {
+        let result = get_filesystem_ops_ls(&self.client, system_name, path, show_hidden)
             .await
             .wrap_err("couldn't list path")?;
         match result.output {
