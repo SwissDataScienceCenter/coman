@@ -11,7 +11,7 @@ use pid1::Pid1Settings;
 use rust_supervisor::{ChildType, Supervisor, SupervisorConfig};
 use tokio::{io::AsyncWriteExt, net::TcpStream};
 
-use crate::cli::rpc::RpcHandler;
+use crate::cli::rpc::{COMAN_RPC_ALPN, RpcHandler};
 
 const SECRET_KEY_ENV: &str = "COMAN_IROH_SECRET";
 const PORT_FORWARD_ENV: &str = "COMAN_FORWARDED_PORTS";
@@ -126,7 +126,7 @@ async fn port_forward() -> Result<()> {
 
     // add rpc server
     let rpc_handler = RpcHandler;
-    builder = builder.accept(b"/coman/rpc", rpc_handler);
+    builder = builder.accept(COMAN_RPC_ALPN, rpc_handler);
     let _router = builder.spawn();
     println!("port forwarding started");
 

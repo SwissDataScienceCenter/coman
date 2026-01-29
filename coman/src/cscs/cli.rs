@@ -143,12 +143,14 @@ pub(crate) async fn cli_cscs_job_resource_usage(
     platform: Option<ComputePlatform>,
 ) -> Result<()> {
     let job_id = maybe_job_id_from_name(job, system.clone(), platform.clone()).await?;
-    let result = cscs_resource_usage(job_id, system).await?;
+    let result = cscs_resource_usage(job_id, system)
+        .await
+        .wrap_err("failed to fetch resource usage")?;
     println!("CPU: {:.1}%", result.cpu);
     println!(
-        "Memory: RSS {:.1}, VSS: {:.1}",
+        "Memory: RSS {:.1}, VSZ: {:.1}",
         ByteSize::b(result.rss).display().iec(),
-        ByteSize::b(result.vss).display().iec(),
+        ByteSize::b(result.vsz).display().iec(),
     );
     println!(
         "GPU: {}",
@@ -264,7 +266,7 @@ pub(crate) async fn cli_cscs_file_download(
             while !transfer_done {
                 if let Some(job) = cscs_job_details(job_data.0, system.clone(), platform.clone()).await? {
                     match job.status {
-                        JobStatus::Pending | JobStatus::Running => {}
+                        JobStatus::Pending | JobStatus::Requeued | JobStatus::Running => {}
                         JobStatus::Finished => transfer_done = true,
                         JobStatus::Cancelled | JobStatus::Failed => return Err(eyre!("transfer job failed")),
                         JobStatus::Timeout => return Err(eyre!("transfer job timed out")),

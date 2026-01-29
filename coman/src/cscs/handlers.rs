@@ -32,7 +32,7 @@ use super::api_client::client::{EdfSpec, ScriptSpec};
 use crate::{
     cli::{
         app::COMAN_VERSION,
-        rpc::{ComanRPCClient, ResourceUsage},
+        rpc::{COMAN_RPC_ALPN, ComanRPCClient, ResourceUsage},
     },
     config::{ComputePlatform, Config, get_data_dir},
     cscs::{
@@ -174,7 +174,7 @@ pub async fn cscs_job_log(
 pub async fn cscs_resource_usage(job_id: i64, system: Option<String>) -> Result<ResourceUsage> {
     let endpoint_id = get_endpoint_id(job_id, system).await?;
 
-    let alpn: Vec<u8> = b"/coman/rpc".to_vec();
+    let alpn: Vec<u8> = COMAN_RPC_ALPN.to_vec();
     let secret_key = SecretKey::generate(&mut rand::rng());
     let endpoint = Endpoint::builder().secret_key(secret_key).bind().await?;
 
@@ -339,7 +339,7 @@ async fn garbage_collect_ssh(api_client: &CscsApi, current_system: &str) -> Resu
     let jobs = api_client.list_jobs(current_system, None).await?;
     let job_entries: HashSet<_> = jobs
         .iter()
-        .filter(|j| j.status == JobStatus::Pending || j.status == JobStatus::Running)
+        .filter(|j| j.status == JobStatus::Pending || j.status == JobStatus::Running || j.status == JobStatus::Requeued)
         .map(|j| format!("{}_{}", current_system, j.id))
         .collect();
     let outdated_endpoints: Vec<_> = std::fs::read_dir(&data_dir)?

@@ -5,6 +5,7 @@ pub(crate) mod file_tree;
 pub(crate) mod global_listener;
 pub(crate) mod info_popup;
 pub(crate) mod login_popup;
+pub(crate) mod resource_usage;
 pub(crate) mod status_bar;
 pub(crate) mod system_select_popup;
 pub(crate) mod toolbar;

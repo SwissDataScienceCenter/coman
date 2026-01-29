@@ -11,12 +11,30 @@ use tokio_duplex::Duplex;
 
 use crate::cli::app::COMAN_VERSION;
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub const COMAN_RPC_ALPN: &[u8; 10] = b"/coman/rpc";
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ResourceUsage {
     pub cpu: f32,
     pub rss: u64,
-    pub vss: u64,
+    pub vsz: u64,
     pub gpu: Option<Vec<(u64, u64)>>,
+}
+
+impl Eq for ResourceUsage {}
+impl Ord for ResourceUsage {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.cpu.total_cmp(&other.cpu).then(
+            self.rss
+                .cmp(&other.rss)
+                .then(self.vsz.cmp(&other.vsz).then(self.gpu.cmp(&other.gpu))),
+        )
+    }
+}
+impl PartialOrd for ResourceUsage {
+    fn partial_cmp(&self, other: &ResourceUsage) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 #[tarpc::service]
@@ -70,7 +88,7 @@ impl ComanRPC for RpcServer {
         ResourceUsage {
             cpu: process.cpu_usage() / sys.cpus().len() as f32,
             rss: process.memory(),
-            vss: process.virtual_memory(),
+            vsz: process.virtual_memory(),
             gpu: gpu_usage,
         }
     }

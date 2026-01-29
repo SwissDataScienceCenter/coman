@@ -5,6 +5,7 @@ pub enum Id {
     WorkloadList,
     WorkloadLogs,
     WorkloadDetails,
+    WorkloadResourceUsage,
     GlobalListener,
     Menu,
     InfoPopup,
