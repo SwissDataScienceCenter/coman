@@ -10,7 +10,7 @@ use nom::{
     character::complete::{alphanumeric1, digit1},
     combinator::{complete, opt, recognize},
     multi::{many_m_n, many1, separated_list0, separated_list1},
-    sequence::{preceded, terminated},
+    sequence::{preceded, separated_pair, terminated},
 };
 use oci_distribution::{
     Client, Reference,
@@ -72,7 +72,10 @@ impl DockerImageUrl {
         });
         let reference = self.to_string().parse()?;
         let auth = docker_auth(&reference)?;
-        let (manifest, _) = client.pull_manifest(&reference, &auth).await?;
+        let (manifest, _) = client
+            .pull_manifest(&reference, &auth)
+            .await
+            .wrap_err(format!("Couldn't get image manifest for image {reference}"))?;
         match manifest {
             OciManifest::Image(oci_image_manifest) => {
                 // it's not clear what is returned in this case, I never hit this in my testing.
@@ -129,15 +132,16 @@ impl FromStr for DockerImageUrl {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // see https://ktomk.github.io/pipelines/doc/DOCKER-NAME-TAG.html#syntax
         let host = opt(terminated(
-            alt((
-                recognize((separated_list1(tag("."), alphanumeric1), tag(":"), digit1)),
-                recognize(separated_list1(tag("."), alphanumeric1)),
+            recognize(separated_pair(
+                separated_pair(alphanumeric1, tag("."), separated_list1(tag("."), alphanumeric1)),
+                opt(tag(":")),
+                opt(digit1),
             )),
             tag("/"),
         ));
-        let image = recognize(separated_list0(
+        let image = recognize(separated_list1(
             tag("/"),
-            separated_list0(
+            separated_list1(
                 alt((
                     tag("."),
                     recognize(many_m_n(1, 2, tag("_"))),
@@ -200,6 +204,8 @@ mod tests {
 
     #[rstest]
     #[case("ubuntu",(None,"ubuntu",None,None))]
+    #[case("nvidia/cuda:13.1.1-cudnn-devel-ubuntu24.04",(None,"nvidia/cuda",Some("13.1.1-cudnn-devel-ubuntu24.04"),None))]
+    #[case("nvidia/cuda@sha256:deadbeef",(None,"nvidia/cuda",None,Some("deadbeef")))]
     #[case("docker.io/library/hello-world:latest@sha256:deadbeef",(Some("docker.io"),"library/hello-world",Some("latest"),Some("deadbeef")))]
     #[case("ghcr.io/swissdatasciencecenter/renku-frontend-buildpacks/run-image:0.2.1",(Some("ghcr.io"),"swissdatasciencecenter/renku-frontend-buildpacks/run-image",Some("0.2.1"),None))]
     #[case("test.ghcr.io/a/b/c/d/e:a-1.f-2", (Some("test.ghcr.io"), "a/b/c/d/e", Some("a-1.f-2"), None))]

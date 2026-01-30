@@ -13,7 +13,7 @@ use crate::{
         messages::{JobMsg, Msg},
         user_events::{CscsEvent, JobEvent, UserEvent},
     },
-    cscs::api_client::types::Job,
+    cscs::api_client::types::{Job, JobStatus},
 };
 
 #[derive(MockComponent)]
@@ -108,6 +108,23 @@ impl Component<Msg, UserEvent> for WorkloadList {
                 {
                     let job = self.jobs[index].clone();
                     return Some(Msg::Job(JobMsg::Log(job.id)));
+                }
+                CmdResult::None
+            }
+            Event::Keyboard(KeyEvent {
+                code: Key::Char('r'),
+                modifiers: KeyModifiers::NONE,
+            }) => {
+                if let State::One(StateValue::Usize(index)) = self.state()
+                    && !self.jobs.is_empty()
+                {
+                    let job = self.jobs[index].clone();
+                    if job.status != JobStatus::Running {
+                        return Some(Msg::Error(
+                            "Can only get resource usage for jobs in 'Running' state".to_string(),
+                        ));
+                    }
+                    return Some(Msg::Job(JobMsg::ResourceUsage(job.id)));
                 }
                 CmdResult::None
             }

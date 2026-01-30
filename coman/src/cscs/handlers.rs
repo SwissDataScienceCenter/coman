@@ -19,15 +19,21 @@ use itertools::Itertools;
 use regex::Regex;
 use reqwest::Url;
 use sha2::{Digest, Sha256};
+use tarpc::{client, context, serde_transport, tokio_serde::formats::Bincode};
 use tokio::{
     fs::File,
     io::AsyncWriteExt,
     net::{TcpListener, TcpStream},
 };
+use tokio_duplex::Duplex;
+use tokio_util::codec::LengthDelimitedCodec;
 
 use super::api_client::client::{EdfSpec, ScriptSpec};
 use crate::{
-    cli::app::COMAN_VERSION,
+    cli::{
+        app::COMAN_VERSION,
+        rpc::{COMAN_RPC_ALPN, ComanRPCClient, ResourceUsage},
+    },
     config::{ComputePlatform, Config, get_data_dir},
     cscs::{
         api_client::{
@@ -165,12 +171,48 @@ pub async fn cscs_job_log(
     }
 }
 
+pub async fn cscs_resource_usage(job_id: i64, system: Option<String>) -> Result<ResourceUsage> {
+    let endpoint_id = get_endpoint_id(job_id, system).await?;
+
+    let alpn: Vec<u8> = COMAN_RPC_ALPN.to_vec();
+    let secret_key = SecretKey::generate(&mut rand::rng());
+    let endpoint = Endpoint::builder().secret_key(secret_key).bind().await?;
+
+    match endpoint.connect(endpoint_id, &alpn).await {
+        Ok(connection) => {
+            let (iroh_send, iroh_recv) = connection.open_bi().await?;
+            let combined = Duplex::new(iroh_recv, iroh_send);
+            let codec_builder = LengthDelimitedCodec::builder();
+            let framed = codec_builder.new_framed(combined);
+            let transport = serde_transport::new(framed, Bincode::default());
+            let client = ComanRPCClient::new(client::Config::default(), transport);
+            client
+                .spawn()
+                .resource_usage(context::current())
+                .await
+                .wrap_err("couldn't get resource usage from remote")
+        }
+        Err(e) => Err(e).wrap_err("couldn't establish tunnel to remote"),
+    }
+}
+
 pub async fn cscs_port_forward(
     job_id: i64,
     source_port: u16,
     destination_port: u16,
     system: Option<String>,
 ) -> Result<()> {
+    let endpoint_id = get_endpoint_id(job_id, system).await?;
+    let listener = TcpListener::bind(format!("127.0.0.1:{source_port}")).await?;
+    println!("forwarding connection for port {source_port}");
+
+    loop {
+        let (socket, _) = listener.accept().await?;
+        process_port_forward(endpoint_id, destination_port, socket).await?;
+    }
+}
+
+async fn get_endpoint_id(job_id: i64, system: Option<String>) -> Result<iroh::PublicKey, eyre::Error> {
     let data_dir = get_data_dir();
     let config = Config::new().unwrap();
     let current_system = &system.unwrap_or(config.values.cscs.current_system);
@@ -190,13 +232,7 @@ pub async fn cscs_port_forward(
     } else {
         return Err(eyre!("invalid endpoint id length"));
     })?;
-    let listener = TcpListener::bind(format!("127.0.0.1:{source_port}")).await?;
-    println!("forwarding connection for port {source_port}");
-
-    loop {
-        let (socket, _) = listener.accept().await?;
-        process_port_forward(endpoint_id, destination_port, socket).await?;
-    }
+    Ok(endpoint_id)
 }
 
 async fn process_port_forward(endpoint_id: EndpointId, destination_port: u16, mut socket: TcpStream) -> Result<()> {
@@ -204,7 +240,6 @@ async fn process_port_forward(endpoint_id: EndpointId, destination_port: u16, mu
     let alpn: Vec<u8> = format!("/coman/{destination_port}").into_bytes();
     let secret_key = SecretKey::generate(&mut rand::rng());
     let endpoint = Endpoint::builder().secret_key(secret_key).bind().await?;
-    // let _router = Router::builder(endpoint.clone()).spawn(); // start local iroh listener
 
     match endpoint.connect(endpoint_id, &alpn).await {
         Ok(connection) => {
@@ -265,7 +300,10 @@ async fn setup_ssh(
         path.canonicalize().map(Some).wrap_err("couldn't get ssh key path")?
     } else {
         // try to figure our ssh key
-        let ssh_dir = dirs::home_dir().ok_or(eyre!("couldn't find home dir"))?.join(".ssh");
+        let ssh_dir = directories::UserDirs::new()
+            .ok_or(eyre!("couldn't find home dir"))?
+            .home_dir()
+            .join(".ssh");
         let mut ssh_path = None;
         for file in ["id_dsa.pub", "id_ecdsa.pub", "id_rsa.pub", "id_ed25519.pub"] {
             let path = ssh_dir.join(file);
@@ -301,7 +339,7 @@ async fn garbage_collect_ssh(api_client: &CscsApi, current_system: &str) -> Resu
     let jobs = api_client.list_jobs(current_system, None).await?;
     let job_entries: HashSet<_> = jobs
         .iter()
-        .filter(|j| j.status == JobStatus::Pending || j.status == JobStatus::Running)
+        .filter(|j| j.status == JobStatus::Pending || j.status == JobStatus::Running || j.status == JobStatus::Requeued)
         .map(|j| format!("{}_{}", current_system, j.id))
         .collect();
     let outdated_endpoints: Vec<_> = std::fs::read_dir(&data_dir)?
@@ -379,7 +417,10 @@ async fn store_ssh_information(
         current_system,
         job_id
     )?;
-    let ssh_dir = dirs::home_dir().ok_or(eyre!("couldn't find home dir"))?.join(".ssh");
+    let ssh_dir = directories::UserDirs::new()
+        .ok_or(eyre!("couldn't find home dir"))?
+        .home_dir()
+        .join(".ssh");
     let ssh_config_path = ssh_dir.join("config");
     let mut ssh_config = std::fs::OpenOptions::new()
         .read(true)
@@ -486,7 +527,7 @@ async fn inject_coman_squash(
     let config = Config::new().unwrap();
     let local_squash_path = maybe_download_latest_squash(current_system, &config).await?;
     let target = base_path.join("coman.sqsh");
-    let file_meta = std::fs::metadata(local_squash_path.clone())?;
+    let file_meta = std::fs::metadata(local_squash_path.clone()).wrap_err("couldn't load coman squash file")?;
 
     #[cfg(target_family = "unix")]
     let size = file_meta.size() as usize;
@@ -610,26 +651,32 @@ async fn handle_edf(
         None
     };
     if let Some(docker_image) = docker_image {
-        let meta = docker_image.inspect().await?;
-        if let Some(system_info) = config.values.cscs.systems.get(current_system) {
-            let mut compatible = false;
-            for sys_platform in system_info.architecture.iter() {
-                if meta.platforms.contains(&sys_platform.clone().into()) {
-                    compatible = true;
+        match docker_image.inspect().await {
+            Ok(meta) => {
+                if let Some(system_info) = config.values.cscs.systems.get(current_system) {
+                    let mut compatible = false;
+                    for sys_platform in system_info.architecture.iter() {
+                        if meta.platforms.contains(&sys_platform.clone().into()) {
+                            compatible = true;
+                        }
+                    }
+
+                    if !compatible {
+                        return Err(eyre!(
+                            "System {} only supports images with architecture(s) '{}' but the supplied image is for architecture(s) '{}'",
+                            current_system,
+                            system_info.architecture.join(","),
+                            meta.platforms
+                                .iter()
+                                .map(|p| p.to_string())
+                                .collect::<Vec<String>>()
+                                .join(",")
+                        ));
+                    }
                 }
             }
-
-            if !compatible {
-                return Err(eyre!(
-                    "System {} only supports images with architecture(s) '{}' but the supplied image is for architecture(s) '{}'",
-                    current_system,
-                    system_info.architecture.join(","),
-                    meta.platforms
-                        .iter()
-                        .map(|p| p.to_string())
-                        .collect::<Vec<String>>()
-                        .join(",")
-                ));
+            Err(e) => {
+                println!("couldn't get image information, skipping checks: {e:?}");
             }
         }
 
@@ -760,7 +807,6 @@ pub async fn cscs_job_start(
             if coman_squash.is_none() {
                 println!("Warning: coman squash wasn't templated and is needed for ssh through coman to work");
             }
-
             let environment_path = handle_edf(
                 &api_client,
                 &base_path,
@@ -816,13 +862,13 @@ pub async fn cscs_file_list(
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
             api_client
-                .list_path(&system.unwrap_or(config.values.cscs.current_system), path)
+                .list_path(&system.unwrap_or(config.values.cscs.current_system), path, false)
                 .await
         }
         Err(e) => Err(e),
     }
 }
-pub async fn file_system_roots() -> Result<Vec<PathEntry>> {
+pub async fn file_system_roots(type_filter: Option<FileSystemType>) -> Result<Vec<PathEntry>> {
     let config = Config::new().expect("couldn't load config");
     let user_info = cscs_user_info(None, None).await?;
     let systems = cscs_system_list(None).await?;
@@ -831,7 +877,17 @@ pub async fn file_system_roots() -> Result<Vec<PathEntry>> {
         .find(|s| s.name == config.values.cscs.current_system)
         .unwrap_or_else(|| panic!("couldn't get info for system {}", config.values.cscs.current_system));
     let mut subpaths = vec![];
-    for fs in system.file_systems.clone() {
+    let filesystems = if let Some(filter) = type_filter {
+        system
+            .file_systems
+            .clone()
+            .into_iter()
+            .filter(|fs| fs.data_type == filter)
+            .collect()
+    } else {
+        system.file_systems.clone()
+    };
+    for fs in filesystems {
         let entry = match cscs_stat_path(PathBuf::from(fs.path.clone()).join(user_info.name.clone()), None, None).await
         {
             Ok(Some(_)) => PathEntry {
@@ -862,7 +918,7 @@ pub async fn cscs_file_delete(
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
             let current_system = &system.unwrap_or(config.values.cscs.current_system);
-            let paths = api_client.list_path(current_system, remote.clone()).await?;
+            let paths = api_client.list_path(current_system, remote.clone(), false).await?;
             let path = paths.first().ok_or(eyre!("remote path doesn't exist"))?;
             if let PathType::Directory = path.path_type {
                 return Err(eyre!("remote path must be a file, not directory"));
@@ -891,7 +947,7 @@ pub async fn cscs_file_download(
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
             let current_system = &system.unwrap_or(config.values.cscs.current_system);
-            let paths = api_client.list_path(current_system, remote.clone()).await?;
+            let paths = api_client.list_path(current_system, remote.clone(), false).await?;
             let path = paths.first().ok_or(eyre!("remote path doesn't exist"))?;
             if let PathType::Directory = path.path_type {
                 return Err(eyre!("remote path must be a file, not directory"));
@@ -924,7 +980,7 @@ pub async fn cscs_file_upload(
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
             let current_system = &system.unwrap_or(config.values.cscs.current_system);
-            let existing = api_client.list_path(current_system, remote.clone()).await?;
+            let existing = api_client.list_path(current_system, remote.clone(), false).await?;
             let remote = if !existing.is_empty() {
                 if existing.len() == 1 && existing[0].path_type == PathType::File {
                     return Err(eyre!("remote file already exists"));

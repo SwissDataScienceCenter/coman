@@ -141,6 +141,7 @@ pub enum JobStatus {
     Cancelled,
     Failed,
     Timeout,
+    Requeued,
 }
 impl From<String> for JobStatus {
     fn from(value: String) -> Self {
@@ -151,6 +152,7 @@ impl From<String> for JobStatus {
             "CANCELLED" => JobStatus::Cancelled,
             "PENDING" => JobStatus::Pending,
             "TIMEOUT" => JobStatus::Timeout,
+            "REQUEUED" => JobStatus::Requeued,
             other => panic!("got job status: {}", other),
         }
     }

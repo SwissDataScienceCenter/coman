@@ -4,6 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use bytesize::ByteSize;
 use color_eyre::{Result, eyre::Context};
 use eyre::eyre;
 use futures::StreamExt;
@@ -22,8 +23,8 @@ use crate::{
         api_client::{client::JobStartOptions, types::JobStatus},
         handlers::{
             cscs_file_delete, cscs_file_download, cscs_file_list, cscs_file_upload, cscs_job_cancel, cscs_job_details,
-            cscs_job_list, cscs_job_log, cscs_job_start, cscs_login, cscs_port_forward, cscs_system_list,
-            cscs_system_set,
+            cscs_job_list, cscs_job_log, cscs_job_start, cscs_login, cscs_port_forward, cscs_resource_usage,
+            cscs_system_list, cscs_system_set,
         },
     },
 };
@@ -136,6 +137,40 @@ pub(crate) async fn cli_cscs_port_forward(
     cscs_port_forward(job_id, source_port, destination_port, system).await
 }
 
+pub(crate) async fn cli_cscs_job_resource_usage(
+    job: JobIdOrName,
+    system: Option<String>,
+    platform: Option<ComputePlatform>,
+) -> Result<()> {
+    let job_id = maybe_job_id_from_name(job, system.clone(), platform.clone()).await?;
+    let result = cscs_resource_usage(job_id, system)
+        .await
+        .wrap_err("failed to fetch resource usage")?;
+    println!("CPU: {:.1}%", result.cpu);
+    println!(
+        "Memory: RSS {:.1}, VSZ: {:.1}",
+        ByteSize::b(result.rss).display().iec(),
+        ByteSize::b(result.vsz).display().iec(),
+    );
+    println!(
+        "GPU: {}",
+        result
+            .gpu
+            .map(|g| g
+                .into_iter()
+                .map(|(total, used)| format!(
+                    "{}/{}({:.1}%)",
+                    ByteSize::b(used).display().iec(),
+                    ByteSize::b(total).display().iec(),
+                    used as f64 / total as f64 * 100.0
+                ))
+                .join(", "))
+            .unwrap_or("N/A".to_string())
+    );
+
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn cli_cscs_job_start(
     name: Option<String>,
@@ -231,7 +266,7 @@ pub(crate) async fn cli_cscs_file_download(
             while !transfer_done {
                 if let Some(job) = cscs_job_details(job_data.0, system.clone(), platform.clone()).await? {
                     match job.status {
-                        JobStatus::Pending | JobStatus::Running => {}
+                        JobStatus::Pending | JobStatus::Requeued | JobStatus::Running => {}
                         JobStatus::Finished => transfer_done = true,
                         JobStatus::Cancelled | JobStatus::Failed => return Err(eyre!("transfer job failed")),
                         JobStatus::Timeout => return Err(eyre!("transfer job timed out")),

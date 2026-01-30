@@ -16,12 +16,16 @@ pub async fn get_filesystem_ops_ls(
     client: &FirecrestClient,
     system_name: &str,
     path: PathBuf,
+    show_hidden: bool,
 ) -> Result<GetDirectoryLsResponse> {
     let path = path.as_os_str().to_str().ok_or(eyre!("couldn't cast path to string"))?;
     let response = client
         .get(
             format!("filesystem/{system_name}/ops/ls").as_str(),
-            Some(vec![("path", path)]),
+            Some(vec![
+                ("path", path),
+                ("showHidden", if show_hidden { "true" } else { "false" }),
+            ]),
         )
         .await?;
     let model: GetDirectoryLsResponse = serde_json::from_str(response.as_str())?;

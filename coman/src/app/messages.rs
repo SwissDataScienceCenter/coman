@@ -53,6 +53,7 @@ pub enum CscsMsg {
 #[derive(Debug, PartialEq)]
 pub enum JobMsg {
     Log(usize),
+    ResourceUsage(usize),
     Details(JobDetail),
     GetDetails(usize),
     Cancel(usize),

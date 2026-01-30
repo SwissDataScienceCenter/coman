@@ -1,5 +1,6 @@
 use crate::{
     app::messages::View,
+    cli::rpc::ResourceUsage,
     cscs::api_client::types::{Job, JobDetail, PathEntry, System},
 };
 
@@ -9,6 +10,7 @@ pub enum CscsEvent {
     GotWorkloadData(Vec<Job>),
     GotJobLog(String),
     GotJobDetails(JobDetail),
+    GotJobResourceUsage(ResourceUsage),
     SelectSystemList(Vec<System>),
     SystemSelected(String),
 }

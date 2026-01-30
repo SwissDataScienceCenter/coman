@@ -18,7 +18,7 @@ use crate::{
         api_client::types::JobStatus,
         handlers::{
             cscs_file_delete, cscs_file_download, cscs_file_list, cscs_job_cancel, cscs_job_details, cscs_job_list,
-            cscs_job_log, cscs_system_list, file_system_roots,
+            cscs_job_log, cscs_resource_usage, cscs_system_list, file_system_roots,
         },
         oauth2::{ACCESS_TOKEN_SECRET_NAME, REFRESH_TOKEN_SECRET_NAME, finish_cscs_device_login},
     },
@@ -220,6 +220,55 @@ impl PollAsync<UserEvent> for AsyncJobLogPort {
     }
 }
 
+pub enum JobResourceUsageAction {
+    Job(usize),
+    Stop,
+}
+
+/// This port handles polling the logs of a CSCS job
+pub(crate) struct AsyncJobResourceUsagePort {
+    receiver: mpsc::Receiver<JobResourceUsageAction>,
+    current_job: Option<usize>,
+}
+
+impl AsyncJobResourceUsagePort {
+    pub fn new(receiver: mpsc::Receiver<JobResourceUsageAction>) -> Self {
+        Self {
+            receiver,
+            current_job: None,
+        }
+    }
+}
+#[tuirealm::async_trait]
+impl PollAsync<UserEvent> for AsyncJobResourceUsagePort {
+    async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
+        if self.receiver.is_closed() {
+            return Ok(Some(Event::None));
+        }
+        if !self.receiver.is_empty()
+            && let Some(val) = self.receiver.recv().await
+        {
+            match val {
+                JobResourceUsageAction::Job(jobid) => {
+                    self.current_job = Some(jobid);
+                }
+                JobResourceUsageAction::Stop => {
+                    self.current_job = None;
+                }
+            }
+        }
+        if let Some(job_id) = self.current_job {
+            match cscs_resource_usage(job_id as i64, None).await {
+                Ok(ru) => Ok(Some(Event::User(UserEvent::Cscs(CscsEvent::GotJobResourceUsage(ru))))),
+                Err(e) => Ok(Some(Event::User(UserEvent::Status(StatusEvent::Warning(format!(
+                    "couldn't get resource usage: {e:?}"
+                )))))),
+            }
+        } else {
+            Ok(Some(Event::None))
+        }
+    }
+}
 #[derive(Debug)]
 pub enum BackgroundTask {
     ListPaths(PathBuf),
@@ -248,7 +297,7 @@ async fn list_files(id: PathBuf) -> Result<Option<Event<UserEvent>>> {
         .map_err(|_| eyre!("couldn't convert id to string".to_owned()))?;
     if id_str == "/" {
         // load file system roots
-        let subpaths = file_system_roots().await?;
+        let subpaths = file_system_roots(None).await?;
         Ok(Some(Event::User(UserEvent::File(FileEvent::List(id_str, subpaths)))))
     } else {
         let subpaths = cscs_file_list(id, None, None).await?;
@@ -271,7 +320,7 @@ async fn download_file(
             while !transfer_done {
                 if let Some(job) = cscs_job_details(job_data.0, None, None).await? {
                     match job.status {
-                        JobStatus::Pending | JobStatus::Running => {
+                        JobStatus::Pending | JobStatus::Running | JobStatus::Requeued => {
                             event_tx
                                 .send(UserEvent::Status(StatusEvent::Info(
                                     "waiting for transfer job".to_owned(),

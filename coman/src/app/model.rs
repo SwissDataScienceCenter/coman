@@ -21,12 +21,12 @@ use crate::{
     },
     components::{
         context_menu::ContextMenu, download_popup::DownloadTargetInput, error_popup::ErrorPopup, info_popup::InfoPopup,
-        login_popup::LoginPopup, system_select_popup::SystemSelectPopup, workload_details::WorkloadDetails,
-        workload_list::WorkloadList, workload_log::WorkloadLog,
+        login_popup::LoginPopup, resource_usage::ResourceUsage, system_select_popup::SystemSelectPopup,
+        workload_details::WorkloadDetails, workload_list::WorkloadList, workload_log::WorkloadLog,
     },
     cscs::{
         handlers::{cscs_login, cscs_system_set},
-        ports::{BackgroundTask, JobLogAction},
+        ports::{BackgroundTask, JobLogAction, JobResourceUsageAction},
     },
     trace_dbg,
     util::ui::{draw_area_in_absolute, draw_area_in_absolute_fixed_height},
@@ -58,6 +58,10 @@ where
     /// sending None stops watching
     pub job_log_tx: mpsc::Sender<JobLogAction>,
 
+    /// Triggers watching job logs
+    /// sending None stops watching
+    pub job_resource_usage_tx: mpsc::Sender<JobResourceUsageAction>,
+
     /// Allows creating user events based on messages
     pub user_event_tx: mpsc::Sender<UserEvent>,
 
@@ -69,12 +73,14 @@ impl<T> Model<T>
 where
     T: TerminalAdapter,
 {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         app: Application<Id, Msg, UserEvent>,
         bridge: TerminalBridge<T>,
         error_tx: mpsc::Sender<String>,
         select_system_tx: mpsc::Sender<()>,
         job_log_tx: mpsc::Sender<JobLogAction>,
+        job_resource_usage_tx: mpsc::Sender<JobResourceUsageAction>,
         user_event_tx: mpsc::Sender<UserEvent>,
         background_task_tx: mpsc::Sender<BackgroundTask>,
     ) -> Self {
@@ -87,6 +93,7 @@ where
             error_tx,
             select_system_tx,
             job_log_tx,
+            job_resource_usage_tx,
             user_event_tx,
             background_task_tx,
         }
@@ -151,6 +158,7 @@ where
         app.view(&Id::WorkloadList, frame, area);
         app.view(&Id::WorkloadLogs, frame, area);
         app.view(&Id::WorkloadDetails, frame, area);
+        app.view(&Id::WorkloadResourceUsage, frame, area);
     }
     fn view_files(app: &mut Application<Id, Msg, UserEvent>, frame: &mut Frame, area: Rect) {
         if app.mounted(&Id::FileView) {
@@ -314,6 +322,9 @@ where
                 if self.app.mounted(&Id::WorkloadDetails) {
                     assert!(self.app.umount(&Id::WorkloadDetails).is_ok());
                 }
+                if self.app.mounted(&Id::WorkloadResourceUsage) {
+                    assert!(self.app.umount(&Id::WorkloadResourceUsage).is_ok());
+                }
                 if !self.app.mounted(&Id::WorkloadLogs) {
                     assert!(
                         self.app
@@ -362,6 +373,12 @@ where
                             .is_ok()
                     );
                 }
+                if self.app.mounted(&Id::WorkloadResourceUsage) {
+                    assert!(self.app.umount(&Id::WorkloadResourceUsage).is_ok());
+                }
+                if self.app.mounted(&Id::WorkloadLogs) {
+                    assert!(self.app.umount(&Id::WorkloadLogs).is_ok());
+                }
                 if !self.app.mounted(&Id::WorkloadDetails) {
                     assert!(
                         self.app
@@ -370,6 +387,37 @@ where
                     );
                 }
                 assert!(self.app.active(&Id::WorkloadDetails).is_ok());
+                None
+            }
+            JobMsg::ResourceUsage(jobid) => {
+                if self.app.mounted(&Id::WorkloadList) {
+                    assert!(
+                        self.app
+                            .attr(&Id::WorkloadList, Attribute::Display, AttrValue::Flag(false))
+                            .is_ok()
+                    );
+                }
+                if self.app.mounted(&Id::WorkloadDetails) {
+                    assert!(self.app.umount(&Id::WorkloadDetails).is_ok());
+                }
+                if self.app.mounted(&Id::WorkloadLogs) {
+                    assert!(self.app.umount(&Id::WorkloadLogs).is_ok());
+                }
+                if !self.app.mounted(&Id::WorkloadResourceUsage) {
+                    assert!(
+                        self.app
+                            .mount(Id::WorkloadResourceUsage, Box::new(ResourceUsage::default()), vec![])
+                            .is_ok()
+                    );
+                }
+                assert!(self.app.active(&Id::WorkloadResourceUsage).is_ok());
+                let job_resource_usage_tx = self.job_resource_usage_tx.clone();
+                tokio::spawn(async move {
+                    job_resource_usage_tx
+                        .send(JobResourceUsageAction::Job(jobid))
+                        .await
+                        .unwrap();
+                });
                 None
             }
             JobMsg::Switch => {
@@ -385,6 +433,9 @@ where
                 }
                 if self.app.mounted(&Id::WorkloadDetails) {
                     assert!(self.app.umount(&Id::WorkloadDetails).is_ok());
+                }
+                if self.app.mounted(&Id::WorkloadResourceUsage) {
+                    assert!(self.app.umount(&Id::WorkloadResourceUsage).is_ok());
                 }
                 if !self.app.mounted(&Id::WorkloadList) {
                     assert!(
@@ -403,6 +454,11 @@ where
                 tokio::spawn(async move {
                     // stopp polling for logs
                     job_log_tx.send(JobLogAction::Stop).await.unwrap();
+                });
+                let job_resource_usage_tx = self.job_resource_usage_tx.clone();
+                tokio::spawn(async move {
+                    // stopp polling for resource_usages
+                    job_resource_usage_tx.send(JobResourceUsageAction::Stop).await.unwrap();
                 });
                 None
             }

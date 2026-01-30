@@ -35,12 +35,12 @@ use crate::{
         api_client::client::JobStartOptions,
         cli::{
             cli_cscs_file_delete, cli_cscs_file_download, cli_cscs_file_list, cli_cscs_file_upload,
-            cli_cscs_job_cancel, cli_cscs_job_detail, cli_cscs_job_list, cli_cscs_job_log, cli_cscs_job_start,
-            cli_cscs_login, cli_cscs_port_forward, cli_cscs_set_system, cli_cscs_system_list,
+            cli_cscs_job_cancel, cli_cscs_job_detail, cli_cscs_job_list, cli_cscs_job_log, cli_cscs_job_resource_usage,
+            cli_cscs_job_start, cli_cscs_login, cli_cscs_port_forward, cli_cscs_set_system, cli_cscs_system_list,
         },
         ports::{
-            AsyncBackgroundTaskPort, AsyncFetchWorkloadsPort, AsyncJobLogPort, AsyncSelectSystemPort,
-            AsyncUserEventPort,
+            AsyncBackgroundTaskPort, AsyncFetchWorkloadsPort, AsyncJobLogPort, AsyncJobResourceUsagePort,
+            AsyncSelectSystemPort, AsyncUserEventPort,
         },
     },
     errors::AsyncErrorPort,
@@ -137,6 +137,9 @@ async fn main() -> Result<()> {
                         .await?
                     }
                     CscsJobCommands::Cancel { job } => cli_cscs_job_cancel(job, system, platform).await?,
+                    CscsJobCommands::ResourceUsage { job } => {
+                        cli_cscs_job_resource_usage(job, system, platform).await?
+                    }
                 },
                 CscsCommands::File { command } => match command {
                     CscsFileCommands::List { path } => cli_cscs_file_list(path, system, platform).await?,
@@ -177,6 +180,7 @@ fn run_tui(tick_rate: f64) -> Result<()> {
 
     let (select_system_tx, select_system_rx) = mpsc::channel(100);
     let (job_log_tx, job_log_rx) = mpsc::channel(100);
+    let (job_resource_usage_tx, job_resource_usage_rx) = mpsc::channel(100);
     let (background_task_tx, background_task_rx) = mpsc::channel(100);
     let (user_event_tx, user_event_rx) = mpsc::channel(100);
     let (error_tx, error_rx) = mpsc::channel(100);
@@ -197,6 +201,11 @@ fn run_tui(tick_rate: f64) -> Result<()> {
             1,
         )
         .add_async_port(Box::new(AsyncJobLogPort::new(job_log_rx)), Duration::from_secs(3), 1)
+        .add_async_port(
+            Box::new(AsyncJobResourceUsagePort::new(job_resource_usage_rx)),
+            Duration::from_secs(1),
+            1,
+        )
         .add_async_port(
             Box::new(AsyncBackgroundTaskPort::new(background_task_rx, user_event_tx.clone())),
             Duration::default(),
@@ -318,6 +327,7 @@ fn run_tui(tick_rate: f64) -> Result<()> {
         error_tx,
         select_system_tx,
         job_log_tx,
+        job_resource_usage_tx,
         user_event_tx,
         background_task_tx,
     );

@@ -303,6 +303,14 @@ pub enum CscsJobCommands {
         #[clap(help="id or name of the job (name uses newest job of that name)",  add = ArgValueCompleter::new(job_id_or_name_completer))]
         job: JobIdOrName,
     },
+    #[clap(
+        alias = "ru",
+        about = "show current resource usage of the job, needs coman to be injected in the session [aliases: ru]"
+    )]
+    ResourceUsage {
+        #[clap(help="id or name of the job (name uses newest job of that name)",  add = ArgValueCompleter::new(job_id_or_name_completer))]
+        job: JobIdOrName,
+    },
 }
 fn job_id_or_name_completer(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
     let mut completions = vec![];
@@ -400,7 +408,7 @@ fn remote_path_completer(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> 
     let (send, mut recv) = mpsc::unbounded_channel();
     if current.is_empty() || current == "/" {
         tokio::spawn(async move {
-            let roots = file_system_roots().await;
+            let roots = file_system_roots(None).await;
             if let Ok(roots) = roots {
                 for root in roots {
                     send.send(CompletionCandidate::new(root.name.clone())).unwrap();
