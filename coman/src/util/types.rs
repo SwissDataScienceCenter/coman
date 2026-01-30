@@ -12,12 +12,14 @@ use nom::{
     multi::{many_m_n, many1, separated_list0, separated_list1},
     sequence::{preceded, separated_pair, terminated},
 };
-use oci_distribution::{
+use oci_client::{
     Client, Reference,
     client::{ClientConfig, ClientProtocol},
+    config::ConfigFile,
     manifest::OciManifest,
     secrets::RegistryAuth,
 };
+use oci_spec::image::Arch;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash, strum::Display)]
 pub enum OciPlatform {
@@ -38,9 +40,21 @@ impl From<String> for OciPlatform {
     }
 }
 
+impl From<Arch> for OciPlatform {
+    fn from(value: Arch) -> Self {
+        match value {
+            Arch::ARM64 => Self::arm64,
+            Arch::Amd64 => Self::amd64,
+            _ => Self::Other,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct DockerImageMeta {
     pub platforms: Vec<OciPlatform>,
+    pub entrypoint: Option<Vec<String>>,
+    pub working_dir: Option<String>,
 }
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct DockerImageUrl {
@@ -76,25 +90,33 @@ impl DockerImageUrl {
             .pull_manifest(&reference, &auth)
             .await
             .wrap_err(format!("Couldn't get image manifest for image {reference}"))?;
+        let (_, _, config) = client
+            .pull_manifest_and_config(&reference, &auth)
+            .await
+            .wrap_err(format!("Couldn't get image config for image {reference}"))?;
+
+        let config: ConfigFile = serde_json::from_str(&config).unwrap();
         match manifest {
-            OciManifest::Image(oci_image_manifest) => {
-                // it's not clear what is returned in this case, I never hit this in my testing.
-                // leaving the dbg statement so if a user ever hits this, we can ask for logs and figure it out.
-                let _ = dbg!(oci_image_manifest);
-                Err(eyre!(
-                    "didn't get image index for image, plain manifest does not contain platform data"
-                ))
+            OciManifest::Image(_) => {
+                //Image does not contain platform, read it from config instead (no multi-arch image)
+                Ok(DockerImageMeta {
+                    platforms: vec![config.clone().architecture.into()],
+                    entrypoint: config.clone().config.and_then(|c| c.entrypoint),
+                    working_dir: config.config.and_then(|c| c.working_dir),
+                })
             }
             OciManifest::ImageIndex(oci_image_index) => {
                 let mut platforms: HashSet<OciPlatform> = HashSet::new();
-                platforms.extend(
-                    oci_image_index
-                        .manifests
-                        .into_iter()
-                        .map(|m| m.platform.map(|p| p.architecture).unwrap_or("".to_owned()).into()),
-                );
+                platforms.extend(oci_image_index.manifests.into_iter().map(|m| {
+                    m.platform
+                        .map(|p| p.architecture)
+                        .unwrap_or(Arch::Other("".to_owned()))
+                        .into()
+                }));
                 Ok(DockerImageMeta {
                     platforms: platforms.into_iter().collect(),
+                    entrypoint: config.clone().config.and_then(|c| c.entrypoint),
+                    working_dir: config.config.and_then(|c| c.working_dir),
                 })
             }
         }

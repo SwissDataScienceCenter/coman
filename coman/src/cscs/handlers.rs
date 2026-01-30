@@ -48,7 +48,10 @@ use crate::{
             start_cscs_device_login,
         },
     },
-    util::keyring::{Secret, get_secret, store_secret},
+    util::{
+        keyring::{Secret, get_secret, store_secret},
+        types::{DockerImageMeta, DockerImageUrl},
+    },
 };
 
 const CSCS_MAX_DIRECT_SIZE: usize = 5242880;
@@ -623,6 +626,7 @@ async fn handle_edf(
     iroh_secret: &Option<SecretKey>,
     workdir: &str,
     options: &JobStartOptions,
+    image_meta: &Option<DockerImageMeta>,
 ) -> Result<PathBuf> {
     let config = Config::new().unwrap();
     let environment_path = base_path.join("environment.toml");
@@ -642,47 +646,33 @@ async fn handle_edf(
     let mut context = tera::Context::new();
 
     // check and validate image if set
-    let docker_image = if let Some(image) = options.image.clone() {
-        Some(image)
-    } else if let Some(image) = config.values.cscs.image {
-        let image = image.try_into()?;
-        Some(image)
-    } else {
-        None
-    };
-    if let Some(docker_image) = docker_image {
-        match docker_image.inspect().await {
-            Ok(meta) => {
-                if let Some(system_info) = config.values.cscs.systems.get(current_system) {
-                    let mut compatible = false;
-                    for sys_platform in system_info.architecture.iter() {
-                        if meta.platforms.contains(&sys_platform.clone().into()) {
-                            compatible = true;
-                        }
-                    }
-
-                    if !compatible {
-                        return Err(eyre!(
-                            "System {} only supports images with architecture(s) '{}' but the supplied image is for architecture(s) '{}'",
-                            current_system,
-                            system_info.architecture.join(","),
-                            meta.platforms
-                                .iter()
-                                .map(|p| p.to_string())
-                                .collect::<Vec<String>>()
-                                .join(",")
-                        ));
-                    }
-                }
-            }
-            Err(e) => {
-                println!("couldn't get image information, skipping checks: {e:?}");
-            }
+    if let Some(meta) = image_meta {
+        if let Some(system_info) = config.values.cscs.systems.get(current_system)
+            && !meta
+                .platforms
+                .iter()
+                .any(|p| system_info.architecture.contains(&p.to_string()))
+        {
+            return Err(eyre!(
+                "System {} only supports images with architecture(s) '{}' but the supplied image is for architecture(s) '{}'",
+                current_system,
+                system_info.architecture.join(","),
+                meta.platforms
+                    .iter()
+                    .map(|p| p.to_string())
+                    .collect::<Vec<String>>()
+                    .join(",")
+            ));
         }
-
-        context.insert("edf_image", &docker_image.to_edf());
+    } else {
+        println!("warn: no docker image metadata found, skipping validation");
     }
-
+    if let Some(image) = options.image.clone() {
+        context.insert("edf_image", &image.to_edf());
+    } else if let Some(image) = config.values.cscs.image {
+        let image: DockerImageUrl = image.try_into()?;
+        context.insert("edf_image", &image.to_edf());
+    }
     if !options.port_forward.is_empty() {
         let port_forward = options.port_forward.iter().map(|f| f.to_string()).join(",");
         context.insert("port_forward", &port_forward);
@@ -721,6 +711,7 @@ async fn handle_script(
     coman_squash: Option<PathBuf>,
     workdir: &str,
     options: &JobStartOptions,
+    image_meta: &Option<DockerImageMeta>,
 ) -> Result<PathBuf> {
     let config = Config::new().unwrap();
     let script_path = base_path.join("script.sh");
@@ -734,10 +725,22 @@ async fn handle_script(
     tera.add_raw_template("script.sh", &script_template)?;
     let mut context = tera::Context::new();
     context.insert("name", &job_name);
-    context.insert(
-        "command",
-        &options.command.clone().unwrap_or(config.values.cscs.command).join(" "),
-    );
+    let command = match &options.command {
+        Some(cmd) => cmd.clone(),
+        None => {
+            if !config.values.cscs.command.is_empty() {
+                config.values.cscs.command.clone()
+            } else {
+                // use default entrypoint
+                if let Some(meta) = image_meta {
+                    meta.clone().entrypoint.unwrap_or_default()
+                } else {
+                    vec![]
+                }
+            }
+        }
+    };
+    context.insert("command", &command.join(" "));
     context.insert("environment_file", &environment_path.to_path_buf());
     context.insert("container_workdir", &workdir);
     if let Some(path) = coman_squash {
@@ -807,6 +810,27 @@ pub async fn cscs_job_start(
             if coman_squash.is_none() {
                 println!("Warning: coman squash wasn't templated and is needed for ssh through coman to work");
             }
+            // check and validate image if set
+            let docker_image = if let Some(image) = options.image.clone() {
+                Some(image)
+            } else if let Some(image) = config.values.cscs.image {
+                let image = image.try_into()?;
+                Some(image)
+            } else {
+                None
+            };
+            let image_meta = if let Some(docker_image) = docker_image {
+                match docker_image.inspect().await {
+                    Ok(meta) => Some(meta),
+                    Err(e) => {
+                        println!("couldn't get image information: {e:?}");
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
             let environment_path = handle_edf(
                 &api_client,
                 &base_path,
@@ -817,6 +841,7 @@ pub async fn cscs_job_start(
                 &secret_key,
                 &container_workdir,
                 &options,
+                &image_meta,
             )
             .await?;
 
@@ -829,6 +854,7 @@ pub async fn cscs_job_start(
                 coman_squash,
                 &container_workdir,
                 &options,
+                &image_meta,
             )
             .await?;
 
