@@ -57,15 +57,24 @@ use crate::{
 const CSCS_MAX_DIRECT_SIZE: usize = 5242880;
 
 async fn get_access_token() -> Result<Secret> {
-    let client_id = match get_secret(CLIENT_ID_SECRET_NAME).await {
-        Ok(Some(client_id)) => client_id,
-        Ok(None) => Err(eyre!("not logged in"))?,
-        Err(e) => Err(e)?,
+    let config = Config::new()?;
+    let client_id = if let Some(client_id) = config.values.cscs.client_id {
+        Secret(client_id)
+    } else {
+        match get_secret(CLIENT_ID_SECRET_NAME).await {
+            Ok(Some(client_id)) => client_id,
+            Ok(None) => Err(eyre!("not logged in"))?,
+            Err(e) => Err(e)?,
+        }
     };
-    let client_secret = match get_secret(CLIENT_SECRET_SECRET_NAME).await {
-        Ok(Some(client_secret)) => client_secret,
-        Ok(None) => Err(eyre!("not logged in"))?,
-        Err(e) => Err(e)?,
+    let client_secret = if let Some(client_secret) = config.values.cscs.client_secret {
+        Secret(client_secret)
+    } else {
+        match get_secret(CLIENT_SECRET_SECRET_NAME).await {
+            Ok(Some(client_secret)) => client_secret,
+            Ok(None) => Err(eyre!("not logged in"))?,
+            Err(e) => Err(e)?,
+        }
     };
     let token = client_credentials_login(client_id, client_secret).await?;
     Ok(token.0)
