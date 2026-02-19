@@ -4,6 +4,7 @@ use clap::{CommandFactory, Parser};
 use clap_complete::CompleteEnv;
 use color_eyre::Result;
 use keyring::set_global_service_name;
+use self_update::cargo_crate_version;
 use tokio::{runtime::Handle, sync::mpsc};
 use tuirealm::{
     Application, EventListenerCfg, PollStrategy, Sub, SubClause, SubEventClause, Update,
@@ -67,6 +68,12 @@ async fn main() -> Result<()> {
     match args.command {
         Some(command) => match command {
             CliCommands::Version => println!("{}", version()),
+            CliCommands::Update => {
+                tokio::task::spawn_blocking(move || {
+                    update().unwrap();
+                })
+                .await?
+            }
             CliCommands::Completions { generator } => {
                 let mut cmd = Cli::command();
                 print_completions(generator, &mut cmd);
@@ -371,4 +378,21 @@ fn popup_exclusion_clause() -> SubClause<Id> {
         SubClause::IsMounted(Id::DownloadPopup),
         SubClause::IsMounted(Id::SystemSelectPopup),
     ])))
+}
+
+fn update() -> Result<()> {
+    let status = self_update::backends::github::Update::configure()
+        .repo_owner("SwissDataScienceCenter")
+        .repo_name("coman")
+        .bin_name("coman")
+        .show_download_progress(true)
+        .current_version(cargo_crate_version!())
+        .build()?
+        .update()?;
+    if status.updated() {
+        println!("Successfully updated to version: `{}`", status.version());
+    } else {
+        println!("Already up to date at version: `{}`", status.version());
+    }
+    Ok(())
 }
