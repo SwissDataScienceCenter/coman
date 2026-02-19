@@ -385,6 +385,7 @@ fn update() -> Result<()> {
         .repo_owner("SwissDataScienceCenter")
         .repo_name("coman")
         .bin_name("coman")
+        .bin_path_in_archive("coman")
         .show_download_progress(true)
         .current_version(cargo_crate_version!())
         .build()?
