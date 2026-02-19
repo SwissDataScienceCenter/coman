@@ -46,6 +46,10 @@ pub enum ComputePlatform {
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct CscsConfig {
     #[serde(default)]
+    pub client_id: Option<String>,
+    #[serde(default)]
+    pub client_secret: Option<String>,
+    #[serde(default)]
     pub current_system: String,
     #[serde(default)]
     pub current_platform: ComputePlatform,
