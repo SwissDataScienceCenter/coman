@@ -110,5 +110,4 @@ jobs:
         with:
           draft: true
           files: "coman*"
-          body_path: Changes.md
         if: startsWith( github.ref, 'refs/tags/v' )
