@@ -21,7 +21,7 @@ jobs:
             os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             bin: coman
-            name: coman-Linux-x86_64-musl.tar.gz
+            name: coman-x86_64-unknown-linux-musl.tar.gz
             cargo_command: cargo
             squash: true
 
@@ -29,7 +29,7 @@ jobs:
             os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
             bin: coman
-            name: coman-Linux-aarch64-musl.tar.gz
+            name: coman-aarch64-unknown-linux-musl.tar.gz
             cargo_command: cargo
             squash: true
 
@@ -37,7 +37,7 @@ jobs:
             os: windows-latest
             target: aarch64-pc-windows-msvc
             bin: coman.exe
-            name: coman-Windows-aarch64.zip
+            name: coman-aarch64-pc-windows-msvc.zip
             cargo_command: cargo
             squash: false
 
@@ -45,7 +45,7 @@ jobs:
             os: macOS-latest
             target: x86_64-apple-darwin
             bin: coman
-            name: coman-Darwin-x86_64.tar.gz
+            name: coman-x86_64-apple-darwin.tar.gz
             cargo_command: cargo
             squash: false
 

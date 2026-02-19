@@ -35,6 +35,8 @@ pub struct Cli {
 pub enum CliCommands {
     #[clap(about = "Show version and config file locations")]
     Version,
+    #[clap(about = "Self-update coman. Experimental", hide = true)]
+    Update,
     #[clap(about = "Subcommands related to CSCS")]
     Cscs {
         #[command(subcommand)]
