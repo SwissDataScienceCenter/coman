@@ -31,7 +31,7 @@ Table of contents
 ### Linux
 
 ```shell
-curl -LO https://github.com/SwissDataScienceCenter/coman/releases/latest/download/coman-Linux-x86_64-musl.tar.gz
+curl -LO https://github.com/SwissDataScienceCenter/coman/releases/latest/download/coman-x86_64-unknown-linux-musl.tar.gz
 sudo tar -xzf coman-Linux-x86_64-musl.tar.gz -C /usr/local/bin/
 sudo chmod +x /usr/local/bin/coman
 ```
@@ -39,7 +39,7 @@ sudo chmod +x /usr/local/bin/coman
 ### Macos
 
 ```shell
-curl -LO https://github.com/SwissDataScienceCenter/coman/releases/latest/download/coman-Darwin-x86_64.tar.gz
+curl -LO https://github.com/SwissDataScienceCenter/coman/releases/latest/download/coman-x86_64-apple-darwin.tar.gz
 sudo tar -xzf coman-Darwin-x86_64.tar.gz -C /usr/local/bin/
 sudo chmod +x /usr/local/bin/coman
 ```
@@ -49,10 +49,10 @@ Run as Admin:
 
 ```powershell
 # Download the ZIP file
-Invoke-WebRequest -Uri "https://github.com/SwissDataScienceCenter/coman/releases/latest/download/coman-Windows-aarch64.zip" -OutFile "coman-Windows-aarch64.zip"
+Invoke-WebRequest -Uri "https://github.com/SwissDataScienceCenter/coman/releases/latest/download/coman-x86_64-pc-windows-msvc.zip" -OutFile "coman-Windows-x86_64.zip"
 
 # Extract the ZIP file
-Expand-Archive -Path "coman-Windows-aarch64.zip" -DestinationPath ".\coman_temp" -Force
+Expand-Archive -Path "coman-Windows-x86_64.zip" -DestinationPath ".\coman_temp" -Force
 
 # Move the binary to C:\Program Files\coman
 New-Item -ItemType Directory -Path "C:\Program Files\coman" -Force
@@ -62,7 +62,7 @@ Move-Item -Path ".\coman_temp\coman.exe" -Destination "C:\Program Files\coman\co
 [Environment]::SetEnvironmentVariable("PATH", $env:PATH + ";C:\Program Files\coman", "Machine")
 
 # Clean up temporary files
-Remove-Item -Path "coman-Windows-aarch64.zip" -Force
+Remove-Item -Path "coman-Windows-x86_64.zip" -Force
 Remove-Item -Path ".\coman_temp" -Recurse -Force
 ```
 

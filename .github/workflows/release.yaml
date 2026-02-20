@@ -33,11 +33,11 @@ jobs:
             cargo_command: cargo
             squash: true
 
-          - os_name: Windows-aarch64
+          - os_name: Windows-x86_64
             os: windows-latest
-            target: aarch64-pc-windows-msvc
+            target: x86_64-pc-windows-msvc
             bin: coman.exe
-            name: coman-aarch64-pc-windows-msvc.zip
+            name: coman-x86_64-pc-windows-msvc.zip
             cargo_command: cargo
             squash: false
 
