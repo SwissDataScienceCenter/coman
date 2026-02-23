@@ -4,7 +4,6 @@ use clap::{CommandFactory, Parser};
 use clap_complete::CompleteEnv;
 use color_eyre::Result;
 use keyring::set_global_service_name;
-use self_update::cargo_crate_version;
 use tokio::{runtime::Handle, sync::mpsc};
 use tuirealm::{
     Application, EventListenerCfg, PollStrategy, Sub, SubClause, SubEventClause, Update,
@@ -22,7 +21,7 @@ use crate::{
     cli::{
         app::{
             Cli, CliCommands, ConfigCommands, CscsCommands, CscsFileCommands, CscsJobCommands, CscsSystemCommands,
-            get_config, print_completions, set_config, version,
+            check_update, get_config, print_completions, set_config, update, version,
         },
         exec::cli_exec_command,
         proxy::cli_proxy_command,
@@ -64,6 +63,12 @@ async fn main() -> Result<()> {
     set_global_service_name(env!("CARGO_PKG_NAME"));
     crate::logging::init()?;
     CompleteEnv::with_factory(Cli::command).complete();
+
+    // check self-update
+    if let Err(e) = check_update().await {
+        println!("Couldn't check for updates: {}", e);
+    }
+
     let args = Cli::parse();
     match args.command {
         Some(command) => match command {
@@ -378,22 +383,4 @@ fn popup_exclusion_clause() -> SubClause<Id> {
         SubClause::IsMounted(Id::DownloadPopup),
         SubClause::IsMounted(Id::SystemSelectPopup),
     ])))
-}
-
-fn update() -> Result<()> {
-    let status = self_update::backends::github::Update::configure()
-        .repo_owner("SwissDataScienceCenter")
-        .repo_name("coman")
-        .bin_name("coman")
-        .bin_path_in_archive("coman")
-        .show_download_progress(true)
-        .current_version(cargo_crate_version!())
-        .build()?
-        .update()?;
-    if status.updated() {
-        println!("Successfully updated to version: `{}`", status.version());
-    } else {
-        println!("Already up to date at version: `{}`", status.version());
-    }
-    Ok(())
 }

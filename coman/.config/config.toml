@@ -1,3 +1,5 @@
+update_check_interval_hours = 24
+
 [cscs]
 # check https://docs.cscs.ch/access/firecrest/#firecrest-deployment-on-alps for possible system and platform combinations
 current_system = "daint" # what system/cluster to execute commands on
