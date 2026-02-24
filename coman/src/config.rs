@@ -83,6 +83,8 @@ pub struct ComanConfig {
     #[serde(default)]
     pub coman_squash_path: Option<PathBuf>,
     #[serde(default)]
+    pub update_check_interval_hours: u64,
+    #[serde(default)]
     pub cscs: CscsConfig,
 }
 

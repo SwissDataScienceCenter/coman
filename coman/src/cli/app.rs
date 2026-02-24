@@ -1,9 +1,11 @@
 use std::{error::Error, path::PathBuf, str::FromStr, thread};
 
+use chrono::{DateTime, Local, TimeDelta};
 use clap::{Args, Command, Parser, Subcommand, ValueHint, builder::TypedValueParser};
 use clap_complete::{ArgValueCompleter, CompletionCandidate, Generator, Shell, generate};
 use color_eyre::{Report, Result};
 use itertools::Itertools;
+use self_update::cargo_crate_version;
 use strum::VariantNames;
 use tokio::sync::mpsc;
 
@@ -567,4 +569,43 @@ fn is_bare_string(value_str: &str) -> bool {
 
 pub fn print_completions<G: Generator>(generator: G, cmd: &mut Command) {
     generate(generator, cmd, cmd.get_name().to_string(), &mut std::io::stdout());
+}
+
+pub fn update() -> Result<()> {
+    let status = self_update::backends::github::Update::configure()
+        .repo_owner("SwissDataScienceCenter")
+        .repo_name("coman")
+        .bin_name("coman")
+        .bin_path_in_archive("coman")
+        .show_download_progress(true)
+        .current_version(cargo_crate_version!())
+        .build()?
+        .update()?;
+    if status.updated() {
+        println!("Successfully updated to version: `{}`", status.version());
+    } else {
+        println!("Already up to date at version: `{}`", status.version());
+    }
+    Ok(())
+}
+
+pub async fn check_update() -> Result<()> {
+    let config = Config::new()?;
+    let data_dir = get_data_dir();
+    let stamp_path = data_dir.join("selfupdate.stamp");
+    let Ok(update_stamp) = std::fs::read_to_string(&stamp_path) else {
+        std::fs::write(&stamp_path, Local::now().to_rfc3339()).unwrap();
+        return Ok(());
+    };
+    let update_stamp = DateTime::parse_from_rfc3339(&update_stamp)?;
+
+    let now = Local::now();
+    if now.naive_local() - update_stamp.naive_local()
+        > TimeDelta::hours(config.values.update_check_interval_hours as i64)
+    {
+        println!("checking for updates");
+        update()?;
+        std::fs::write(&stamp_path, Local::now().to_rfc3339())?;
+    }
+    Ok(())
 }
