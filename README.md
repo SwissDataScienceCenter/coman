@@ -40,7 +40,7 @@ sudo chmod +x /usr/local/bin/coman
 
 ```shell
 curl -LO https://github.com/SwissDataScienceCenter/coman/releases/latest/download/coman-x86_64-apple-darwin.tar.gz
-sudo tar -xzf coman-Darwin-x86_64.tar.gz -C /usr/local/bin/
+sudo tar -xzf coman-x86_64-apple-darwin.tar.gz -C /usr/local/bin/
 sudo chmod +x /usr/local/bin/coman
 ```
 
