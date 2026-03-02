@@ -114,10 +114,8 @@ impl MockComponent for StatusBar {
 impl Component<Msg, UserEvent> for StatusBar {
     fn on(&mut self, ev: Event<UserEvent>) -> Option<Msg> {
         match ev {
-            Event::Tick => {
-                if self.last_updated.elapsed() > self.status_clear_time {
-                    self.current_status = None;
-                }
+            Event::Tick if self.last_updated.elapsed() > self.status_clear_time => {
+                self.current_status = None;
             }
             Event::User(UserEvent::Status(status)) => {
                 self.current_status = Some(status);
