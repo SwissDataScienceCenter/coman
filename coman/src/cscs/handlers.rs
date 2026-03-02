@@ -19,6 +19,7 @@ use itertools::Itertools;
 use regex::Regex;
 use reqwest::Url;
 use sha2::{Digest, Sha256};
+use strum::IntoEnumIterator;
 use tarpc::{client, context, serde_transport, tokio_serde::formats::Bincode};
 use tokio::{
     fs::File,
@@ -84,9 +85,23 @@ pub(crate) async fn cscs_login(client_id: String, client_secret: String) -> Resu
     store_secret(CLIENT_ID_SECRET_NAME, client_id_secret.clone()).await?;
     let client_secret_secret = Secret::new(client_secret);
     store_secret(CLIENT_SECRET_SECRET_NAME, client_secret_secret.clone()).await?;
-    client_credentials_login(client_id_secret, client_secret_secret)
-        .await
-        .map(|_| ())
+    let token = client_credentials_login(client_id_secret, client_secret_secret).await?;
+
+    // figure out what platform the user has access to and set it in config
+    let mut config = Config::new()?;
+    let source = config.value_source("cscs.current_platform")?;
+    if source.1 || source.2 {
+        // don't override setting if it's already provided
+        return Ok(());
+    }
+    for platform in ComputePlatform::iter() {
+        let api_client = CscsApi::new(token.0.0.clone(), Some(platform.clone())).unwrap();
+        if (api_client.list_systems().await).is_ok() {
+            config.set("cscs.current_platform", platform.to_string(), true)?;
+            break;
+        }
+    }
+    Ok(())
 }
 
 #[allow(dead_code)]

@@ -604,7 +604,7 @@ pub async fn check_update() -> Result<()> {
         > TimeDelta::hours(config.values.update_check_interval_hours as i64)
     {
         println!("checking for updates");
-        update()?;
+        tokio::task::spawn_blocking(update).await??;
         std::fs::write(&stamp_path, Local::now().to_rfc3339())?;
     }
     Ok(())
