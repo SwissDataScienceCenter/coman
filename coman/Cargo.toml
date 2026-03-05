@@ -76,7 +76,7 @@ toml_edit = "0.23.9"
 clap_complete = { version = "4.5.61", features = ["unstable-dynamic"] }
 pid1 = "0.1.5"
 rust_supervisor = "0.2.0"
-iroh-ssh = "0.2.7"
+iroh-ssh = "0.2.9"
 whoami = "1.6.1"
 base64 = "0.22.1"
 iroh = "0.95.1"
@@ -99,8 +99,8 @@ self_update = { version = "0.42.0", features = [
 ] }
 
 [build-dependencies]
-anyhow = "1.0.90"
-vergen-gix = { version = "1.0.2", features = ["build", "cargo"] }
+anyhow = "1.0.102"
+vergen-gix = { version = "9.1.0", features = ["build", "cargo"] }
 
 [dev-dependencies]
 claim = "0.5.0"

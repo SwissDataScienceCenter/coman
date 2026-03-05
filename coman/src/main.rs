@@ -175,7 +175,7 @@ async fn main() -> Result<()> {
             },
             CliCommands::Init { destination, name } => Config::create_project_config(destination, name)?,
             CliCommands::Exec { command } => cli_exec_command(command).await?,
-            CliCommands::Proxy { system, job_id } => cli_proxy_command(system, job_id).await?,
+            CliCommands::Proxy { system, job_id } => cli_proxy_command(system, job_id.into()).await?,
         },
         None => run_tui(args.tick_rate)?,
     }

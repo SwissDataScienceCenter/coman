@@ -2,10 +2,11 @@ use std::path::PathBuf;
 
 use crate::{
     app::user_events::UserEvent,
-    cscs::api_client::types::{JobDetail, System},
+    cscs::api_client::types::{JobDetail, JobId, System},
 };
 
 #[derive(Debug, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum MenuMsg {
     Opened,
     Closed,
@@ -52,11 +53,11 @@ pub enum CscsMsg {
 }
 #[derive(Debug, PartialEq)]
 pub enum JobMsg {
-    Log(usize),
-    ResourceUsage(usize),
+    Log(JobId),
+    ResourceUsage(JobId),
     Details(JobDetail),
-    GetDetails(usize),
-    Cancel(usize),
+    GetDetails(JobId),
+    Cancel(JobId),
     Switch,
     Close,
 }

@@ -15,7 +15,7 @@ use tuirealm::{
 use crate::{
     app::user_events::{CscsEvent, FileEvent, StatusEvent, UserEvent},
     cscs::{
-        api_client::types::JobStatus,
+        api_client::types::{JobId, JobStatus},
         handlers::{
             cscs_file_delete, cscs_file_download, cscs_file_list, cscs_job_cancel, cscs_job_details, cscs_job_list,
             cscs_job_log, cscs_resource_usage, cscs_system_list, file_system_roots,
@@ -154,7 +154,7 @@ impl PollAsync<UserEvent> for AsyncSelectSystemPort {
 }
 
 pub enum JobLogAction {
-    Job(usize),
+    Job(JobId),
     SwitchLog,
     Stop,
 }
@@ -162,7 +162,7 @@ pub enum JobLogAction {
 /// This port handles polling the logs of a CSCS job
 pub(crate) struct AsyncJobLogPort {
     receiver: mpsc::Receiver<JobLogAction>,
-    current_job: Option<usize>,
+    current_job: Option<JobId>,
     stderr: bool,
 }
 
@@ -197,8 +197,8 @@ impl PollAsync<UserEvent> for AsyncJobLogPort {
                 }
             }
         }
-        if let Some(job_id) = self.current_job {
-            match cscs_job_log(job_id as i64, self.stderr, None, None).await {
+        if let Some(job_id) = &self.current_job {
+            match cscs_job_log(job_id.clone(), self.stderr, None, None).await {
                 Ok(log) => Ok(Some(Event::User(UserEvent::Cscs(CscsEvent::GotJobLog(log))))),
                 Err(e) => {
                     // if there was an error getting the log, if it's stderr, switch to stdout which should
@@ -221,14 +221,14 @@ impl PollAsync<UserEvent> for AsyncJobLogPort {
 }
 
 pub enum JobResourceUsageAction {
-    Job(usize),
+    Job(JobId),
     Stop,
 }
 
 /// This port handles polling the logs of a CSCS job
 pub(crate) struct AsyncJobResourceUsagePort {
     receiver: mpsc::Receiver<JobResourceUsageAction>,
-    current_job: Option<usize>,
+    current_job: Option<JobId>,
 }
 
 impl AsyncJobResourceUsagePort {
@@ -257,8 +257,8 @@ impl PollAsync<UserEvent> for AsyncJobResourceUsagePort {
                 }
             }
         }
-        if let Some(job_id) = self.current_job {
-            match cscs_resource_usage(job_id as i64, None).await {
+        if let Some(job_id) = &self.current_job {
+            match cscs_resource_usage(job_id.clone(), None).await {
                 Ok(ru) => Ok(Some(Event::User(UserEvent::Cscs(CscsEvent::GotJobResourceUsage(ru))))),
                 Err(e) => Ok(Some(Event::User(UserEvent::Status(StatusEvent::Warning(format!(
                     "couldn't get resource usage: {e:?}"
@@ -274,8 +274,8 @@ pub enum BackgroundTask {
     ListPaths(PathBuf),
     DownloadFile(PathBuf, PathBuf),
     DeleteFile(String),
-    GetJobDetails(usize),
-    CancelJob(usize),
+    GetJobDetails(JobId),
+    CancelJob(JobId),
 }
 
 /// This port handles asynchronous file operations on CSCS
@@ -318,7 +318,7 @@ async fn download_file(
             // TODO: add status updates once we have some sort of status line update functionality
             let mut transfer_done = false;
             while !transfer_done {
-                if let Some(job) = cscs_job_details(job_data.0, None, None).await? {
+                if let Some(job) = cscs_job_details(job_data.0.clone(), None, None).await? {
                     match job.status {
                         JobStatus::Pending | JobStatus::Running | JobStatus::Requeued => {
                             event_tx
@@ -413,7 +413,7 @@ impl PollAsync<UserEvent> for AsyncBackgroundTaskPort {
                         Err::<(), Report>(e).wrap_err("couldn't delete file")
                     ))))),
                 },
-                BackgroundTask::GetJobDetails(job_id) => match cscs_job_details(job_id as i64, None, None).await {
+                BackgroundTask::GetJobDetails(job_id) => match cscs_job_details(job_id, None, None).await {
                     Ok(Some(details)) => Ok(Some(Event::User(UserEvent::Cscs(CscsEvent::GotJobDetails(details))))),
                     Ok(None) => Ok(Some(Event::None)),
                     Err(e) => Ok(Some(Event::User(UserEvent::Error(format!(
@@ -421,7 +421,7 @@ impl PollAsync<UserEvent> for AsyncBackgroundTaskPort {
                         Err::<(), Report>(e).wrap_err("couldn't get job details")
                     ))))),
                 },
-                BackgroundTask::CancelJob(job_id) => match cscs_job_cancel(job_id as i64, None, None).await {
+                BackgroundTask::CancelJob(job_id) => match cscs_job_cancel(job_id, None, None).await {
                     Ok(()) => Ok(Some(Event::None)),
                     Err(e) => Ok(Some(Event::User(UserEvent::Error(format!(
                         "{:?}",

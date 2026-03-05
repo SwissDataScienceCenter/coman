@@ -20,7 +20,7 @@ use reqwest::Url;
 
 use crate::{
     config::{ComputePlatform, Config},
-    cscs::api_client::types::{FileStat, Job, JobDetail, PathEntry, S3Upload, System, UserInfo},
+    cscs::api_client::types::{FileStat, Job, JobDetail, JobId, PathEntry, S3Upload, System, UserInfo},
     trace_dbg,
     util::types::DockerImageUrl,
 };
@@ -79,7 +79,7 @@ impl CscsApi {
         script_path: PathBuf,
         envvars: HashMap<String, String>,
         options: JobStartOptions,
-    ) -> Result<Option<i64>> {
+    ) -> Result<Option<JobId>> {
         let workingdir = script_path.clone();
         let workingdir = workingdir.parent();
         let result = post_compute_system_job(
@@ -98,7 +98,7 @@ impl CscsApi {
         )
         .await?;
 
-        Ok(result.job_id)
+        Ok(result.job_id.map(|i| i.into()))
     }
     pub async fn get_system(&self, system: &str) -> Result<Option<System>> {
         let systems = self.list_systems().await?;
@@ -119,8 +119,8 @@ impl CscsApi {
             .map(|jobs| jobs.into_iter().map(|j| j.into()).collect())
             .unwrap_or(vec![]))
     }
-    pub async fn get_job(&self, system_name: &str, job_id: i64) -> Result<Option<JobDetail>> {
-        let jobs = get_compute_system_job(&self.client, system_name, job_id)
+    pub async fn get_job(&self, system_name: &str, job_id: JobId) -> Result<Option<JobDetail>> {
+        let jobs = get_compute_system_job(&self.client, system_name, job_id.clone().into_string())
             .await
             .wrap_err("couldn't fetch job info")?;
         let job = if let Some(jobs) = jobs.jobs
@@ -130,7 +130,7 @@ impl CscsApi {
         } else {
             return Ok(None);
         };
-        let job_metadata = get_compute_system_job_metadata(&self.client, system_name, job_id)
+        let job_metadata = get_compute_system_job_metadata(&self.client, system_name, job_id.into_string())
             .await
             .wrap_err("couldn't fetch job metadata")?;
         let job_metadata = if let Some(meta) = job_metadata.jobs
@@ -143,8 +143,8 @@ impl CscsApi {
         Ok(Some((job, job_metadata).into()))
     }
 
-    pub async fn cancel_job(&self, system_name: &str, job_id: i64) -> Result<()> {
-        cancel_compute_system_job(&self.client, system_name, job_id)
+    pub async fn cancel_job(&self, system_name: &str, job_id: JobId) -> Result<()> {
+        cancel_compute_system_job(&self.client, system_name, job_id.into_string())
             .await
             .wrap_err("couldn't delete job")?;
         Ok(())
@@ -180,12 +180,15 @@ impl CscsApi {
         account: Option<String>,
         target: PathBuf,
         size: i64,
-    ) -> Result<(i64, S3Upload)> {
+    ) -> Result<(JobId, S3Upload)> {
         let job = post_filesystem_transfer_upload(&self.client, system_name, account, target, size)
             .await
             .wrap_err("couldn't upload file")?;
         if let DownloadFileResponseTransferDirectives::S3(directives) = job.transfer_directives {
-            Ok((job.transfer_job.job_id, S3Upload::convert(directives, size as u64)?))
+            Ok((
+                job.transfer_job.job_id.into(),
+                S3Upload::convert(directives, size as u64)?,
+            ))
         } else {
             trace_dbg!(job);
             Err(eyre!("didn't get S3 transfer directive"))
@@ -202,13 +205,13 @@ impl CscsApi {
         system_name: &str,
         account: Option<String>,
         path: PathBuf,
-    ) -> Result<(i64, Url)> {
+    ) -> Result<(JobId, Url)> {
         let job = post_filesystem_transfer_download(&self.client, system_name, account, path)
             .await
             .wrap_err("couldn't transfer file")?;
         if let DownloadFileResponseTransferDirectives::S3(directives) = job.transfer_directives {
             let download_url = Url::parse(&directives.download_url.unwrap())?;
-            Ok((job.transfer_job.job_id, download_url))
+            Ok((job.transfer_job.job_id.into(), download_url))
         } else {
             Err(eyre!("didn't get S3 transfer directive"))
         }
@@ -255,8 +258,7 @@ mod tests {
     use claim::*;
     use firecrest_client::types::{
         DownloadFileResponse, GetJobMetadataResponse, GetJobResponse, GetSystemsResponse, HPCCluster, JobMetadataModel,
-        JobModel, JobStatus, LibDatatransfersDatatransferBaseTransferJob, PostJobSubmissionResponse,
-        S3TransferResponse, UploadFileResponse,
+        JobModel, JobStatus, PostJobSubmissionResponse, S3TransferResponse, TransferJob, UploadFileResponse,
     };
     use injectorpp::interface::injector::*;
 
@@ -359,7 +361,7 @@ mod tests {
                         jobs: Some(vec![
                             JobModel {
                                 name: "Job1".to_owned(),
-                                job_id: 1,
+                                job_id: "1".to_owned(),
                                 status: JobStatus {
                                     state: "RUNNING".to_owned(),
                                     ..Default::default()
@@ -368,7 +370,7 @@ mod tests {
                             },
                             JobModel {
                                 name: "Job2".to_owned(),
-                                job_id: 2,
+                                job_id: "2".to_owned(),
                                 status: JobStatus {
                                     state: "FAILED".to_owned(),
                                     ..Default::default()
@@ -377,7 +379,7 @@ mod tests {
                             },
                             JobModel {
                                 name: "Job3".to_owned(),
-                                job_id: 3,
+                                job_id: "3".to_owned(),
                                 status: JobStatus {
                                     state: "COMPLETED".to_owned(),
                                     ..Default::default()
@@ -386,7 +388,7 @@ mod tests {
                             },
                             JobModel {
                                 name: "Job4".to_owned(),
-                                job_id: 4,
+                                job_id: "4".to_owned(),
                                 status: JobStatus {
                                     state: "PENDING".to_owned(),
                                     ..Default::default()
@@ -395,7 +397,7 @@ mod tests {
                             },
                             JobModel {
                                 name: "Job5".to_owned(),
-                                job_id: 5,
+                                job_id: "5".to_owned(),
                                 status: JobStatus {
                                     state: "CANCELLED".to_owned(),
                                     ..Default::default()
@@ -418,14 +420,14 @@ mod tests {
             let mut injector = InjectorPP::new();
             injector
                 .when_called_async(injectorpp::async_func!(
-                    firecrest_client::compute_api::get_compute_system_job(&client.client, "", 1,),
+                    firecrest_client::compute_api::get_compute_system_job(&client.client, "", "1".to_owned(),),
                     Result<GetJobResponse>
                 ))
                 .will_return_async(injectorpp::async_return!(
                     Ok(GetJobResponse {
                         jobs: Some(vec![JobModel {
                             name: "Job1".to_owned(),
-                            job_id: 1,
+                            job_id: "1".to_owned(),
                             status: JobStatus {
                                 state: "RUNNING".to_owned(),
                                 ..Default::default()
@@ -437,7 +439,7 @@ mod tests {
                 ));
             injector
                 .when_called_async(injectorpp::async_func!(
-                    firecrest_client::compute_api::get_compute_system_job_metadata(&client.client, "", 1,),
+                    firecrest_client::compute_api::get_compute_system_job_metadata(&client.client, "", "1".to_owned(),),
                     Result<GetJobMetadataResponse>
                 ))
                 .will_return_async(injectorpp::async_return!(
@@ -449,7 +451,7 @@ mod tests {
                     }),
                     Result<GetJobMetadataResponse>
                 ));
-            let result = client.get_job("test", 1).await;
+            let result = client.get_job("test", "1".into()).await;
             assert_ok!(result);
         }
     }
@@ -471,7 +473,7 @@ mod tests {
             ))
             .will_return_async(injectorpp::async_return!(
                 Ok(UploadFileResponse {
-                    transfer_job: LibDatatransfersDatatransferBaseTransferJob {
+                    transfer_job: TransferJob {
                         job_id: 1,
                         ..Default::default()
                     },
@@ -486,7 +488,7 @@ mod tests {
                 Result<UploadFileResponse>
             ));
         let result = client.transfer_upload("test", None, PathBuf::from("/test"), 100).await;
-        assert_eq!(result.unwrap().0, 1);
+        assert_eq!(result.unwrap().0, "1");
     }
 
     #[tokio::test]
@@ -505,7 +507,7 @@ mod tests {
             ))
             .will_return_async(injectorpp::async_return!(
                 Ok(DownloadFileResponse {
-                    transfer_job: LibDatatransfersDatatransferBaseTransferJob {
+                    transfer_job: TransferJob {
                         job_id: 1,
                         ..Default::default()
                     },
@@ -519,7 +521,7 @@ mod tests {
             ));
         let result = client.transfer_download("test", None, PathBuf::from("/test")).await;
         let result = result.unwrap();
-        assert_eq!(result.0, 1);
+        assert_eq!(result.0, "1");
         assert_eq!(result.1, Url::parse("http://download").unwrap())
     }
 }
