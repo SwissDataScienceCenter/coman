@@ -485,14 +485,7 @@ pub enum CscsSystemCommands {
 
 pub const COMAN_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-const VERSION_MESSAGE: &str = concat!(
-    env!("CARGO_PKG_VERSION"),
-    "-",
-    env!("VERGEN_GIT_DESCRIBE"),
-    " (",
-    env!("VERGEN_BUILD_DATE"),
-    ")"
-);
+const VERSION_MESSAGE: &str = concat!(env!("CARGO_PKG_VERSION"), " (", env!("VERGEN_BUILD_DATE"), ")");
 
 pub fn version() -> String {
     // let current_exe_path = PathBuf::from(clap::crate_name!()).display().to_string();
