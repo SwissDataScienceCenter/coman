@@ -9,7 +9,7 @@ use color_eyre::{
 use directories::ProjectDirs;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use strum_macros::{EnumIter, EnumString, VariantNames};
+use strum_macros::{EnumIter, EnumString, VariantArray, VariantNames};
 use toml_edit::DocumentMut;
 
 const DEFAULT_CONFIG_TOML: &str = include_str!("../.config/config.toml");
@@ -33,7 +33,9 @@ pub struct SystemDescription {
     pub architecture: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default, strum::Display, EnumString, VariantNames, EnumIter)]
+#[derive(
+    Clone, Debug, Serialize, Deserialize, Default, strum::Display, EnumString, VariantNames, VariantArray, EnumIter,
+)]
 #[strum(serialize_all = "lowercase")]
 #[allow(clippy::upper_case_acronyms)]
 pub enum ComputePlatform {
@@ -333,15 +335,15 @@ impl Config {
     }
 
     // Returns tuple of bool saying whether a values is set in (default, global, project local) config
-    pub fn value_source(&self, key_path: &str) -> Result<(bool, bool, bool)> {
-        Ok((
+    pub fn value_source(&self, key_path: &str) -> (bool, bool, bool) {
+        (
             self.default_layer.get(key_path).is_some(),
             self.global_layer.get(key_path).unwrap_or_default().is_some(),
             self.project_layer
                 .as_ref()
                 .map(|l| l.get(key_path).unwrap_or_default().is_some())
                 .unwrap_or(false),
-        ))
+        )
     }
 }
 

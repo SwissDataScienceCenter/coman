@@ -8,9 +8,10 @@ use bytesize::ByteSize;
 use color_eyre::{Result, eyre::Context};
 use eyre::eyre;
 use futures::StreamExt;
-use inquire::{Password, Text};
+use inquire::{Password, Select, Text};
 use itertools::Itertools;
 use reqwest::Url;
+use strum::VariantArray;
 use tokio::{
     fs::File,
     io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader},
@@ -18,13 +19,13 @@ use tokio::{
 
 use crate::{
     cli::app::JobIdOrName,
-    config::ComputePlatform,
+    config::{ComputePlatform, Config},
     cscs::{
         api_client::{client::JobStartOptions, types::JobStatus},
         handlers::{
             cscs_file_delete, cscs_file_download, cscs_file_list, cscs_file_upload, cscs_job_cancel, cscs_job_details,
             cscs_job_list, cscs_job_log, cscs_job_start, cscs_login, cscs_port_forward, cscs_resource_usage,
-            cscs_system_list, cscs_system_set,
+            cscs_system_list, cscs_system_set, get_available_compute_platforms,
         },
     },
 };
@@ -39,6 +40,32 @@ pub(crate) async fn cli_cscs_login() -> Result<()> {
         }
         Err(e) => Err(e).wrap_err("couldn't get acccess token")?,
     };
+
+    // select compute platform
+    let mut config = Config::new()?;
+
+    let source = config.value_source("cscs.current_platform");
+    if !source.1 && !source.2 {
+        let available_platforms: Vec<_> = get_available_compute_platforms()
+            .await
+            .unwrap_or(<ComputePlatform as VariantArray>::VARIANTS.to_vec())
+            .iter()
+            .map(|c| c.to_string())
+            .collect();
+        let platform = Select::new("Compute Platform:", available_platforms).prompt()?;
+
+        config.set("cscs.current_platform", platform, true)?;
+    }
+
+    // select cscs account
+    let source = config.value_source("cscs.account");
+    if !source.1
+        && !source.2
+        && let Ok(Some(account)) = Text::new("CSCS Account:").prompt_skippable()
+        && !account.is_empty()
+    {
+        config.set("cscs.account", account, true)?;
+    }
     Ok(())
 }
 pub(crate) async fn cli_cscs_job_list(system: Option<String>, platform: Option<ComputePlatform>) -> Result<()> {

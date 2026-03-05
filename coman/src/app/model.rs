@@ -24,8 +24,9 @@ use crate::{
         login_popup::LoginPopup, resource_usage::ResourceUsage, system_select_popup::SystemSelectPopup,
         workload_details::WorkloadDetails, workload_list::WorkloadList, workload_log::WorkloadLog,
     },
+    config::Config,
     cscs::{
-        handlers::{cscs_login, cscs_system_set},
+        handlers::{cscs_login, cscs_system_set, get_available_compute_platforms},
         ports::{BackgroundTask, JobLogAction, JobResourceUsageAction},
     },
     trace_dbg,
@@ -509,7 +510,43 @@ where
                     let error_tx = self.error_tx.clone();
                     tokio::spawn(async move {
                         match cscs_login(client_id, client_secret).await {
-                            Ok(_) => event_tx.send(UserEvent::Cscs(CscsEvent::LoggedIn)).await.unwrap(),
+                            Ok(_) => {
+                                let mut config = match Config::new() {
+                                    Ok(config) => config,
+                                    Err(e) => {
+                                        error_tx
+                                            .send(format!(
+                                                "{:?}",
+                                                Err::<(), Report>(e).wrap_err("Couldn't create config object")
+                                            ))
+                                            .await
+                                            .unwrap();
+                                        return;
+                                    }
+                                };
+                                let source = config.value_source("cscs.current_platform");
+                                if !source.1 && !source.2 {
+                                    // don't override platform if it's already set
+                                    if let Ok(available_platforms) = get_available_compute_platforms().await
+                                        && !available_platforms.is_empty()
+                                        && let Err(e) = config.set(
+                                            "cscs.current_platform",
+                                            available_platforms[0].to_string(),
+                                            true,
+                                        )
+                                    {
+                                        error_tx
+                                            .send(format!(
+                                                "{:?}",
+                                                Err::<(), Report>(e).wrap_err("Couldn't set currnt platform")
+                                            ))
+                                            .await
+                                            .unwrap();
+                                        return;
+                                    }
+                                }
+                                event_tx.send(UserEvent::Cscs(CscsEvent::LoggedIn)).await.unwrap()
+                            }
                             Err(e) => error_tx
                                 .send(format!(
                                     "{:?}",
