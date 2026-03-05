@@ -80,28 +80,30 @@ async fn get_access_token() -> Result<Secret> {
     let token = client_credentials_login(client_id, client_secret).await?;
     Ok(token.0)
 }
+
 pub(crate) async fn cscs_login(client_id: String, client_secret: String) -> Result<()> {
     let client_id_secret = Secret::new(client_id);
     store_secret(CLIENT_ID_SECRET_NAME, client_id_secret.clone()).await?;
     let client_secret_secret = Secret::new(client_secret);
     store_secret(CLIENT_SECRET_SECRET_NAME, client_secret_secret.clone()).await?;
-    let token = client_credentials_login(client_id_secret, client_secret_secret).await?;
-
-    // figure out what platform the user has access to and set it in config
-    let mut config = Config::new()?;
-    let source = config.value_source("cscs.current_platform")?;
-    if source.1 || source.2 {
-        // don't override setting if it's already provided
-        return Ok(());
-    }
-    for platform in ComputePlatform::iter() {
-        let api_client = CscsApi::new(token.0.0.clone(), Some(platform.clone())).unwrap();
-        if (api_client.list_systems().await).is_ok() {
-            config.set("cscs.current_platform", platform.to_string(), true)?;
-            break;
+    client_credentials_login(client_id_secret, client_secret_secret)
+        .await
+        .map(|_| ())
+}
+pub(crate) async fn get_available_compute_platforms() -> Result<Vec<ComputePlatform>> {
+    match get_access_token().await {
+        Ok(access_token) => {
+            let mut platforms = Vec::new();
+            for platform in ComputePlatform::iter() {
+                let api_client = CscsApi::new(access_token.0.clone(), Some(platform.clone()))?;
+                if (api_client.list_systems().await).is_ok() {
+                    platforms.push(platform);
+                }
+            }
+            Ok(platforms)
         }
+        Err(e) => Err(e),
     }
-    Ok(())
 }
 
 #[allow(dead_code)]
