@@ -18,17 +18,14 @@ clap = { version = "4.5.20", features = [
   "string",
   "unstable-styles",
 ] }
-cli-log = "2.1.0"
 color-eyre = "0.6.5"
-config = "0.14.0"
+config = "0.15.19"
 crossterm = { version = "0.29.0", features = ["serde", "event-stream"] }
-derive_deref = "1.1.1"
-directories = "5.0.1"
+directories = "6.0.0"
 eyre = "0.6.12"
 futures = "0.3.31"
 human-panic = "2.0.2"
 itertools = "0.14.0"
-json5 = "0.4.1"
 keyring-lib = { version = "1.0.2", features = [
   "tokio",
   "derive",
@@ -40,7 +37,6 @@ libc = "0.2.161"
 open = "5.3.2"
 firecrest_client = { workspace = true }
 openidconnect = "4.0.1"
-pretty_assertions = "1.4.1"
 ratatui = { version = "0.29.0", features = ["serde", "macros"] }
 reqwest = "0.12.23"
 serde = { version = "1.0.211", features = ["derive"] }
@@ -51,7 +47,7 @@ strum = { version = "0.26.3", features = ["derive"] }
 strum_macros = "0.27.2"
 tokio = { version = "1.47.1", features = ["full"] }
 tokio-util = "0.7.16"
-toml = "0.9.7"
+toml = "1.0.4"
 tracing = "0.1.40"
 tracing-error = "0.2.0"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "serde"] }
@@ -71,8 +67,7 @@ docker_credential = "1.3.2"
 chrono = "0.4.42"
 openssl = { version = "0.10.75", features = ["vendored"] }
 tui-realm-treeview = "3.0.0"
-aws-sdk-s3 = "1.115.0"
-toml_edit = "0.23.9"
+toml_edit = "0.25.4"
 clap_complete = { version = "4.5.61", features = ["unstable-dynamic"] }
 pid1 = "0.1.5"
 rust_supervisor = "0.2.0"

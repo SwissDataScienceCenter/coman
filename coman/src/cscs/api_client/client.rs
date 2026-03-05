@@ -488,7 +488,7 @@ mod tests {
                 Result<UploadFileResponse>
             ));
         let result = client.transfer_upload("test", None, PathBuf::from("/test"), 100).await;
-        assert_eq!(result.unwrap().0, "1");
+        assert_eq!(result.unwrap().0.as_ref(), "1");
     }
 
     #[tokio::test]
@@ -521,7 +521,7 @@ mod tests {
             ));
         let result = client.transfer_download("test", None, PathBuf::from("/test")).await;
         let result = result.unwrap();
-        assert_eq!(result.0, "1");
+        assert_eq!(result.0.as_ref(), "1");
         assert_eq!(result.1, Url::parse("http://download").unwrap())
     }
 }
