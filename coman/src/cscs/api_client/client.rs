@@ -331,7 +331,6 @@ mod tests {
                                 ..Default::default()
                             }
                         ],
-                        ..Default::default()
                     }),
                     Result<GetSystemsResponse>
                 ));
