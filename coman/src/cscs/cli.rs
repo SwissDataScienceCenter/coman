@@ -21,7 +21,10 @@ use crate::{
     cli::app::JobIdOrName,
     config::{ComputePlatform, Config},
     cscs::{
-        api_client::{client::JobStartOptions, types::JobStatus},
+        api_client::{
+            client::JobStartOptions,
+            types::{JobId, JobStatus},
+        },
         handlers::{
             cscs_file_delete, cscs_file_download, cscs_file_list, cscs_file_upload, cscs_job_cancel, cscs_job_details,
             cscs_job_list, cscs_job_log, cscs_job_start, cscs_login, cscs_port_forward, cscs_resource_usage,
@@ -84,9 +87,9 @@ async fn maybe_job_id_from_name(
     j: JobIdOrName,
     system: Option<String>,
     platform: Option<ComputePlatform>,
-) -> Result<i64> {
+) -> Result<JobId> {
     match j {
-        JobIdOrName::Id(id) => Ok(id),
+        JobIdOrName::Id(id) => Ok(id.into()),
         JobIdOrName::Name(name) => match cscs_job_list(system, platform).await {
             Ok(jobs) => {
                 let job = jobs
@@ -94,7 +97,7 @@ async fn maybe_job_id_from_name(
                     .filter(|j| j.name == name)
                     .sorted_by_key(|j| std::cmp::Reverse(j.start_date.unwrap_or_default()))
                     .next();
-                job.map(|j| j.id as i64).ok_or(eyre!("no job found matching name"))
+                job.map(|j| j.id.clone()).ok_or(eyre!("no job found matching name"))
             }
             Err(e) => Err(e).wrap_err("couldn't list jobs"),
         },
@@ -291,7 +294,7 @@ pub(crate) async fn cli_cscs_file_download(
             println!("started s3 transfer job {}", job_data.0);
             let mut transfer_done = false;
             while !transfer_done {
-                if let Some(job) = cscs_job_details(job_data.0, system.clone(), platform.clone()).await? {
+                if let Some(job) = cscs_job_details(job_data.0.clone(), system.clone(), platform.clone()).await? {
                     match job.status {
                         JobStatus::Pending | JobStatus::Requeued | JobStatus::Running => {}
                         JobStatus::Finished => transfer_done = true,

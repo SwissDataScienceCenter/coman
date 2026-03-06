@@ -114,7 +114,7 @@ impl Component<Msg, UserEvent> for WorkloadDetails {
                 code: Key::Char('l'),
                 modifiers: KeyModifiers::NONE,
             }) => {
-                return Some(Msg::Job(JobMsg::Log(self.details.id)));
+                return Some(Msg::Job(JobMsg::Log(self.details.id.clone())));
             }
             Event::Keyboard(KeyEvent { code: Key::Esc, .. }) => {
                 return Some(Msg::Job(JobMsg::Close));

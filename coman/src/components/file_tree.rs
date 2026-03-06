@@ -15,7 +15,6 @@ use crate::{
         user_events::{FileEvent, UserEvent},
     },
     cscs::{api_client::types::PathType, ports::BackgroundTask},
-    trace_dbg,
 };
 
 #[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Clone)]
@@ -179,7 +178,6 @@ impl Component<Msg, UserEvent> for FileTree {
             Event::User(UserEvent::File(FileEvent::DeleteCurrentFile)) => {
                 if let State::One(StateValue::String(id)) = self.state() {
                     let tree_tx = self.file_tree_tx.clone();
-                    let id = trace_dbg!(id);
                     tokio::spawn(async move {
                         tree_tx.send(BackgroundTask::DeleteFile(id)).await.unwrap();
                     });

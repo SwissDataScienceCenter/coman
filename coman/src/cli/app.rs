@@ -81,7 +81,7 @@ pub enum CliCommands {
         command: Vec<String>,
     },
     #[clap(hide = true)]
-    Proxy { system: String, job_id: i64 },
+    Proxy { system: String, job_id: String },
 }
 
 #[derive(Subcommand, Debug)]

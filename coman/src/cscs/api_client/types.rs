@@ -9,6 +9,53 @@ use reqwest::Url;
 use strum::Display;
 
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, tabled::Tabled)]
+pub struct JobId(String);
+
+impl JobId {
+    pub fn into_string(self) -> String {
+        self.0
+    }
+    pub fn new(id: String) -> Self {
+        JobId(id)
+    }
+}
+
+impl AsRef<str> for JobId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for JobId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<&str> for JobId {
+    fn from(value: &str) -> Self {
+        JobId::new(value.to_owned())
+    }
+}
+
+impl From<String> for JobId {
+    fn from(value: String) -> Self {
+        JobId::new(value)
+    }
+}
+
+impl From<usize> for JobId {
+    fn from(value: usize) -> Self {
+        JobId::new(value.to_string())
+    }
+}
+impl From<i64> for JobId {
+    fn from(value: i64) -> Self {
+        JobId::new(value.to_string())
+    }
+}
+
+#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, tabled::Tabled)]
 pub struct UserInfo {
     pub id: String,
     pub name: String,
@@ -159,7 +206,7 @@ impl From<String> for JobStatus {
 }
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, tabled::Tabled)]
 pub struct Job {
-    pub id: usize,
+    pub id: JobId,
     pub name: String,
     pub status: JobStatus,
     pub user: String,
@@ -171,7 +218,7 @@ pub struct Job {
 impl From<JobModel> for Job {
     fn from(value: JobModel) -> Self {
         Self {
-            id: value.job_id as usize,
+            id: value.job_id.into(),
             name: value.name,
             status: value.status.state.into(),
             user: value.user.unwrap_or("".to_string()),
@@ -189,7 +236,7 @@ impl From<JobModel> for Job {
 
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, tabled::Tabled)]
 pub struct JobDetail {
-    pub id: usize,
+    pub id: JobId,
     pub name: String,
     #[tabled(display("display_option_datetime"))]
     pub start_date: Option<DateTime<Local>>,
@@ -212,7 +259,7 @@ fn display_option_datetime(value: &Option<DateTime<Local>>) -> String {
 impl From<(JobModel, JobMetadataModel)> for JobDetail {
     fn from(value: (JobModel, JobMetadataModel)) -> Self {
         Self {
-            id: value.0.job_id as usize,
+            id: value.0.job_id.into(),
             name: value.0.name,
             start_date: value
                 .0
