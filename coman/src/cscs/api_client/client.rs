@@ -293,7 +293,9 @@ mod tests {
                 Result<PostJobSubmissionResponse>
             ))
             .will_return_async(injectorpp::async_return!(
-                Ok(PostJobSubmissionResponse { job_id: Some(1) }),
+                Ok(PostJobSubmissionResponse {
+                    job_id: Some("1".to_owned())
+                }),
                 Result<PostJobSubmissionResponse>
             ));
         let result = client
@@ -473,7 +475,7 @@ mod tests {
             .will_return_async(injectorpp::async_return!(
                 Ok(UploadFileResponse {
                     transfer_job: TransferJob {
-                        job_id: 1,
+                        job_id: "1".to_owned(),
                         ..Default::default()
                     },
                     transfer_directives: DownloadFileResponseTransferDirectives::S3(S3TransferResponse {
@@ -507,7 +509,7 @@ mod tests {
             .will_return_async(injectorpp::async_return!(
                 Ok(DownloadFileResponse {
                     transfer_job: TransferJob {
-                        job_id: 1,
+                        job_id: "1".to_owned(),
                         ..Default::default()
                     },
                     transfer_directives: DownloadFileResponseTransferDirectives::S3(S3TransferResponse {

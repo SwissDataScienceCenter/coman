@@ -88,7 +88,8 @@ pub type AttachComputeSystemNameJobsJobIdAttachPutRequestBody = PostJobAttachReq
 #[derive(Debug, Clone, PartialEq, Serialize, validator::Validate, oas3_gen_support::Default)]
 pub struct BodyPostUploadFilesystemSystemNameOpsUploadPost {
     ///File to be uploaded as `multipart/form-data`
-    pub file: Vec<u8>,
+    #[validate(length(min = 1u64))]
+    pub file: String,
 }
 ///Configuration for automatic object lifecycle in storage buckets.
 #[derive(Debug, Clone, PartialEq, Deserialize, oas3_gen_support::Default)]
@@ -2382,7 +2383,7 @@ pub struct PostJobAttachRequest {
 #[derive(Debug, Clone, PartialEq, Deserialize, oas3_gen_support::Default)]
 pub struct PostJobSubmissionResponse {
     #[serde(rename = "jobId")]
-    pub job_id: Option<i64>,
+    pub job_id: Option<String>,
 }
 ///Submit a new job
 #[derive(Debug, Clone, validator::Validate, oas3_gen_support::Default)]
@@ -3063,7 +3064,7 @@ pub struct StreamerTransferResponse {
 #[derive(Debug, Clone, PartialEq, Deserialize, oas3_gen_support::Default)]
 pub struct TransferJob {
     #[serde(rename = "jobId")]
-    pub job_id: i64,
+    pub job_id: String,
     pub logs: TransferJobLogs,
     pub system: String,
     #[serde(rename = "workingDirectory")]
