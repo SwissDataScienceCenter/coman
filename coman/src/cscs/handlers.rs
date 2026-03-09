@@ -40,7 +40,8 @@ use crate::{
         api_client::{
             client::{CscsApi, JobStartOptions},
             types::{
-                FileStat, FileSystemType, Job, JobDetail, JobStatus, PathEntry, PathType, S3Upload, System, UserInfo,
+                FileStat, FileSystemType, Job, JobDetail, JobId, JobStatus, PathEntry, PathType, S3Upload, System,
+                UserInfo,
             },
         },
         cli::upload_chunk,
@@ -149,7 +150,7 @@ pub async fn cscs_job_list(system: Option<String>, platform: Option<ComputePlatf
 }
 
 pub async fn cscs_job_details(
-    job_id: i64,
+    job_id: JobId,
     system: Option<String>,
     platform: Option<ComputePlatform>,
 ) -> Result<Option<JobDetail>> {
@@ -166,7 +167,7 @@ pub async fn cscs_job_details(
 }
 
 pub async fn cscs_job_log(
-    job_id: i64,
+    job_id: JobId,
     stderr: bool,
     system: Option<String>,
     platform: Option<ComputePlatform>,
@@ -176,7 +177,7 @@ pub async fn cscs_job_log(
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
             let current_system = &system.unwrap_or(config.values.cscs.current_system);
-            let job = api_client.get_job(current_system, job_id).await?;
+            let job = api_client.get_job(current_system, job_id.clone()).await?;
             if job.is_none() {
                 return Err(eyre!("couldn't find job {}", job_id));
             }
@@ -200,7 +201,7 @@ pub async fn cscs_job_log(
     }
 }
 
-pub async fn cscs_resource_usage(job_id: i64, system: Option<String>) -> Result<ResourceUsage> {
+pub async fn cscs_resource_usage(job_id: JobId, system: Option<String>) -> Result<ResourceUsage> {
     let endpoint_id = get_endpoint_id(job_id, system).await?;
 
     let alpn: Vec<u8> = COMAN_RPC_ALPN.to_vec();
@@ -226,7 +227,7 @@ pub async fn cscs_resource_usage(job_id: i64, system: Option<String>) -> Result<
 }
 
 pub async fn cscs_port_forward(
-    job_id: i64,
+    job_id: JobId,
     source_port: u16,
     destination_port: u16,
     system: Option<String>,
@@ -241,11 +242,11 @@ pub async fn cscs_port_forward(
     }
 }
 
-async fn get_endpoint_id(job_id: i64, system: Option<String>) -> Result<iroh::PublicKey, eyre::Error> {
+async fn get_endpoint_id(job_id: JobId, system: Option<String>) -> Result<iroh::PublicKey, eyre::Error> {
     let data_dir = get_data_dir();
     let config = Config::new().unwrap();
     let current_system = &system.unwrap_or(config.values.cscs.current_system);
-    let job_info = cscs_job_details(job_id, Some(current_system.clone()), None).await?;
+    let job_info = cscs_job_details(job_id.clone(), Some(current_system.clone()), None).await?;
     if job_info.is_none() {
         return Err(eyre!("remote job does not exist!"));
     } else if let Some(job_info) = job_info
@@ -300,7 +301,7 @@ async fn process_port_forward(endpoint_id: EndpointId, destination_port: u16, mu
     }
 }
 
-pub async fn cscs_job_cancel(job_id: i64, system: Option<String>, platform: Option<ComputePlatform>) -> Result<()> {
+pub async fn cscs_job_cancel(job_id: JobId, system: Option<String>, platform: Option<ComputePlatform>) -> Result<()> {
     match get_access_token().await {
         Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
@@ -421,7 +422,7 @@ async fn garbage_collect_ssh(api_client: &CscsApi, current_system: &str) -> Resu
 async fn store_ssh_information(
     current_system: &str,
     user_info: &UserInfo,
-    job_id: &i64,
+    job_id: &JobId,
     job_name: &str,
     secret_key: &SecretKey,
 ) -> Result<String> {
@@ -620,7 +621,7 @@ async fn inject_coman_squash(
     resp.error_for_status()?;
     // wait for transfer job to finish
     loop {
-        match cscs_job_details(transfer_data.0, Some(current_system.to_string()), None).await? {
+        match cscs_job_details(transfer_data.0.clone(), Some(current_system.to_string()), None).await? {
             Some(JobDetail {
                 status: JobStatus::Finished,
                 ..
@@ -988,7 +989,7 @@ pub async fn cscs_file_download(
     account: Option<String>,
     system: Option<String>,
     platform: Option<ComputePlatform>,
-) -> Result<Option<(i64, Url, usize)>> {
+) -> Result<Option<(JobId, Url, usize)>> {
     let local = if local.is_dir() {
         local.join(remote.file_name().ok_or(eyre!("couldn't get name of remote file"))?)
     } else {
@@ -1026,7 +1027,7 @@ pub async fn cscs_file_upload(
     account: Option<String>,
     system: Option<String>,
     platform: Option<ComputePlatform>,
-) -> Result<Option<(i64, S3Upload)>> {
+) -> Result<Option<(JobId, S3Upload)>> {
     match get_access_token().await {
         Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0, platform).unwrap();

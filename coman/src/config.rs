@@ -40,8 +40,11 @@ pub struct SystemDescription {
 #[allow(clippy::upper_case_acronyms)]
 pub enum ComputePlatform {
     #[default]
+    #[serde(alias = "hpc", alias = "HPC")]
     HPC,
+    #[serde(alias = "ml", alias = "ML")]
     ML,
+    #[serde(alias = "cw", alias = "CW")]
     CW,
 }
 

@@ -5,10 +5,10 @@ use eyre::{Result, eyre};
 use crate::{
     client::FirecrestClient,
     types::{
-        DownloadFileResponse, DownloadFileResponseTransferDirectives, GetDirectoryLsResponse, GetFileChecksumResponse,
-        GetFileStatResponse, GetFileTailResponse, PostFileDownloadRequest, PostFileDownloadRequestTransferDirectives,
-        PostFileUploadRequest, PostMakeDirRequest, PostMkdirResponse, PutFileChmodRequest, PutFileChmodResponse,
-        S3TransferRequest, S3TransferResponse, UploadFileResponse,
+        DownloadFileResponse, GetDirectoryLsResponse, GetFileChecksumResponse, GetFileStatResponse,
+        GetFileTailResponse, PostFileDownloadRequest, PostFileDownloadRequestTransferDirectives, PostFileUploadRequest,
+        PostFileUploadRequestTransferDirectives, PostMakeDirRequest, PostMkdirResponse, PutFileChmodRequest,
+        PutFileChmodResponse, S3TransferRequest, UploadFileResponse,
     },
 };
 
@@ -150,7 +150,7 @@ pub async fn post_filesystem_transfer_upload(
     let file_path = path.as_os_str().to_str().ok_or(eyre!("couldn't cast path to string"))?;
     let body = PostFileUploadRequest {
         source_path: Some(file_path.to_owned()),
-        transfer_directives: PostFileDownloadRequestTransferDirectives::S3(S3TransferRequest {
+        transfer_directives: PostFileUploadRequestTransferDirectives::S3Transfer(S3TransferRequest {
             file_size: Some(size),
             ..Default::default()
         }),
@@ -165,21 +165,8 @@ pub async fn post_filesystem_transfer_upload(
             None,
         )
         .await?;
-    let json_data: serde_json::Value = serde_json::from_str(response.as_str())?;
 
-    let mut model: UploadFileResponse = serde_json::from_str(response.as_str())?;
-    // deserializing of contained enum does not work properly as the fields are wrong, we do it here manually
-    let transfer_json = json_data["transferDirectives"].clone();
-    let transfer_dir = DownloadFileResponseTransferDirectives::S3(S3TransferResponse {
-        complete_upload_url: transfer_json["complete_upload_url"].as_str().map(|s| s.to_owned()),
-        download_url: transfer_json["download_url"].as_str().map(|s| s.to_owned()),
-        max_part_size: transfer_json["max_part_size"].as_i64(),
-        parts_upload_urls: transfer_json["parts_upload_urls"]
-            .as_array()
-            .map(|v| v.iter().flat_map(|u| u.as_str().map(|s| s.to_owned())).collect()),
-        transfer_method: "s3".to_owned(),
-    });
-    model.transfer_directives = transfer_dir;
+    let model: UploadFileResponse = serde_json::from_str(response.as_str())?;
 
     Ok(model)
 }
@@ -216,19 +203,7 @@ pub async fn post_filesystem_transfer_download(
             None,
         )
         .await?;
-    let mut model: DownloadFileResponse = serde_json::from_str(response.as_str())?;
-    let json_data: serde_json::Value = serde_json::from_str(response.as_str())?;
-    let transfer_json = json_data["transferDirectives"].clone();
-    let transfer_dir = DownloadFileResponseTransferDirectives::S3(S3TransferResponse {
-        complete_upload_url: transfer_json["complete_upload_url"].as_str().map(|s| s.to_owned()),
-        download_url: transfer_json["download_url"].as_str().map(|s| s.to_owned()),
-        max_part_size: transfer_json["max_part_size"].as_i64(),
-        parts_upload_urls: transfer_json["parts_upload_urls"]
-            .as_array()
-            .map(|v| v.iter().flat_map(|u| u.as_str().map(|s| s.to_owned())).collect()),
-        transfer_method: "s3".to_owned(),
-    });
-    model.transfer_directives = transfer_dir;
+    let model: DownloadFileResponse = serde_json::from_str(response.as_str())?;
     Ok(model)
 }
 

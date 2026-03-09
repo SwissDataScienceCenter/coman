@@ -97,7 +97,7 @@ pub async fn get_compute_system_jobs(
 pub async fn get_compute_system_job(
     client: &FirecrestClient,
     system_name: &str,
-    job_id: i64,
+    job_id: String,
 ) -> Result<GetJobResponse> {
     let response = client
         .get(format!("compute/{system_name}/jobs/{job_id}").as_str(), None)
@@ -108,7 +108,7 @@ pub async fn get_compute_system_job(
 pub async fn get_compute_system_job_metadata(
     client: &FirecrestClient,
     system_name: &str,
-    job_id: i64,
+    job_id: String,
 ) -> Result<GetJobMetadataResponse> {
     let response = client
         .get(format!("compute/{system_name}/jobs/{job_id}/metadata").as_str(), None)
@@ -117,7 +117,7 @@ pub async fn get_compute_system_job_metadata(
     Ok(model)
 }
 
-pub async fn cancel_compute_system_job(client: &FirecrestClient, system_name: &str, job_id: i64) -> Result<()> {
+pub async fn cancel_compute_system_job(client: &FirecrestClient, system_name: &str, job_id: String) -> Result<()> {
     let _ = client
         .delete(format!("compute/{system_name}/jobs/{job_id}").as_str(), None)
         .await?;

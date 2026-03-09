@@ -25,9 +25,9 @@ jobs:
           SERVICE_ACCOUNT_NAME: ${{ secrets.SERVICE_ACCOUNT_NAME}}
           SERVICE_ACCOUNT_PASSWORD: ${{ secrets.SERVICE_ACCOUNT_PASSWORD}}
         run: |
-          export SDSC_VLLM_TOKEN=$(curl -X POST https://authentik-server-runai-codev-llm.inference.compute.datascience.ch/application/o/token/ \
+          export SDSC_VLLM_TOKEN=$(curl -X POST https://authentik-server-runai-sharedllm-ralf.inference.compute.datascience.ch/application/o/token/ \
           -H "Content-Type: application/x-www-form-urlencoded" \
-          -d "grant_type=client_credentials&client_id=09BroBvREXFSYXBTkwse0PlOF5w1rmrk&username=$SERVICE_ACCOUNT_NAME&password=$SERVICE_ACCOUNT_PASSWORD"\
+          -d "grant_type=client_credentials&client_id=P8dW2vrNPDa8d43qd4BK49eEDYJFtvYk&username=$SERVICE_ACCOUNT_NAME&password=$SERVICE_ACCOUNT_PASSWORD"\
           |jq '.access_token' | tr -d '"')
           echo "SDSC_VLLM_TOKEN=$SDSC_VLLM_TOKEN" >> "$GITHUB_ENV"
 
@@ -42,28 +42,29 @@ jobs:
           config__custom_model_max_tokens: "32000"
           config__ai_timeout: "1800"
           openai__extra_body: '{"chat_template_kwargs":{"enable_thinking":false}}'
-          OPENAI__API_BASE: "https://vllm-gateway-runai-codev-llm.inference.compute.datascience.ch/v1"
+          OPENAI__API_BASE: "https://vllm-gateway-runai-sharedllm-ralf.inference.compute.datascience.ch/v1"
           config__verbosity_level: "2"
           github_action_config__auto_review: "true"
           github_action_config__auto_describe: "true"
           github_action_config__auto_improve: "true"
-      - name: AI-Review Step
-        uses: Nikita-Filonov/ai-review@v0.51.0
-        with:
-          review-command: run-inline
-        env:
-          # --- LLM configuration ---
-          LLM__PROVIDER: "OPENAI"
-          LLM__META__MODEL: "Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"
-          LLM__META__MAX_TOKENS: "16000"
-          LLM__HTTP_CLIENT__API_URL: "https://vllm-gateway-runai-codev-llm.inference.compute.datascience.ch/v1"
-          LLM__HTTP_CLIENT__API_TOKEN: ${{ env.SDSC_VLLM_TOKEN }}
+      # note: this is a bit too chatty, with lots of comments like "X was changed, please make sure this is what you want"
+      # - name: AI-Review Step
+      #   uses: Nikita-Filonov/ai-review@v0.51.0
+      #   with:
+      #     review-command: run-inline
+      #   env:
+      #     # --- LLM configuration ---
+      #     LLM__PROVIDER: "OPENAI"
+      #     LLM__META__MODEL: "Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"
+      #     LLM__META__MAX_TOKENS: "16000"
+      #     LLM__HTTP_CLIENT__API_URL: "https://vllm-gateway-runai-sharedllm-ralf.inference.compute.datascience.ch/v1"
+      #     LLM__HTTP_CLIENT__API_TOKEN: ${{ env.SDSC_VLLM_TOKEN }}
 
-          # --- GitHub integration ---
-          VCS__PROVIDER: "GITHUB"
-          VCS__PIPELINE__OWNER: ${{ github.repository_owner }}
-          VCS__PIPELINE__REPO: ${{ github.event.repository.name }}
-          VCS__PIPELINE__PULL_NUMBER: ${{ github.event.number}}
-          VCS__HTTP_CLIENT__API_URL: "https://api.github.com"
-          VCS__HTTP_CLIENT__API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REVIEW__IGNORE_CHANGES: '["Cargo.lock"]'
+      #     # --- GitHub integration ---
+      #     VCS__PROVIDER: "GITHUB"
+      #     VCS__PIPELINE__OWNER: ${{ github.repository_owner }}
+      #     VCS__PIPELINE__REPO: ${{ github.event.repository.name }}
+      #     VCS__PIPELINE__PULL_NUMBER: ${{ github.event.number}}
+      #     VCS__HTTP_CLIENT__API_URL: "https://api.github.com"
+      #     VCS__HTTP_CLIENT__API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #     REVIEW__IGNORE_CHANGES: '["Cargo.lock"]'

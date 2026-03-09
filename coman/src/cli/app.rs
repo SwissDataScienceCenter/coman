@@ -4,8 +4,9 @@ use chrono::{DateTime, Local, TimeDelta};
 use clap::{Args, Command, Parser, Subcommand, ValueHint, builder::TypedValueParser};
 use clap_complete::{ArgValueCompleter, CompletionCandidate, Generator, Shell, generate};
 use color_eyre::{Report, Result};
+use eyre::Context;
 use itertools::Itertools;
-use self_update::cargo_crate_version;
+use self_update::{cargo_crate_version, errors::Error as UpdateError};
 use strum::VariantNames;
 use tokio::sync::mpsc;
 
@@ -81,7 +82,7 @@ pub enum CliCommands {
         command: Vec<String>,
     },
     #[clap(hide = true)]
-    Proxy { system: String, job_id: i64 },
+    Proxy { system: String, job_id: String },
 }
 
 #[derive(Subcommand, Debug)]
@@ -565,7 +566,7 @@ pub fn print_completions<G: Generator>(generator: G, cmd: &mut Command) {
 }
 
 pub fn update() -> Result<()> {
-    let status = self_update::backends::github::Update::configure()
+    let result = self_update::backends::github::Update::configure()
         .repo_owner("SwissDataScienceCenter")
         .repo_name("coman")
         .bin_name("coman")
@@ -573,13 +574,19 @@ pub fn update() -> Result<()> {
         .show_download_progress(true)
         .current_version(cargo_crate_version!())
         .build()?
-        .update()?;
-    if status.updated() {
-        println!("Successfully updated to version: `{}`", status.version());
-    } else {
-        println!("Already up to date at version: `{}`", status.version());
+        .update();
+    match result {
+        Ok(status) => {
+            if status.updated() {
+                println!("Successfully updated to version: `{}`", status.version());
+            } else {
+                println!("Already up to date at version: `{}`", status.version());
+            }
+            Ok(())
+        }
+        Err(UpdateError::Update(msg)) if msg == "Update aborted" => Ok(()),
+        Err(e) => Err(e).wrap_err("couldn't perform update"),
     }
-    Ok(())
 }
 
 pub async fn check_update() -> Result<()> {
