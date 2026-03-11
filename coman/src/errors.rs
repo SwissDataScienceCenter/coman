@@ -17,8 +17,8 @@ pub fn init() -> Result<()> {
             "This is a bug. Consider reporting it at {}",
             env!("CARGO_PKG_REPOSITORY")
         ))
-        .capture_span_trace_by_default(false)
-        .display_location_section(false)
+        .capture_span_trace_by_default(true)
+        .display_location_section(true)
         .display_env_section(false)
         .into_hooks();
     eyre_hook.install()?;

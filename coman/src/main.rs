@@ -61,6 +61,7 @@ extern crate tuirealm;
 #[tokio::main]
 async fn main() -> Result<()> {
     set_global_service_name(env!("CARGO_PKG_NAME"));
+    crate::errors::init()?;
     crate::logging::init()?;
     CompleteEnv::with_factory(Cli::command).complete();
 
@@ -184,7 +185,6 @@ async fn main() -> Result<()> {
 }
 
 fn run_tui(tick_rate: f64) -> Result<()> {
-    crate::errors::init()?;
     //we initialize the terminal early so the panic handler that restores the terminal is correctly set up
     let adapter = CrosstermTerminalAdapter::new()?;
     let bridge = TerminalBridge::init(adapter).expect("Cannot initialize terminal");
