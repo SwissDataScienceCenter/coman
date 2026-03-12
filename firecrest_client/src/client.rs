@@ -66,7 +66,9 @@ impl FirecrestClient {
             request_builder = request_builder.bearer_auth(token);
         }
         if let Some(body) = body {
-            request_builder = request_builder.body(body);
+            request_builder = request_builder
+                .body(body)
+                .header(reqwest::header::CONTENT_TYPE, "application/json");
         }
         if let Some(mp) = multipart {
             let form = reqwest::multipart::Form::new().part(
@@ -107,10 +109,23 @@ impl FirecrestClient {
         params: Option<Vec<(&str, &str)>>,
         multipart: Option<(&str, (&str, Vec<u8>))>,
     ) -> Result<String> {
-        self.request(path, reqwest::Method::POST, Some(body), params, multipart)
-            .await
+        self.request(
+            path,
+            reqwest::Method::POST,
+            if body.is_empty() { None } else { Some(body) },
+            params,
+            multipart,
+        )
+        .await
     }
     pub async fn put(&self, path: &str, body: String, params: Option<Vec<(&str, &str)>>) -> Result<String> {
-        self.request(path, reqwest::Method::PUT, Some(body), params, None).await
+        self.request(
+            path,
+            reqwest::Method::PUT,
+            if body.is_empty() { None } else { Some(body) },
+            params,
+            None,
+        )
+        .await
     }
 }
