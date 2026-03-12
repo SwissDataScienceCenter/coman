@@ -15,7 +15,7 @@ jobs:
   release:
     name: Release - ${{ matrix.platform.os_name }}
     env:
-      COMAN_RELEASE_VERSION: ${{ github.event.release.tag_name }}
+      COMAN_RELEASE_VERSION: ${{ github.ref_name }}
     strategy:
       matrix:
         platform:
