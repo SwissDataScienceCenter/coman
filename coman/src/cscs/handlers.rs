@@ -11,7 +11,7 @@ use std::{
 };
 
 use base64::prelude::*;
-use color_eyre::{Result, eyre::eyre};
+use color_eyre::{Result, Section, eyre::eyre};
 use eyre::Context;
 use futures::StreamExt;
 use iroh::{Endpoint, EndpointId, SecretKey};
@@ -191,7 +191,8 @@ pub async fn cscs_job_log(
                     "No {} log exists for job {}",
                     if stderr { "stderr" } else { "stdout" },
                     job_id
-                ));
+                ))
+                .suggestion("It might take a while for the log to be created, try again later");
             }
 
             let path = PathBuf::from(path);
