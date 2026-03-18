@@ -772,7 +772,11 @@ async fn handle_script(
     context.insert("environment_file", &environment_path.to_path_buf());
     context.insert("container_workdir", &workdir);
     if let Some(path) = coman_squash {
-        context.insert("coman_squash", &path);
+        context.insert("coman_squash", &path); // path to coman squash file on remote
+        // whether to use coman as an init system. Only do this if running an image
+        context.insert("coman_init", &options.image.is_some());
+    } else {
+        context.insert("coman_init", &false);
     }
     let script = tera.render("script.sh", &context)?;
     api_client
@@ -845,6 +849,9 @@ pub async fn cscs_job_start(
                 let image = image.try_into()?;
                 Some(image)
             } else {
+                println!(
+                    "Warning: No docker image specified (-i), functionality like SSH and port forwarding only works when running a docker image"
+                );
                 None
             };
             let image_meta = if let Some(docker_image) = docker_image {

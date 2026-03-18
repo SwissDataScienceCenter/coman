@@ -21,12 +21,14 @@ current_platform = "HPC" # what platform to execute commands on (valid: HPC, ML 
 #   environment_file: the path to the edf environment toml file in the cluster
 #   command: the command to run
 #   container_workdir: the working directory inside the container
+#   coman_squash: the path to the coman squash file
+#   coman_init: whether to use coman as an init system for the command. Needed for SSH/Portforwarding. Only work when using a docker container
 sbatch_script_template = """
 #!/bin/bash
 #SBATCH --job-name={{name}}
 #SBATCH --ntasks=1
 #SBATCH --time=10:00:00
-srun {% if environment_file %}--environment={{environment_file}}{% endif %} {% if coman_squash %}/coman/coman exec {% endif %}{{command}}
+srun {% if environment_file %}--environment={{environment_file}}{% endif %} {% if coman_init %}/coman/coman exec {% endif %}{{command}}
 """
 
 # the edf environment toml file template
