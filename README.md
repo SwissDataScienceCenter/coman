@@ -18,9 +18,11 @@ Table of contents
       * [CLI](#cli)
         * [Shell Completions](#shell-completions)
       * [Terminal UI](#tui)
-      * [SSH](#ssh)
       * [coman.toml config file](#comantoml-config-file)
         * [Editing the config](#editing-the-config)
+      * [Private docker imager](#using-private-docker-images)
+      * [SSH](#ssh)
+      * [Port Forwarding](#port-forwarding)
    * [Development](#development)
      * [Prerequisites](#prerequisites)
      * [Install binaries](#install-binaries)
@@ -338,6 +340,11 @@ coman config get cscs.current_system
 ```shell
 coman config set cscs.current_system "daint"
 ```
+
+### Using private Docker images
+
+Please follow the [guide at CSCS](https://docs.cscs.ch/software/container-engine/run/#third-party-and-private-registries) on how to set up
+credentials for private registries, especially the `netrc` file part.
 
 ### SSH
 
