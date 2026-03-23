@@ -20,7 +20,7 @@ Table of contents
       * [Terminal UI](#tui)
       * [coman.toml config file](#comantoml-config-file)
         * [Editing the config](#editing-the-config)
-      * [Private docker imager](#using-private-docker-images)
+      * [Private docker images](#using-private-docker-images)
       * [SSH](#ssh)
       * [Port Forwarding](#port-forwarding)
    * [Development](#development)
