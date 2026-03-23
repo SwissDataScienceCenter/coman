@@ -15,7 +15,7 @@ use crate::{
     cscs::{
         api_client::{
             client::{EdfSpec as EdfSpecEnum, ScriptSpec as ScriptSpecEnum},
-            types::PathType,
+            types::{JobStatus, PathType},
         },
         handlers::{cscs_file_list, cscs_job_list, file_system_roots},
     },
@@ -239,7 +239,10 @@ impl FromStr for JobIdOrName {
 #[derive(Subcommand, Debug)]
 pub enum CscsJobCommands {
     #[clap(alias("ls"), about = "List all jobs [aliases: ls]")]
-    List,
+    List {
+        #[clap(short,long,help="filter by job status (separated by ',', [running, pending, finished, cancelled, failed, timeout, requeued])", value_delimiter=',', num_args=1.., value_enum)]
+        status: Option<Vec<JobStatus>>,
+    },
     #[clap(alias("g"), about = "Get metadata for a specific job [aliases: g]")]
     Get {
         #[arg(help="id or name of the job (name uses newest job of that name)", add = ArgValueCompleter::new(job_id_or_name_completer))]
@@ -330,7 +333,7 @@ fn job_id_or_name_completer(current: &std::ffi::OsStr) -> Vec<CompletionCandidat
     match jn {
         JobIdOrName::Id(id) => {
             tokio::spawn(async move {
-                let jobs = cscs_job_list(None, None).await.unwrap();
+                let jobs = cscs_job_list(None, None, None).await.unwrap();
                 let partial_id = id.to_string();
                 let ids: Vec<_> = jobs
                     .iter()
@@ -345,7 +348,7 @@ fn job_id_or_name_completer(current: &std::ffi::OsStr) -> Vec<CompletionCandidat
         }
         JobIdOrName::Name(name) => {
             tokio::spawn(async move {
-                let jobs = cscs_job_list(None, None).await.unwrap();
+                let jobs = cscs_job_list(None, None, None).await.unwrap();
                 let names: Vec<_> = jobs
                     .into_iter()
                     .map(|j| j.name)

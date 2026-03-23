@@ -136,13 +136,17 @@ pub async fn cscs_system_set(system_name: String, global: bool) -> Result<()> {
     config.set("cscs.current_system", system_name, global)
 }
 
-pub async fn cscs_job_list(system: Option<String>, platform: Option<ComputePlatform>) -> Result<Vec<Job>> {
+pub async fn cscs_job_list(
+    status: Option<Vec<JobStatus>>,
+    system: Option<String>,
+    platform: Option<ComputePlatform>,
+) -> Result<Vec<Job>> {
     match get_access_token().await {
         Ok(access_token) => {
             let api_client = CscsApi::new(access_token.0, platform).unwrap();
             let config = Config::new().unwrap();
             api_client
-                .list_jobs(&system.unwrap_or(config.values.cscs.current_system), None)
+                .list_jobs(status, &system.unwrap_or(config.values.cscs.current_system), None)
                 .await
         }
         Err(e) => Err(e),
@@ -367,7 +371,7 @@ async fn garbage_collect_ssh(api_client: &CscsApi, current_system: &str) -> Resu
     if !data_dir.exists() {
         return Ok(());
     }
-    let jobs = api_client.list_jobs(current_system, None).await?;
+    let jobs = api_client.list_jobs(None, current_system, None).await?;
     let job_entries: HashSet<_> = jobs
         .iter()
         .filter(|j| j.status == JobStatus::Pending || j.status == JobStatus::Running || j.status == JobStatus::Requeued)

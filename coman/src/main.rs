@@ -107,7 +107,7 @@ async fn main() -> Result<()> {
             } => match cscs_command {
                 CscsCommands::Login => cli_cscs_login().await?,
                 CscsCommands::Job { command } => match command {
-                    CscsJobCommands::List => cli_cscs_job_list(system, platform).await?,
+                    CscsJobCommands::List { status } => cli_cscs_job_list(status, system, platform).await?,
                     CscsJobCommands::Get { job } => cli_cscs_job_detail(job, system, platform).await?,
                     CscsJobCommands::Log { job, stderr } => cli_cscs_job_log(job, stderr, system, platform).await?,
                     CscsJobCommands::Submit {

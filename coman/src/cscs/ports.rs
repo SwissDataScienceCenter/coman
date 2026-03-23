@@ -113,7 +113,7 @@ impl AsyncFetchWorkloadsPort {
 #[tuirealm::async_trait]
 impl PollAsync<UserEvent> for AsyncFetchWorkloadsPort {
     async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
-        match cscs_job_list(None, None).await {
+        match cscs_job_list(None, None, None).await {
             Ok(jobs) => Ok(Some(Event::User(UserEvent::Cscs(CscsEvent::GotWorkloadData(jobs))))),
             Err(e) => {
                 let _ = trace_dbg!(e);
