@@ -20,11 +20,13 @@ pub struct ContextMenu {
 impl ContextMenu {
     fn workload_options() -> Table {
         TableBuilder::default()
+            .add_col(TextSpan::from("Cancel Job").fg(Color::Cyan))
+            .add_row()
+            .add_col(TextSpan::from("Filter by Status").fg(Color::Cyan))
+            .add_row()
             .add_col(TextSpan::from("Login to CSCS").fg(Color::Cyan))
             .add_row()
             .add_col(TextSpan::from("Switch System").fg(Color::Cyan))
-            .add_row()
-            .add_col(TextSpan::from("Cancel Job").fg(Color::Cyan))
             .add_row()
             .add_col(TextSpan::from("Quit").fg(Color::Cyan))
             .add_row()
@@ -32,9 +34,9 @@ impl ContextMenu {
     }
     fn workload_actions(index: usize) -> Option<Msg> {
         match index {
-            0 => Some(Msg::Menu(MenuMsg::CscsLogin)),
-            1 => Some(Msg::Menu(MenuMsg::CscsSwitchSystem)),
-            2 => Some(Msg::Menu(MenuMsg::Event(UserEvent::Job(JobEvent::Cancel)))),
+            0 => Some(Msg::Menu(MenuMsg::Event(UserEvent::Job(JobEvent::Cancel)))),
+            1 => Some(Msg::Menu(MenuMsg::CscsShowFilterPopup)),
+            2 => Some(Msg::Menu(MenuMsg::CscsSwitchSystem)),
             3 => Some(Msg::AppClose),
             _ => Some(Msg::Menu(MenuMsg::Closed)),
         }

@@ -192,6 +192,7 @@ fn run_tui(tick_rate: f64) -> Result<()> {
 
     let (select_system_tx, select_system_rx) = mpsc::channel(100);
     let (job_log_tx, job_log_rx) = mpsc::channel(100);
+    let (job_filter_tx, job_filter_rx) = mpsc::channel(100);
     let (job_resource_usage_tx, job_resource_usage_rx) = mpsc::channel(100);
     let (background_task_tx, background_task_rx) = mpsc::channel(100);
     let (user_event_tx, user_event_rx) = mpsc::channel(100);
@@ -206,7 +207,11 @@ fn run_tui(tick_rate: f64) -> Result<()> {
         .tick_interval(Duration::from_millis((1000.0 / tick_rate) as u64))
         .async_crossterm_input_listener(Duration::default(), 3)
         .add_async_port(Box::new(AsyncErrorPort::new(error_rx)), Duration::default(), 1)
-        .add_async_port(Box::new(AsyncFetchWorkloadsPort::new()), Duration::from_secs(2), 1)
+        .add_async_port(
+            Box::new(AsyncFetchWorkloadsPort::new(job_filter_rx)),
+            Duration::from_secs(2),
+            1,
+        )
         .add_async_port(
             Box::new(AsyncSelectSystemPort::new(select_system_rx)),
             Duration::default(),
@@ -339,6 +344,7 @@ fn run_tui(tick_rate: f64) -> Result<()> {
         error_tx,
         select_system_tx,
         job_log_tx,
+        job_filter_tx,
         job_resource_usage_tx,
         user_event_tx,
         background_task_tx,
@@ -382,5 +388,6 @@ fn popup_exclusion_clause() -> SubClause<Id> {
         SubClause::IsMounted(Id::LoginPopup),
         SubClause::IsMounted(Id::DownloadPopup),
         SubClause::IsMounted(Id::SystemSelectPopup),
+        SubClause::IsMounted(Id::JobFilterPopup),
     ])))
 }

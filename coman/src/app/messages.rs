@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::{
     app::user_events::UserEvent,
-    cscs::api_client::types::{JobDetail, JobId, System},
+    cscs::api_client::types::{JobDetail, JobId, JobStatus, System},
 };
 
 #[derive(Debug, PartialEq)]
@@ -11,6 +11,7 @@ pub enum MenuMsg {
     Opened,
     Closed,
     CscsLogin,
+    CscsShowFilterPopup,
     CscsSwitchSystem,
     Event(UserEvent),
 }
@@ -43,6 +44,13 @@ pub enum SystemSelectMsg {
     Opened(Vec<System>),
     Closed,
     SystemSelected(String),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum JobFilterPopupMsg {
+    Opened,
+    Closed,
+    FilterSelected(Vec<JobStatus>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -86,6 +94,7 @@ pub enum Msg {
     LoginPopup(LoginPopupMsg),
     DownloadPopup(DownloadPopupMsg),
     SystemSelectPopup(SystemSelectMsg),
+    JobFilterPopup(JobFilterPopupMsg),
     Error(String),
     Info(String),
     Cscs(CscsMsg),

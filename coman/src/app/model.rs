@@ -14,18 +14,20 @@ use crate::{
     app::{
         ids::Id,
         messages::{
-            CscsMsg, DownloadPopupMsg, ErrorPopupMsg, InfoPopupMsg, JobMsg, LoginPopupMsg, MenuMsg, Msg, StatusMsg,
-            SystemSelectMsg, View,
+            CscsMsg, DownloadPopupMsg, ErrorPopupMsg, InfoPopupMsg, JobFilterPopupMsg, JobMsg, LoginPopupMsg, MenuMsg,
+            Msg, StatusMsg, SystemSelectMsg, View,
         },
         user_events::{CscsEvent, StatusEvent, UserEvent},
     },
     components::{
         context_menu::ContextMenu, download_popup::DownloadTargetInput, error_popup::ErrorPopup, info_popup::InfoPopup,
-        login_popup::LoginPopup, resource_usage::ResourceUsage, system_select_popup::SystemSelectPopup,
-        workload_details::WorkloadDetails, workload_list::WorkloadList, workload_log::WorkloadLog,
+        job_status_filter_popup::JobStatusFilterPopup, login_popup::LoginPopup, resource_usage::ResourceUsage,
+        system_select_popup::SystemSelectPopup, workload_details::WorkloadDetails, workload_list::WorkloadList,
+        workload_log::WorkloadLog,
     },
     config::Config,
     cscs::{
+        api_client::types::JobStatus,
         handlers::{cscs_login, cscs_system_set, get_available_compute_platforms},
         ports::{BackgroundTask, JobLogAction, JobResourceUsageAction},
     },
@@ -59,6 +61,9 @@ where
     /// sending None stops watching
     pub job_log_tx: mpsc::Sender<JobLogAction>,
 
+    /// Set to filter workload list
+    pub job_filter_tx: mpsc::Sender<Vec<JobStatus>>,
+
     /// Triggers watching job logs
     /// sending None stops watching
     pub job_resource_usage_tx: mpsc::Sender<JobResourceUsageAction>,
@@ -81,6 +86,7 @@ where
         error_tx: mpsc::Sender<String>,
         select_system_tx: mpsc::Sender<()>,
         job_log_tx: mpsc::Sender<JobLogAction>,
+        job_filter_tx: mpsc::Sender<Vec<JobStatus>>,
         job_resource_usage_tx: mpsc::Sender<JobResourceUsageAction>,
         user_event_tx: mpsc::Sender<UserEvent>,
         background_task_tx: mpsc::Sender<BackgroundTask>,
@@ -94,6 +100,7 @@ where
             error_tx,
             select_system_tx,
             job_log_tx,
+            job_filter_tx,
             job_resource_usage_tx,
             user_event_tx,
             background_task_tx,
@@ -149,6 +156,10 @@ where
                         let popup = draw_area_in_absolute_fixed_height(f.area(), 10, 3);
                         f.render_widget(Clear, popup);
                         app.view(&Id::DownloadPopup, f, popup);
+                    } else if app.mounted(&Id::JobFilterPopup) {
+                        let popup = draw_area_in_absolute_fixed_height(f.area(), 10, 3);
+                        f.render_widget(Clear, popup);
+                        app.view(&Id::JobFilterPopup, f, popup);
                     }
                 })
                 .is_ok()
@@ -281,6 +292,34 @@ where
             }
         }
     }
+    fn handle_job_filter_popup_msg(&mut self, msg: JobFilterPopupMsg) -> Option<Msg> {
+        match msg {
+            JobFilterPopupMsg::Opened => {
+                if self.app.mounted(&Id::JobFilterPopup) {
+                    assert!(self.app.umount(&Id::JobFilterPopup).is_ok());
+                }
+                assert!(
+                    self.app
+                        .mount(Id::JobFilterPopup, Box::new(JobStatusFilterPopup::new()), vec![])
+                        .is_ok()
+                );
+                assert!(self.app.active(&Id::JobFilterPopup).is_ok());
+                None
+            }
+            JobFilterPopupMsg::FilterSelected(filter) => {
+                assert!(self.app.umount(&Id::JobFilterPopup).is_ok());
+                let filter_tx = self.job_filter_tx.clone();
+                tokio::spawn(async move {
+                    filter_tx.send(filter).await.unwrap();
+                });
+                None
+            }
+            JobFilterPopupMsg::Closed => {
+                assert!(self.app.umount(&Id::JobFilterPopup).is_ok());
+                None
+            }
+        }
+    }
     fn handle_menu_msg(&mut self, msg: MenuMsg) -> Option<Msg> {
         match msg {
             MenuMsg::Opened => {
@@ -303,6 +342,10 @@ where
             MenuMsg::CscsSwitchSystem => {
                 assert!(self.app.umount(&Id::Menu).is_ok());
                 Some(Msg::Cscs(CscsMsg::SelectSystem))
+            }
+            MenuMsg::CscsShowFilterPopup => {
+                assert!(self.app.umount(&Id::Menu).is_ok());
+                Some(Msg::JobFilterPopup(JobFilterPopupMsg::Opened))
             }
             MenuMsg::Event(event) => {
                 assert!(self.app.umount(&Id::Menu).is_ok());
@@ -505,6 +548,7 @@ where
                 Msg::ErrorPopup(popup_msg) => self.handle_error_popup_msg(popup_msg),
                 Msg::InfoPopup(popup_msg) => self.handle_info_popup_msg(popup_msg),
                 Msg::DownloadPopup(popup_msg) => self.handle_download_popup_msg(popup_msg),
+                Msg::JobFilterPopup(popup_msg) => self.handle_job_filter_popup_msg(popup_msg),
                 Msg::Cscs(CscsMsg::Login(client_id, client_secret)) => {
                     let event_tx = self.user_event_tx.clone();
                     let error_tx = self.error_tx.clone();
