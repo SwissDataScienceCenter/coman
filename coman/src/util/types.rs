@@ -16,10 +16,10 @@ use oci_client::{
     Client, Reference,
     client::{ClientConfig, ClientProtocol},
     config::ConfigFile,
-    manifest::OciManifest,
+    manifest::{ImageIndexEntry, OciManifest},
     secrets::RegistryAuth,
 };
-use oci_spec::image::Arch;
+use oci_spec::image::{Arch, Os};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash, strum::Display)]
 pub enum OciPlatform {
@@ -79,9 +79,27 @@ impl DockerImageUrl {
         )
     }
 
-    pub async fn inspect(&self) -> Result<DockerImageMeta> {
+    pub async fn inspect(&self, arch: &str) -> Result<DockerImageMeta> {
+        let arch = match arch {
+            "arm64" => Arch::ARM64,
+            "amd64" => Arch::Amd64,
+            _ => {
+                return Err(eyre!("unsupported architecture {}", arch));
+            }
+        };
         let client = Client::new(ClientConfig {
             protocol: ClientProtocol::Https,
+            platform_resolver: Some(Box::new(move |manifests: &[ImageIndexEntry]| {
+                manifests
+                    .iter()
+                    .find(|entry| {
+                        entry
+                            .platform
+                            .as_ref()
+                            .is_some_and(|platform| platform.os == Os::Linux && platform.architecture == arch)
+                    })
+                    .map(|entry| entry.digest.clone())
+            })),
             ..Default::default()
         });
         let reference = self.to_string().parse()?;

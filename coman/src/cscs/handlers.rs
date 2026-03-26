@@ -859,12 +859,20 @@ pub async fn cscs_job_start(
                 None
             };
             let image_meta = if let Some(docker_image) = docker_image {
-                match docker_image.inspect().await {
-                    Ok(meta) => Some(meta),
-                    Err(e) => {
-                        println!("couldn't get image information: {e:?}");
-                        None
+                if let Some(system_info) = config.values.cscs.systems.get(current_system) {
+                    let mut meta = None;
+                    for arch in system_info.architecture.iter() {
+                        if let Ok(img_meta) = docker_image.inspect(arch).await {
+                            meta = Some(img_meta);
+                            break;
+                        }
                     }
+                    if meta.is_none() {
+                        println!("couldn't get image information, skipping checks");
+                    }
+                    meta
+                } else {
+                    None
                 }
             } else {
                 None
