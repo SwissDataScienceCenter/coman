@@ -5,10 +5,10 @@ use eyre::{Result, eyre};
 use crate::{
     client::FirecrestClient,
     types::{
-        DownloadFileResponse, GetDirectoryLsResponse, GetFileChecksumResponse, GetFileStatResponse,
-        GetFileTailResponse, PostFileDownloadRequest, PostFileDownloadRequestTransferDirectives, PostFileUploadRequest,
-        PostFileUploadRequestTransferDirectives, PostMakeDirRequest, PostMkdirResponse, PutFileChmodRequest,
-        PutFileChmodResponse, S3TransferRequest, UploadFileResponse,
+        DownloadFileResponse, DownloadFileResponseTransferDirectives, GetDirectoryLsResponse, GetFileChecksumResponse,
+        GetFileStatResponse, GetFileTailResponse, PostFileDownloadRequest, PostFileDownloadRequestTransferDirectives,
+        PostFileUploadRequest, PostFileUploadRequestTransferDirectives, PostMakeDirRequest, PostMkdirResponse,
+        PutFileChmodRequest, PutFileChmodResponse, S3TransferRequest, S3TransferResponse, UploadFileResponse,
     },
 };
 
@@ -166,8 +166,14 @@ pub async fn post_filesystem_transfer_upload(
         )
         .await?;
 
-    let model: UploadFileResponse = serde_json::from_str(response.as_str())?;
+    let json_data: serde_json::Value = serde_json::from_str(response.as_str())?;
 
+    let mut model: UploadFileResponse = serde_json::from_str(response.as_str())?;
+    // deserializing of contained enum does not work properly as the fields are wrong, we do it here manually
+    let transfer_json = json_data["transferDirectives"].clone();
+    let transfer_resp: S3TransferResponse = serde_json::from_value(transfer_json)?;
+    let transfer_dir = DownloadFileResponseTransferDirectives::S3(transfer_resp);
+    model.transfer_directives = transfer_dir;
     Ok(model)
 }
 
@@ -203,7 +209,12 @@ pub async fn post_filesystem_transfer_download(
             None,
         )
         .await?;
-    let model: DownloadFileResponse = serde_json::from_str(response.as_str())?;
+    let mut model: DownloadFileResponse = serde_json::from_str(response.as_str())?;
+    let json_data: serde_json::Value = serde_json::from_str(response.as_str())?;
+    let transfer_json = json_data["transferDirectives"].clone();
+    let transfer_resp: S3TransferResponse = serde_json::from_value(transfer_json)?;
+    let transfer_dir = DownloadFileResponseTransferDirectives::S3(transfer_resp);
+    model.transfer_directives = transfer_dir;
     Ok(model)
 }
 
