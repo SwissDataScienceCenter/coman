@@ -71,8 +71,12 @@ pub(crate) async fn cli_cscs_login() -> Result<()> {
     }
     Ok(())
 }
-pub(crate) async fn cli_cscs_job_list(system: Option<String>, platform: Option<ComputePlatform>) -> Result<()> {
-    match cscs_job_list(system, platform).await {
+pub(crate) async fn cli_cscs_job_list(
+    status: Option<Vec<JobStatus>>,
+    system: Option<String>,
+    platform: Option<ComputePlatform>,
+) -> Result<()> {
+    match cscs_job_list(status, system, platform).await {
         Ok(jobs) => {
             let mut table = tabled::Table::new(jobs);
             table.with(tabled::settings::Style::modern());
@@ -90,7 +94,7 @@ async fn maybe_job_id_from_name(
 ) -> Result<JobId> {
     match j {
         JobIdOrName::Id(id) => Ok(id.into()),
-        JobIdOrName::Name(name) => match cscs_job_list(system, platform).await {
+        JobIdOrName::Name(name) => match cscs_job_list(None, system, platform).await {
             Ok(jobs) => {
                 let job = jobs
                     .iter()

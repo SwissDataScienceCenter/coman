@@ -13,5 +13,6 @@ pub enum Id {
     LoginPopup,
     DownloadPopup,
     SystemSelectPopup,
+    JobFilterPopup,
     FileView,
 }

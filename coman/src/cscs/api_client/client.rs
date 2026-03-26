@@ -20,7 +20,7 @@ use reqwest::Url;
 
 use crate::{
     config::{ComputePlatform, Config},
-    cscs::api_client::types::{FileStat, Job, JobDetail, JobId, PathEntry, S3Upload, System, UserInfo},
+    cscs::api_client::types::{FileStat, Job, JobDetail, JobId, JobStatus, PathEntry, S3Upload, System, UserInfo},
     trace_dbg,
     util::types::DockerImageUrl,
 };
@@ -110,14 +110,23 @@ impl CscsApi {
             .wrap_err("couldn't list CSCS systems")?;
         Ok(result.systems.into_iter().map(|s| s.into()).collect())
     }
-    pub async fn list_jobs(&self, system_name: &str, all_users: Option<bool>) -> Result<Vec<Job>> {
+    pub async fn list_jobs(
+        &self,
+        status: Option<Vec<JobStatus>>,
+        system_name: &str,
+        all_users: Option<bool>,
+    ) -> Result<Vec<Job>> {
         let result = get_compute_system_jobs(&self.client, system_name, all_users)
             .await
             .wrap_err("couldn't fetch cscs jobs")?;
-        Ok(result
+        let mut result: Vec<Job> = result
             .jobs
             .map(|jobs| jobs.into_iter().map(|j| j.into()).collect())
-            .unwrap_or(vec![]))
+            .unwrap_or(vec![]);
+        if let Some(filter) = status {
+            result.retain(|j| filter.contains(&j.status));
+        }
+        Ok(result)
     }
     pub async fn get_job(&self, system_name: &str, job_id: JobId) -> Result<Option<JobDetail>> {
         let jobs = get_compute_system_job(&self.client, system_name, job_id.clone().into_string())
@@ -263,6 +272,7 @@ mod tests {
     use injectorpp::interface::injector::*;
 
     use super::*;
+    use crate::cscs::api_client::types::JobStatus as ApiJobStatus;
 
     fn get_client() -> CscsApi {
         CscsApi {
@@ -409,8 +419,24 @@ mod tests {
                     }),
                     Result<GetJobResponse>
                 ));
-            let result = client.list_jobs("daint", None).await;
+            let result = client.list_jobs(None, "daint", None).await;
             assert_eq!(result.unwrap().len(), 5);
+            let result = client
+                .list_jobs(Some(vec![ApiJobStatus::Running, ApiJobStatus::Pending]), "daint", None)
+                .await;
+            assert_eq!(result.unwrap().len(), 2);
+            let result = client
+                .list_jobs(
+                    Some(vec![
+                        ApiJobStatus::Failed,
+                        ApiJobStatus::Finished,
+                        ApiJobStatus::Cancelled,
+                    ]),
+                    "daint",
+                    None,
+                )
+                .await;
+            assert_eq!(result.unwrap().len(), 3);
         }
     }
 

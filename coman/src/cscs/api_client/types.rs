@@ -7,6 +7,7 @@ use firecrest_client::types::{
 };
 use reqwest::Url;
 use strum::Display;
+use strum_macros::{VariantArray, VariantNames};
 
 #[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, tabled::Tabled)]
 pub struct JobId(String);
@@ -180,7 +181,7 @@ impl From<CSCSFileStat> for FileStat {
     }
 }
 
-#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, Display)]
+#[derive(Debug, Eq, Clone, PartialEq, PartialOrd, Ord, Display, VariantArray, VariantNames)]
 pub enum JobStatus {
     Pending,
     Running,
@@ -192,7 +193,7 @@ pub enum JobStatus {
 }
 impl From<String> for JobStatus {
     fn from(value: String) -> Self {
-        match value.split_whitespace().next().unwrap() {
+        match value.split_whitespace().next().unwrap_or("").to_uppercase().as_str() {
             "RUNNING" => JobStatus::Running,
             "FAILED" => JobStatus::Failed,
             "COMPLETED" => JobStatus::Finished,

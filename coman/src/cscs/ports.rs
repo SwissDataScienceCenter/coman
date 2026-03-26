@@ -6,6 +6,7 @@ use color_eyre::{
 };
 use futures::StreamExt;
 use openidconnect::core::CoreDeviceAuthorizationResponse;
+use strum::VariantArray;
 use tokio::{fs::File, io::AsyncWriteExt, sync::mpsc, time::Instant};
 use tuirealm::{
     Event,
@@ -102,18 +103,32 @@ impl PollAsync<UserEvent> for AsyncDeviceFlowPort {
 }
 
 /// This port periodically fetches jobs from CSCS
-pub(crate) struct AsyncFetchWorkloadsPort {}
+pub(crate) struct AsyncFetchWorkloadsPort {
+    filter: Vec<JobStatus>,
+    receiver: mpsc::Receiver<Vec<JobStatus>>,
+}
 
 impl AsyncFetchWorkloadsPort {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(receiver: mpsc::Receiver<Vec<JobStatus>>) -> Self {
+        Self {
+            filter: JobStatus::VARIANTS.to_vec(),
+            receiver,
+        }
     }
 }
 
 #[tuirealm::async_trait]
 impl PollAsync<UserEvent> for AsyncFetchWorkloadsPort {
     async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
-        match cscs_job_list(None, None).await {
+        if self.receiver.is_closed() {
+            return Ok(Some(Event::None));
+        }
+        if !self.receiver.is_empty()
+            && let Some(val) = self.receiver.recv().await
+        {
+            self.filter = val;
+        }
+        match cscs_job_list(Some(self.filter.clone()), None, None).await {
             Ok(jobs) => Ok(Some(Event::User(UserEvent::Cscs(CscsEvent::GotWorkloadData(jobs))))),
             Err(e) => {
                 let _ = trace_dbg!(e);
