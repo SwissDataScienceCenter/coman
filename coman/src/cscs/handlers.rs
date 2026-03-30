@@ -463,11 +463,14 @@ async fn store_ssh_information(
         .open(ssh_config_path)?;
     let mut content = String::new();
     ssh_config.read_to_string(&mut content)?;
-    if !content.contains(&format!("Include {}", coman_ssh_config_path.clone().display())) {
+    if !content.contains(&format!("Include \"{}\"", coman_ssh_config_path.clone().display()))
+        && !content.contains(&format!("Include {}", coman_ssh_config_path.clone().display()))
+    // second condition kept for backward compatibility, path was not always quoted
+    {
         let mut writer = BufWriter::new(ssh_config);
         write!(
             writer,
-            "\n\n#coman include\nMatch all\nInclude {}",
+            "\n\n#coman include\nMatch all\nInclude \"{}\"",
             coman_ssh_config_path.display()
         )?;
     }
