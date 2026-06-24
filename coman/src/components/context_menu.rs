@@ -116,7 +116,8 @@ impl AppComponent<Msg, UserEvent> for ContextMenu {
                         Attribute::Text,
                         AttrValue::Payload(PropPayload::Vec(
                             ContextMenu::workload_options()
-                                .into_iter().map(PropValue::TextLine)
+                                .into_iter()
+                                .map(PropValue::TextLine)
                                 .collect(),
                         )),
                     ),
@@ -124,7 +125,8 @@ impl AppComponent<Msg, UserEvent> for ContextMenu {
                         Attribute::Text,
                         AttrValue::Payload(PropPayload::Vec(
                             ContextMenu::fileview_options()
-                                .into_iter().map(PropValue::TextLine)
+                                .into_iter()
+                                .map(PropValue::TextLine)
                                 .collect(),
                         )),
                     ),

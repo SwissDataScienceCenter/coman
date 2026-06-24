@@ -96,7 +96,7 @@ impl AppComponent<Msg, UserEvent> for JobStatusFilterPopup {
                     selected_statuses,
                 )));
             }
-            _ => CmdResult::NoChange
+            _ => CmdResult::NoChange,
         };
         Some(Msg::None)
     }

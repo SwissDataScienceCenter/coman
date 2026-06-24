@@ -2,8 +2,7 @@ use tui_realm_stdlib::components::Textarea;
 use tuirealm::{
     command::{Cmd, CmdResult, Direction, Position},
     component::{AppComponent, Component},
-    event::Event,
-    event::{Key, KeyEvent},
+    event::{Event, Key, KeyEvent},
     props::{AttrValue, Attribute, BorderType, Borders, Color, PropPayload, PropValue, Title},
     ratatui::text::Span,
 };

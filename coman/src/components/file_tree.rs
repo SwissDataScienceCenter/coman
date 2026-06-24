@@ -4,15 +4,10 @@ use tokio::sync::mpsc;
 use tui_realm_treeview::{Node, NodeValue, TREE_CMD_CLOSE, TREE_CMD_OPEN, TREE_INITIAL_NODE, Tree, TreeView};
 use tuirealm::{
     command::{Cmd, CmdResult, Direction, Position},
-    component::AppComponent,
-    component::Component,
-    event::Event,
-    event::{Key, KeyEvent, KeyModifiers},
-    props::AttrValue,
-    props::Attribute,
-    props::{BorderType, Borders, Color, Style},
-    state::State,
-    state::StateValue,
+    component::{AppComponent, Component},
+    event::{Event, Key, KeyEvent, KeyModifiers},
+    props::{AttrValue, Attribute, BorderType, Borders, Color, Style},
+    state::{State, StateValue},
 };
 
 use crate::{

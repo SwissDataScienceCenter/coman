@@ -2,8 +2,7 @@ use eyre::{Context, Report};
 use tokio::sync::mpsc;
 use tuirealm::{
     application::Application,
-    props::AttrValue,
-    props::Attribute,
+    props::{AttrValue, Attribute},
     ratatui::{
         Frame,
         layout::{Constraint, Direction, Layout, Rect},

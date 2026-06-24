@@ -3,16 +3,11 @@ use std::cmp::Reverse;
 use tui_realm_stdlib::components::Table;
 use tuirealm::{
     command::{Cmd, CmdResult, Direction, Position},
-    component::AppComponent,
-    component::Component,
-    event::Event,
-    event::{Key, KeyEvent, KeyModifiers},
-    props::AttrValue,
-    props::Attribute,
-    props::{BorderType, Borders, Color, TableBuilder},
+    component::{AppComponent, Component},
+    event::{Event, Key, KeyEvent, KeyModifiers},
+    props::{AttrValue, Attribute, BorderType, Borders, Color, TableBuilder},
     ratatui::{style::Style, text::Line},
-    state::State,
-    state::StateValue,
+    state::{State, StateValue},
 };
 
 use crate::{

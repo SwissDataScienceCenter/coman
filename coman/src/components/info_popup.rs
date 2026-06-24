@@ -1,9 +1,7 @@
 use tui_realm_stdlib::components::Paragraph;
 use tuirealm::{
-    component::AppComponent,
-    component::Component,
-    event::Event,
-    event::{Key, KeyEvent},
+    component::{AppComponent, Component},
+    event::{Event, Key, KeyEvent},
     props::{BorderType, Borders, Color},
 };
 

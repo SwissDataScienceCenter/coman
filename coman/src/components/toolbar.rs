@@ -1,5 +1,9 @@
 use tui_realm_stdlib::components::Label;
-use tuirealm::{component::AppComponent, component::Component, event::Event, props::AttrValue, props::Attribute};
+use tuirealm::{
+    component::{AppComponent, Component},
+    event::Event,
+    props::{AttrValue, Attribute},
+};
 
 use crate::app::{
     messages::{Msg, View},

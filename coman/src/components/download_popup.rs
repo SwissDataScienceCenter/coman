@@ -3,13 +3,10 @@ use std::path::PathBuf;
 use tui_realm_stdlib::components::Input;
 use tuirealm::{
     command::{Cmd, CmdResult, Direction, Position},
-    component::AppComponent,
-    component::Component,
-    event::Event,
-    event::{Key, KeyEvent, KeyModifiers},
+    component::{AppComponent, Component},
+    event::{Event, Key, KeyEvent, KeyModifiers},
     props::{BorderType, Borders, Color, InputType, Style},
-    state::State,
-    state::StateValue,
+    state::{State, StateValue},
 };
 
 use crate::app::{

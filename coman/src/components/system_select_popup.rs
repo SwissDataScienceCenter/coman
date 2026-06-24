@@ -1,14 +1,11 @@
 use tui_realm_stdlib::components::List;
 use tuirealm::{
     command::{Cmd, CmdResult, Direction, Position},
-    component::AppComponent,
-    component::Component,
-    event::Event,
-    event::{Key, KeyEvent},
+    component::{AppComponent, Component},
+    event::{Event, Key, KeyEvent},
     props::{BorderType, Borders, Color},
     ratatui::{style::Style, text::Line},
-    state::State,
-    state::StateValue,
+    state::{State, StateValue},
 };
 
 use crate::{

@@ -1,9 +1,7 @@
 use tui_realm_stdlib::components::Phantom;
 use tuirealm::{
-    component::AppComponent,
-    component::Component,
-    event::Event,
-    event::{Key, KeyEvent, KeyModifiers},
+    component::{AppComponent, Component},
+    event::{Event, Key, KeyEvent, KeyModifiers},
 };
 
 use crate::app::{

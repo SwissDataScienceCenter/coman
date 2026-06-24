@@ -6,13 +6,10 @@ use color_eyre::Result;
 use keyring::set_global_service_name;
 use tokio::{runtime::Handle, sync::mpsc};
 use tuirealm::{
-    application::Application,
-    application::PollStrategy,
+    application::{Application, PollStrategy},
     event::{Key, KeyEvent, KeyModifiers},
     listener::EventListenerCfg,
-    subscription::EventClause,
-    subscription::Sub,
-    subscription::SubClause,
+    subscription::{EventClause, Sub, SubClause},
     terminal::CrosstermTerminalAdapter,
 };
 
