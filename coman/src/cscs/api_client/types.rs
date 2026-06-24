@@ -2,8 +2,8 @@ use chrono::prelude::*;
 use color_eyre::eyre::{Context, Result};
 use eyre::eyre;
 use firecrest_client::types::{
-    File as CSCSFile, FileStat as CSCSFileStat, FileSystem as CSCSFileSystem, FileSystemDataType, HPCCluster,
-    HealthCheckType, JobMetadataModel, JobModel, S3TransferResponse, SchedulerServiceHealth, UserInfoResponse,
+    BackendServiceType, File as CSCSFile, FileStat as CSCSFileStat, FileSystem as CSCSFileSystem, FileSystemDataType,
+    HPCCluster, JobMetadataModel, JobModel, S3TransferResponse, SchedulerServiceHealth, UserInfoResponse,
 };
 use reqwest::Url;
 use strum::Display;
@@ -292,14 +292,14 @@ pub enum ServiceType {
     Exception,
 }
 
-impl From<HealthCheckType> for ServiceType {
-    fn from(value: HealthCheckType) -> Self {
+impl From<BackendServiceType> for ServiceType {
+    fn from(value: BackendServiceType) -> Self {
         match value {
-            HealthCheckType::Scheduler => ServiceType::Scheduler,
-            HealthCheckType::Filesystem => ServiceType::Filesystem,
-            HealthCheckType::Ssh => ServiceType::Ssh,
-            HealthCheckType::S3 => ServiceType::S3,
-            HealthCheckType::Exception => ServiceType::Exception,
+            BackendServiceType::Scheduler => ServiceType::Scheduler,
+            BackendServiceType::Filesystem => ServiceType::Filesystem,
+            BackendServiceType::Ssh => ServiceType::Ssh,
+            BackendServiceType::S3 => ServiceType::S3,
+            BackendServiceType::Exception => ServiceType::Exception,
         }
     }
 }

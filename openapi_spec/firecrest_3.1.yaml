@@ -1,5 +1,18 @@
 components:
   schemas:
+    AccountsModel:
+      properties:
+        default:
+          title: Default
+          type: boolean
+        name:
+          title: Name
+          type: string
+      required:
+        - name
+        - default
+      title: AccountsModel
+      type: object
     ApResponseErrorType:
       enum:
         - error
@@ -31,6 +44,16 @@ components:
         - message
       title: ApiResponseError
       type: object
+    BackendServiceType:
+      description: Types of services that can be health-checked.
+      enum:
+        - s3
+        - filesystem
+        - ssh
+        - scheduler
+        - exception
+      title: BackendServiceType
+      type: string
     Body_post_upload_filesystem__system_name__ops_upload_post:
       properties:
         file:
@@ -465,7 +488,7 @@ components:
           nullable: true
           title: Path
         serviceType:
-          $ref: "#/components/schemas/HealthCheckType"
+          $ref: "#/components/schemas/BackendServiceType"
           description: Type of the service being checked.
       required:
         - serviceType
@@ -720,22 +743,12 @@ components:
           nullable: true
           title: Message
         serviceType:
-          $ref: "#/components/schemas/HealthCheckType"
+          $ref: "#/components/schemas/BackendServiceType"
           description: Type of the service being checked.
       required:
         - serviceType
       title: HealthCheckException
       type: object
-    HealthCheckType:
-      description: Types of services that can be health-checked.
-      enum:
-        - scheduler
-        - filesystem
-        - ssh
-        - s3
-        - exception
-      title: HealthCheckType
-      type: string
     JobDescriptionModel:
       properties:
         account:
@@ -772,6 +785,20 @@ components:
           description: Name for the job
           nullable: true
           title: Name
+        partition:
+          anyOf:
+            - type: string
+            - type: "null"
+          description: Partition to be used for the job
+          nullable: true
+          title: Partition
+        reservation:
+          anyOf:
+            - type: string
+            - type: "null"
+          description: Reservation to be used for the job
+          nullable: true
+          title: Reservation
         script:
           description: Script for the job
           title: Script
@@ -1145,12 +1172,10 @@ components:
           nullable: true
           title: Sockets
         state:
-          anyOf:
-            - type: string
-            - items:
-                type: string
-              type: array
+          items:
+            $ref: "#/components/schemas/NodeState"
           title: State
+          type: array
         threads:
           anyOf:
             - type: integer
@@ -1169,6 +1194,22 @@ components:
         - state
       title: NodeModel
       type: object
+    NodeState:
+      enum:
+        - IDLE
+        - ALLOCATED
+        - MIXED
+        - DOWN
+        - DRAIN
+        - OFFLINE
+        - RESERVED
+        - COMPLETING
+        - BUSY
+        - POWERING_DOWN
+        - POWERING_UP
+        - UNKNOWN
+      title: NodeState
+      type: string
     PartitionModel:
       properties:
         cpus:
@@ -1409,6 +1450,8 @@ components:
               LD_LIBRARY_PATH: /path/to/library
               PATH: /path/to/bin
             name: Example with inline script
+            partition: partition_a
+            reservation: myreservation
             script: "#!/bin/bash
 
               --partition=part01
@@ -1432,6 +1475,8 @@ components:
               LD_LIBRARY_PATH: /path/to/library
               PATH: /path/to/bin
             name: Example with script path
+            partition: partition_a
+            reservation: myreservation
             script_path: /path/to/batch_file.sh
             standardError: count_to_100.err
             standardInput: /dev/null
@@ -1505,6 +1550,8 @@ components:
           anyOf:
             - additionalProperties:
                 $ref: "#/components/schemas/ProbingService"
+              propertyNames:
+                $ref: "#/components/schemas/BackendServiceType"
               type: object
             - type: "null"
           description: Services to be checked.
@@ -1599,6 +1646,12 @@ components:
         startTime:
           title: Starttime
           type: integer
+        state:
+          anyOf:
+            - type: string
+            - type: "null"
+          nullable: true
+          title: State
       required:
         - name
         - nodeList
@@ -1709,7 +1762,7 @@ components:
           nullable: true
           title: Message
         serviceType:
-          $ref: "#/components/schemas/HealthCheckType"
+          $ref: "#/components/schemas/BackendServiceType"
           description: Type of the service being checked.
       required:
         - serviceType
@@ -1838,7 +1891,7 @@ components:
           nullable: true
           title: Message
         serviceType:
-          $ref: "#/components/schemas/HealthCheckType"
+          $ref: "#/components/schemas/BackendServiceType"
           description: Type of the service being checked.
       required:
         - serviceType
@@ -1955,7 +2008,7 @@ components:
           nullable: true
           title: Message
         serviceType:
-          $ref: "#/components/schemas/HealthCheckType"
+          $ref: "#/components/schemas/BackendServiceType"
           description: Type of the service being checked.
       required:
         - serviceType
@@ -2121,6 +2174,13 @@ components:
       type: object
     UserInfoResponse:
       properties:
+        accounts:
+          anyOf:
+            - items:
+                $ref: "#/components/schemas/AccountsModel"
+              type: array
+            - type: "null"
+          title: Accounts
         group:
           $ref: "#/components/schemas/PosixIdentified"
         groups:
@@ -2207,7 +2267,7 @@ components:
       type: http
 info:
   title: FirecREST
-  version: 2.5.0
+  version: 2.5.4
 openapi: 3.1.0
 paths:
   /compute/{system_name}/jobs:
@@ -3738,6 +3798,15 @@ paths:
           schema:
             title: System Name
             type: string
+        - description: Show hidden partitions (only applies to Slurm scheduler).
+          in: query
+          name: show_hidden
+          required: false
+          schema:
+            default: false
+            description: Show hidden partitions (only applies to Slurm scheduler).
+            title: Show Hidden
+            type: boolean
       responses:
         "200":
           content:
