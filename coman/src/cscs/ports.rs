@@ -9,8 +9,8 @@ use openidconnect::core::CoreDeviceAuthorizationResponse;
 use strum::VariantArray;
 use tokio::{fs::File, io::AsyncWriteExt, sync::mpsc, time::Instant};
 use tuirealm::{
-    Event,
-    listener::{ListenerResult, PollAsync},
+    event::Event,
+    listener::{PollAsync, PortResult},
 };
 
 use crate::{
@@ -51,7 +51,7 @@ impl AsyncDeviceFlowPort {
 /// user should navigate to, then one once the flow is finished with the token
 #[tuirealm::async_trait]
 impl PollAsync<UserEvent> for AsyncDeviceFlowPort {
-    async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
+    async fn poll(&mut self) -> PortResult<Option<Event<UserEvent>>> {
         if let Some(details) = self.current_response.clone() {
             trace_dbg!("finishing login");
             match finish_cscs_device_login(details).await {
@@ -119,7 +119,7 @@ impl AsyncFetchWorkloadsPort {
 
 #[tuirealm::async_trait]
 impl PollAsync<UserEvent> for AsyncFetchWorkloadsPort {
-    async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
+    async fn poll(&mut self) -> PortResult<Option<Event<UserEvent>>> {
         if self.receiver.is_closed() {
             return Ok(Some(Event::None));
         }
@@ -151,7 +151,7 @@ impl AsyncSelectSystemPort {
 
 #[tuirealm::async_trait]
 impl PollAsync<UserEvent> for AsyncSelectSystemPort {
-    async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
+    async fn poll(&mut self) -> PortResult<Option<Event<UserEvent>>> {
         if self.receiver.recv().await.is_some() {
             match cscs_system_list(None).await {
                 Ok(systems) => Ok(Some(Event::User(UserEvent::Cscs(CscsEvent::SelectSystemList(systems))))),
@@ -192,7 +192,7 @@ impl AsyncJobLogPort {
 }
 #[tuirealm::async_trait]
 impl PollAsync<UserEvent> for AsyncJobLogPort {
-    async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
+    async fn poll(&mut self) -> PortResult<Option<Event<UserEvent>>> {
         if self.receiver.is_closed() {
             return Ok(Some(Event::None));
         }
@@ -256,7 +256,7 @@ impl AsyncJobResourceUsagePort {
 }
 #[tuirealm::async_trait]
 impl PollAsync<UserEvent> for AsyncJobResourceUsagePort {
-    async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
+    async fn poll(&mut self) -> PortResult<Option<Event<UserEvent>>> {
         if self.receiver.is_closed() {
             return Ok(Some(Event::None));
         }
@@ -400,7 +400,7 @@ async fn delete_file(id: String) -> Result<Option<Event<UserEvent>>> {
 }
 #[tuirealm::async_trait]
 impl PollAsync<UserEvent> for AsyncBackgroundTaskPort {
-    async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
+    async fn poll(&mut self) -> PortResult<Option<Event<UserEvent>>> {
         if self.receiver.is_closed() {
             return Ok(None);
         }
@@ -462,7 +462,7 @@ impl AsyncUserEventPort {
 }
 #[tuirealm::async_trait]
 impl PollAsync<UserEvent> for AsyncUserEventPort {
-    async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
+    async fn poll(&mut self) -> PortResult<Option<Event<UserEvent>>> {
         if let Some(event) = self.receiver.recv().await {
             let event = trace_dbg!(event);
             Ok(Some(Event::User(event)))

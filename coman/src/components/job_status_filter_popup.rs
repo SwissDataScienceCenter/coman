@@ -1,10 +1,11 @@
 use strum::{VariantArray, VariantNames};
-use tui_realm_stdlib::Checkbox;
+use tui_realm_stdlib::components::Checkbox;
 use tuirealm::{
-    Attribute, Component, Event, MockComponent, State,
     command::{Cmd, CmdResult, Direction},
-    event::{Key, KeyEvent},
-    props::{Alignment, BorderType, Borders, Color, PropValue},
+    component::{AppComponent, Component},
+    event::{Event, Key, KeyEvent},
+    props::{AttrValue, Attribute, BorderType, Borders, Color, PropValue},
+    state::State,
 };
 
 use crate::{
@@ -15,7 +16,7 @@ use crate::{
     cscs::api_client::types::JobStatus,
 };
 
-#[derive(MockComponent)]
+#[derive(Component)]
 pub struct JobStatusFilterPopup {
     component: Checkbox,
     values: Vec<usize>,
@@ -34,7 +35,7 @@ impl JobStatusFilterPopup {
         Self {
             component: Checkbox::default()
                 .borders(Borders::default().modifiers(BorderType::Thick).color(Color::Green))
-                .title("Select Status to show", Alignment::Left)
+                .title("Select Status to show")
                 .rewind(true)
                 .choices(variants)
                 .values(&values),
@@ -44,8 +45,8 @@ impl JobStatusFilterPopup {
     }
 }
 
-impl Component<Msg, UserEvent> for JobStatusFilterPopup {
-    fn on(&mut self, ev: Event<UserEvent>) -> Option<Msg> {
+impl AppComponent<Msg, UserEvent> for JobStatusFilterPopup {
+    fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let _ = match ev {
             Event::Keyboard(KeyEvent { code: Key::Right, .. }) => self.perform(Cmd::Move(Direction::Right)),
             Event::Keyboard(KeyEvent { code: Key::Left, .. }) => self.perform(Cmd::Move(Direction::Left)),
@@ -73,12 +74,12 @@ impl Component<Msg, UserEvent> for JobStatusFilterPopup {
                     }
                     self.attr(
                         Attribute::Value,
-                        tuirealm::AttrValue::Payload(tuirealm::props::PropPayload::Vec(
+                        AttrValue::Payload(tuirealm::props::PropPayload::Vec(
                             self.values.iter().map(|v| PropValue::Usize(*v)).collect(),
                         )),
                     );
                 }
-                CmdResult::None
+                CmdResult::NoChange
             }
             Event::Keyboard(KeyEvent { code: Key::Esc, .. }) => {
                 return Some(Msg::JobFilterPopup(JobFilterPopupMsg::Closed));
@@ -95,7 +96,7 @@ impl Component<Msg, UserEvent> for JobStatusFilterPopup {
                     selected_statuses,
                 )));
             }
-            _ => CmdResult::None,
+            _ => CmdResult::NoChange
         };
         Some(Msg::None)
     }

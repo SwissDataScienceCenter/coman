@@ -5,8 +5,8 @@ use crossterm::event::DisableMouseCapture;
 use tokio::sync::mpsc;
 use tracing::error;
 use tuirealm::{
-    Event,
-    listener::{ListenerResult, PollAsync},
+    event::Event,
+    listener::{PollAsync, PortResult},
 };
 
 use crate::app::user_events::UserEvent;
@@ -92,7 +92,7 @@ impl AsyncErrorPort {
 
 #[tuirealm::async_trait]
 impl PollAsync<UserEvent> for AsyncErrorPort {
-    async fn poll(&mut self) -> ListenerResult<Option<Event<UserEvent>>> {
+    async fn poll(&mut self) -> PortResult<Option<Event<UserEvent>>> {
         if let Some(error_msg) = self.receiver.recv().await {
             Ok(Some(Event::User(UserEvent::Error(error_msg))))
         } else {

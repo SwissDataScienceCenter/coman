@@ -1,9 +1,11 @@
-use tui_realm_stdlib::List;
+use tui_realm_stdlib::components::List;
 use tuirealm::{
-    AttrValue, Attribute, Component, Event, MockComponent, State, StateValue,
     command::{Cmd, CmdResult, Direction, Position},
-    event::{Key, KeyEvent},
-    props::{Alignment, BorderType, Borders, Color, Table, TableBuilder, TextSpan},
+    component::{AppComponent, Component},
+    event::{Event, Key, KeyEvent},
+    props::{AttrValue, Attribute, BorderType, Borders, Color, PropPayload, PropValue},
+    ratatui::{style::Style, text::Line},
+    state::{State, StateValue},
 };
 
 use crate::app::{
@@ -11,26 +13,21 @@ use crate::app::{
     user_events::{FileEvent, JobEvent, UserEvent},
 };
 
-#[derive(MockComponent)]
+#[derive(Component)]
 pub struct ContextMenu {
     component: List,
     current_view: View,
 }
 
 impl ContextMenu {
-    fn workload_options() -> Table {
-        TableBuilder::default()
-            .add_col(TextSpan::from("Cancel Job").fg(Color::Cyan))
-            .add_row()
-            .add_col(TextSpan::from("Filter by Status").fg(Color::Cyan))
-            .add_row()
-            .add_col(TextSpan::from("Login to CSCS").fg(Color::Cyan))
-            .add_row()
-            .add_col(TextSpan::from("Switch System").fg(Color::Cyan))
-            .add_row()
-            .add_col(TextSpan::from("Quit").fg(Color::Cyan))
-            .add_row()
-            .build()
+    fn workload_options() -> Vec<Line<'static>> {
+        vec![
+            Line::styled("Cancel Job", Style::new().fg(Color::Cyan)),
+            Line::styled("Filter by Status", Style::new().fg(Color::Cyan)),
+            Line::styled("Login to CSCS", Style::new().fg(Color::Cyan)),
+            Line::styled("Switch System", Style::new().fg(Color::Cyan)),
+            Line::styled("Quit", Style::new().fg(Color::Cyan)),
+        ]
     }
     fn workload_actions(index: usize) -> Option<Msg> {
         match index {
@@ -41,19 +38,14 @@ impl ContextMenu {
             _ => Some(Msg::Menu(MenuMsg::Closed)),
         }
     }
-    fn fileview_options() -> Table {
-        TableBuilder::default()
-            .add_col(TextSpan::from("Login to CSCS").fg(Color::Cyan))
-            .add_row()
-            .add_col(TextSpan::from("Switch System").fg(Color::Cyan))
-            .add_row()
-            .add_col(TextSpan::from("Download").fg(Color::Cyan))
-            .add_row()
-            .add_col(TextSpan::from("Delete").fg(Color::Cyan))
-            .add_row()
-            .add_col(TextSpan::from("Quit").fg(Color::Cyan))
-            .add_row()
-            .build()
+    fn fileview_options() -> Vec<Line<'static>> {
+        vec![
+            Line::styled("Login to CSCS", Style::new().fg(Color::Cyan)),
+            Line::styled("Switch System", Style::new().fg(Color::Cyan)),
+            Line::styled("Download", Style::new().fg(Color::Cyan)),
+            Line::styled("Delete", Style::new().fg(Color::Cyan)),
+            Line::styled("Quit", Style::new().fg(Color::Cyan)),
+        ]
     }
     fn fileview_actions(index: usize) -> Option<Msg> {
         match index {
@@ -72,10 +64,10 @@ impl ContextMenu {
         Self {
             component: List::default()
                 .borders(Borders::default().modifiers(BorderType::Thick).color(Color::Yellow))
-                .title("Menu", Alignment::Left)
+                .title("Menu")
                 .scroll(true)
-                .highlighted_color(Color::LightYellow)
-                .highlighted_str("-")
+                .highlight_style(Style::new().bg(Color::LightYellow))
+                .highlight_str("-")
                 .rewind(true)
                 .step(4)
                 .rows(match view {
@@ -88,8 +80,8 @@ impl ContextMenu {
     }
 }
 
-impl Component<Msg, UserEvent> for ContextMenu {
-    fn on(&mut self, ev: tuirealm::Event<UserEvent>) -> Option<Msg> {
+impl AppComponent<Msg, UserEvent> for ContextMenu {
+    fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let _ = match ev {
             Event::Keyboard(KeyEvent { code: Key::Down, .. }) => self.perform(Cmd::Move(Direction::Down)),
             Event::Keyboard(KeyEvent {
@@ -108,7 +100,7 @@ impl Component<Msg, UserEvent> for ContextMenu {
                 return Some(Msg::Menu(MenuMsg::Closed));
             }
             Event::Keyboard(KeyEvent { code: Key::Enter, .. }) => {
-                let msg = if let State::One(StateValue::Usize(index)) = self.state() {
+                let msg = if let State::Single(StateValue::Usize(index)) = self.state() {
                     match self.current_view {
                         View::Workloads => ContextMenu::workload_actions(index),
                         View::Files => ContextMenu::fileview_actions(index),
@@ -120,14 +112,28 @@ impl Component<Msg, UserEvent> for ContextMenu {
             }
             Event::User(UserEvent::SwitchedToView(view)) => {
                 match view {
-                    View::Workloads => self.attr(Attribute::Content, AttrValue::Table(ContextMenu::workload_options())),
-                    View::Files => self.attr(Attribute::Content, AttrValue::Table(ContextMenu::fileview_options())),
+                    View::Workloads => self.attr(
+                        Attribute::Text,
+                        AttrValue::Payload(PropPayload::Vec(
+                            ContextMenu::workload_options()
+                                .into_iter().map(PropValue::TextLine)
+                                .collect(),
+                        )),
+                    ),
+                    View::Files => self.attr(
+                        Attribute::Text,
+                        AttrValue::Payload(PropPayload::Vec(
+                            ContextMenu::fileview_options()
+                                .into_iter().map(PropValue::TextLine)
+                                .collect(),
+                        )),
+                    ),
                 };
-                self.current_view = view;
-                CmdResult::None
+                self.current_view = view.to_owned();
+                CmdResult::NoChange
             }
 
-            _ => CmdResult::None,
+            _ => CmdResult::NoChange,
         };
         Some(Msg::None)
     }

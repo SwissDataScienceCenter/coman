@@ -1,11 +1,15 @@
 use std::path::PathBuf;
 
-use tui_realm_stdlib::Input;
+use tui_realm_stdlib::components::Input;
 use tuirealm::{
-    Component, Event, MockComponent, State, StateValue,
     command::{Cmd, CmdResult, Direction, Position},
+    component::AppComponent,
+    component::Component,
+    event::Event,
     event::{Key, KeyEvent, KeyModifiers},
-    props::{Alignment, BorderType, Borders, Color, InputType, Style},
+    props::{BorderType, Borders, Color, InputType, Style},
+    state::State,
+    state::StateValue,
 };
 
 use crate::app::{
@@ -13,7 +17,7 @@ use crate::app::{
     user_events::UserEvent,
 };
 
-#[derive(MockComponent)]
+#[derive(Component)]
 pub struct DownloadTargetInput {
     component: Input,
     remote_path: PathBuf,
@@ -35,15 +39,15 @@ impl DownloadTargetInput {
                     },
                     |_, _| true,
                 ))
-                .title("Download Target Path", Alignment::Left)
+                .title("Download Target Path")
                 .invalid_style(Style::default().fg(Color::Red)),
             remote_path,
         }
     }
 }
 
-impl Component<Msg, UserEvent> for DownloadTargetInput {
-    fn on(&mut self, ev: tuirealm::Event<UserEvent>) -> Option<Msg> {
+impl AppComponent<Msg, UserEvent> for DownloadTargetInput {
+    fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let _ = match ev {
             Event::Keyboard(KeyEvent { code: Key::Left, .. }) => self.perform(Cmd::Move(Direction::Left)),
             Event::Keyboard(KeyEvent { code: Key::Right, .. }) => self.perform(Cmd::Move(Direction::Right)),
@@ -56,12 +60,12 @@ impl Component<Msg, UserEvent> for DownloadTargetInput {
             Event::Keyboard(KeyEvent {
                 code: Key::Char(ch),
                 modifiers: KeyModifiers::NONE,
-            }) => self.perform(Cmd::Type(ch)),
+            }) => self.perform(Cmd::Type(ch.to_owned())),
             Event::Keyboard(KeyEvent {
                 code: Key::Enter,
                 modifiers: KeyModifiers::NONE,
             }) => {
-                if let State::One(StateValue::String(target)) = self.state() {
+                if let State::Single(StateValue::String(target)) = self.state() {
                     let target = PathBuf::from(target);
                     return Some(Msg::DownloadPopup(DownloadPopupMsg::PathSet(
                         self.remote_path.clone(),
@@ -69,12 +73,12 @@ impl Component<Msg, UserEvent> for DownloadTargetInput {
                     )));
                 }
 
-                CmdResult::None
+                CmdResult::NoChange
             }
             Event::Keyboard(KeyEvent { code: Key::Esc, .. }) => {
                 return Some(Msg::DownloadPopup(DownloadPopupMsg::Closed));
             }
-            _ => CmdResult::None,
+            _ => CmdResult::NoChange,
         };
         Some(Msg::None)
     }

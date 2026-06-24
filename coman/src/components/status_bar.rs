@@ -5,9 +5,10 @@ use ratatui::{
     widgets::{LineGauge, Paragraph},
 };
 use tuirealm::{
-    AttrValue, Attribute, Component, Event, MockComponent, Props, State,
     command::CmdResult,
-    props::{BorderType, Borders, Layout},
+    component::{AppComponent, Component},
+    event::Event,
+    props::{AttrValue, Attribute, BorderType, Borders, Layout, Props, QueryResult},
     ratatui::{
         Frame,
         layout::{Constraint, Direction},
@@ -15,6 +16,7 @@ use tuirealm::{
         style::{Color, Style},
         widgets::Block,
     },
+    state::State,
 };
 
 use crate::{
@@ -48,9 +50,9 @@ impl StatusBar {
     }
 }
 
-impl MockComponent for StatusBar {
-    fn query(&self, attr: Attribute) -> Option<AttrValue> {
-        self.props.get(attr)
+impl Component for StatusBar {
+    fn query(&self, attr: Attribute) -> Option<QueryResult<'_>> {
+        self.props.get_for_query(attr)
     }
 
     fn attr(&mut self, attr: Attribute, value: AttrValue) {
@@ -62,10 +64,16 @@ impl MockComponent for StatusBar {
     }
 
     fn perform(&mut self, _cmd: tuirealm::command::Cmd) -> CmdResult {
-        CmdResult::None
+        CmdResult::NoChange
     }
     fn view(&mut self, frame: &mut Frame, area: Rect) {
-        if self.props.get_or(Attribute::Display, AttrValue::Flag(true)) == AttrValue::Flag(true) {
+        if self
+            .props
+            .get(Attribute::Display)
+            .unwrap_or(&AttrValue::Flag(true))
+            .clone()
+            .unwrap_flag()
+        {
             let borders = Borders::default().modifiers(BorderType::Rounded);
             let div = Block::default()
                 .borders(borders.sides)
@@ -111,18 +119,18 @@ impl MockComponent for StatusBar {
         }
     }
 }
-impl Component<Msg, UserEvent> for StatusBar {
-    fn on(&mut self, ev: Event<UserEvent>) -> Option<Msg> {
+impl AppComponent<Msg, UserEvent> for StatusBar {
+    fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         match ev {
             Event::Tick if self.last_updated.elapsed() > self.status_clear_time => {
                 self.current_status = None;
             }
             Event::User(UserEvent::Status(status)) => {
-                self.current_status = Some(status);
+                self.current_status = Some(status.to_owned());
                 self.last_updated = Instant::now();
             }
             Event::User(UserEvent::Cscs(CscsEvent::SystemSelected(system))) => {
-                self.current_system = system;
+                self.current_system = system.to_owned();
             }
             _ => {}
         }

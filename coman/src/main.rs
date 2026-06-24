@@ -6,9 +6,14 @@ use color_eyre::Result;
 use keyring::set_global_service_name;
 use tokio::{runtime::Handle, sync::mpsc};
 use tuirealm::{
-    Application, EventListenerCfg, PollStrategy, Sub, SubClause, SubEventClause, Update,
+    application::Application,
+    application::PollStrategy,
     event::{Key, KeyEvent, KeyModifiers},
-    terminal::{CrosstermTerminalAdapter, TerminalBridge},
+    listener::EventListenerCfg,
+    subscription::EventClause,
+    subscription::Sub,
+    subscription::SubClause,
+    terminal::CrosstermTerminalAdapter,
 };
 
 use crate::{
@@ -54,9 +59,6 @@ mod cscs;
 mod errors;
 mod logging;
 mod util;
-
-#[macro_use]
-extern crate tuirealm;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -187,7 +189,6 @@ async fn main() -> Result<()> {
 fn run_tui(tick_rate: f64) -> Result<()> {
     //we initialize the terminal early so the panic handler that restores the terminal is correctly set up
     let adapter = CrosstermTerminalAdapter::new()?;
-    let bridge = TerminalBridge::init(adapter).expect("Cannot initialize terminal");
     let handle = Handle::current();
 
     let (select_system_tx, select_system_rx) = mpsc::channel(100);
@@ -237,7 +238,7 @@ fn run_tui(tick_rate: f64) -> Result<()> {
         Id::Toolbar,
         Box::new(Toolbar::new()),
         vec![Sub::new(
-            SubEventClause::Discriminant(UserEvent::SwitchedToView(View::default())),
+            EventClause::Discriminant(UserEvent::SwitchedToView(View::default())),
             SubClause::Always,
         )],
     )?;
@@ -246,12 +247,12 @@ fn run_tui(tick_rate: f64) -> Result<()> {
         Box::new(StatusBar::new()),
         vec![
             Sub::new(
-                SubEventClause::Discriminant(UserEvent::Status(StatusEvent::Info("".to_owned()))),
+                EventClause::Discriminant(UserEvent::Status(StatusEvent::Info("".to_owned()))),
                 SubClause::Always,
             ),
-            Sub::new(SubEventClause::Tick, SubClause::Always),
+            Sub::new(EventClause::Tick, SubClause::Always),
             Sub::new(
-                SubEventClause::Discriminant(UserEvent::Cscs(CscsEvent::SystemSelected("".to_owned()))),
+                EventClause::Discriminant(UserEvent::Cscs(CscsEvent::SystemSelected("".to_owned()))),
                 SubClause::Always,
             ),
         ],
@@ -261,11 +262,11 @@ fn run_tui(tick_rate: f64) -> Result<()> {
         Box::new(WorkloadList::default()),
         vec![
             Sub::new(
-                SubEventClause::Discriminant(UserEvent::Cscs(CscsEvent::LoggedIn)),
+                EventClause::Discriminant(UserEvent::Cscs(CscsEvent::LoggedIn)),
                 SubClause::Always,
             ),
             Sub::new(
-                SubEventClause::Discriminant(UserEvent::Job(JobEvent::Cancel)),
+                EventClause::Discriminant(UserEvent::Job(JobEvent::Cancel)),
                 SubClause::Always,
             ),
         ],
@@ -274,7 +275,7 @@ fn run_tui(tick_rate: f64) -> Result<()> {
         Id::FileView,
         Box::new(FileTree::new(background_task_tx.clone())),
         vec![Sub::new(
-            SubEventClause::Discriminant(UserEvent::File(FileEvent::DownloadCurrentFile)),
+            EventClause::Discriminant(UserEvent::File(FileEvent::DownloadCurrentFile)),
             SubClause::Always,
         )],
     )?;
@@ -283,51 +284,51 @@ fn run_tui(tick_rate: f64) -> Result<()> {
         Box::new(GlobalListener::default()),
         vec![
             Sub::new(
-                SubEventClause::Keyboard(KeyEvent {
+                EventClause::Keyboard(KeyEvent {
                     code: Key::Char('q'),
                     modifiers: KeyModifiers::NONE,
                 }),
                 SubClause::Not(Box::new(SubClause::IsMounted(Id::LoginPopup))),
             ),
             Sub::new(
-                SubEventClause::Keyboard(KeyEvent {
+                EventClause::Keyboard(KeyEvent {
                     code: Key::Char('c'),
                     modifiers: KeyModifiers::CONTROL,
                 }),
                 SubClause::Always,
             ),
             Sub::new(
-                SubEventClause::Discriminant(UserEvent::Info("".to_string())),
+                EventClause::Discriminant(UserEvent::Info("".to_string())),
                 SubClause::Always,
             ),
             Sub::new(
-                SubEventClause::Discriminant(UserEvent::Error("".to_string())),
+                EventClause::Discriminant(UserEvent::Error("".to_string())),
                 SubClause::Always,
             ),
             Sub::new(
-                SubEventClause::Discriminant(UserEvent::File(FileEvent::DownloadSuccessful)),
+                EventClause::Discriminant(UserEvent::File(FileEvent::DownloadSuccessful)),
                 SubClause::Always,
             ),
             Sub::new(
-                SubEventClause::User(UserEvent::Cscs(CscsEvent::LoggedIn)),
+                EventClause::User(UserEvent::Cscs(CscsEvent::LoggedIn)),
                 SubClause::Always,
             ),
             Sub::new(
-                SubEventClause::Keyboard(KeyEvent {
+                EventClause::Keyboard(KeyEvent {
                     code: Key::Char('x'),
                     modifiers: KeyModifiers::NONE,
                 }),
                 popup_exclusion_clause(),
             ),
             Sub::new(
-                SubEventClause::Keyboard(KeyEvent {
+                EventClause::Keyboard(KeyEvent {
                     code: Key::Char('f'),
                     modifiers: KeyModifiers::NONE,
                 }),
                 popup_exclusion_clause(),
             ),
             Sub::new(
-                SubEventClause::Keyboard(KeyEvent {
+                EventClause::Keyboard(KeyEvent {
                     code: Key::Char('w'),
                     modifiers: KeyModifiers::NONE,
                 }),
@@ -340,7 +341,7 @@ fn run_tui(tick_rate: f64) -> Result<()> {
 
     let mut model = Model::new(
         app,
-        bridge,
+        adapter,
         error_tx,
         select_system_tx,
         job_log_tx,
@@ -353,7 +354,7 @@ fn run_tui(tick_rate: f64) -> Result<()> {
     // NOTE: loop until quit; quit is set in update if AppClose is received from counter
     while !model.quit {
         // Tick
-        match model.app.tick(PollStrategy::Once) {
+        match model.app.tick(PollStrategy::Once(Duration::from_millis(10))) {
             Err(err) => {
                 panic!("application error {err}");
             }

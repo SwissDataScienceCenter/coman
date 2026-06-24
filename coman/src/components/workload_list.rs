@@ -1,11 +1,18 @@
 use std::cmp::Reverse;
 
-use tui_realm_stdlib::Table;
+use tui_realm_stdlib::components::Table;
 use tuirealm::{
-    AttrValue, Attribute, Component, Event, MockComponent, State, StateValue,
     command::{Cmd, CmdResult, Direction, Position},
+    component::AppComponent,
+    component::Component,
+    event::Event,
     event::{Key, KeyEvent, KeyModifiers},
-    props::{Alignment, BorderType, Borders, Color, TableBuilder, TextSpan},
+    props::AttrValue,
+    props::Attribute,
+    props::{BorderType, Borders, Color, TableBuilder},
+    ratatui::{style::Style, text::Line},
+    state::State,
+    state::StateValue,
 };
 
 use crate::{
@@ -16,7 +23,7 @@ use crate::{
     cscs::api_client::types::{Job, JobStatus},
 };
 
-#[derive(MockComponent)]
+#[derive(Component)]
 pub(crate) struct WorkloadList {
     component: Table,
     jobs: Vec<Job>,
@@ -27,10 +34,10 @@ impl Default for WorkloadList {
         Self {
             component: Table::default()
                 .borders(Borders::default().modifiers(BorderType::Rounded).color(Color::Yellow))
-                .title("Workloads", Alignment::Center)
+                .title("Workloads")
                 .scroll(true)
-                .highlighted_color(Color::LightYellow)
-                .highlighted_str("❯ ")
+                .highlight_style(Style::new().bg(Color::LightYellow))
+                .highlight_str("❯ ")
                 .rewind(true)
                 .step(4)
                 .headers(["Name", "Status", "Id", "Start", "End"]),
@@ -39,8 +46,8 @@ impl Default for WorkloadList {
     }
 }
 
-impl Component<Msg, UserEvent> for WorkloadList {
-    fn on(&mut self, ev: tuirealm::Event<UserEvent>) -> Option<Msg> {
+impl AppComponent<Msg, UserEvent> for WorkloadList {
+    fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let _ = match ev {
             Event::Keyboard(KeyEvent { code: Key::Down, .. }) => self.perform(Cmd::Move(Direction::Down)),
             Event::Keyboard(KeyEvent { code: Key::Up, .. }) => self.perform(Cmd::Move(Direction::Up)),
@@ -63,15 +70,15 @@ impl Component<Msg, UserEvent> for WorkloadList {
                             table.add_row();
                         }
                         table
-                            .add_col(TextSpan::from(job.name.clone()).bold())
-                            .add_col(TextSpan::from(job.status.to_string()))
-                            .add_col(TextSpan::from(job.id.to_string()))
-                            .add_col(TextSpan::from(
+                            .add_col(Line::styled(job.name.clone(), Style::new().bold()))
+                            .add_col(Line::from(job.status.to_string()))
+                            .add_col(Line::from(job.id.to_string()))
+                            .add_col(Line::from(
                                 job.start_date
                                     .map(|s| s.format("%Y-%m-%d %H:%M").to_string())
                                     .unwrap_or("".to_owned()),
                             ))
-                            .add_col(TextSpan::from(
+                            .add_col(Line::from(
                                 job.end_date
                                     .map(|s| s.format("%Y-%m-%d %H:%M").to_string())
                                     .unwrap_or("".to_owned()),
@@ -82,40 +89,40 @@ impl Component<Msg, UserEvent> for WorkloadList {
                 self.perform(Cmd::Change)
             }
             Event::User(UserEvent::Job(JobEvent::Cancel)) => {
-                if let State::One(StateValue::Usize(index)) = self.state()
+                if let State::Single(StateValue::Usize(index)) = self.state()
                     && !self.jobs.is_empty()
                 {
                     let job = self.jobs[index].clone();
                     return Some(Msg::Job(JobMsg::Cancel(job.id)));
                 }
-                CmdResult::None
+                CmdResult::NoChange
             }
             Event::Keyboard(KeyEvent { code: Key::Enter, .. }) => {
-                if let State::One(StateValue::Usize(index)) = self.state()
+                if let State::Single(StateValue::Usize(index)) = self.state()
                     && !self.jobs.is_empty()
                 {
                     let job = self.jobs[index].clone();
                     return Some(Msg::Job(JobMsg::GetDetails(job.id)));
                 }
-                CmdResult::None
+                CmdResult::NoChange
             }
             Event::Keyboard(KeyEvent {
                 code: Key::Char('l'),
                 modifiers: KeyModifiers::NONE,
             }) => {
-                if let State::One(StateValue::Usize(index)) = self.state()
+                if let State::Single(StateValue::Usize(index)) = self.state()
                     && !self.jobs.is_empty()
                 {
                     let job = self.jobs[index].clone();
                     return Some(Msg::Job(JobMsg::Log(job.id)));
                 }
-                CmdResult::None
+                CmdResult::NoChange
             }
             Event::Keyboard(KeyEvent {
                 code: Key::Char('r'),
                 modifiers: KeyModifiers::NONE,
             }) => {
-                if let State::One(StateValue::Usize(index)) = self.state()
+                if let State::Single(StateValue::Usize(index)) = self.state()
                     && !self.jobs.is_empty()
                 {
                     let job = self.jobs[index].clone();
@@ -126,9 +133,9 @@ impl Component<Msg, UserEvent> for WorkloadList {
                     }
                     return Some(Msg::Job(JobMsg::ResourceUsage(job.id)));
                 }
-                CmdResult::None
+                CmdResult::NoChange
             }
-            _ => CmdResult::None,
+            _ => CmdResult::NoChange,
         };
         Some(Msg::None)
     }

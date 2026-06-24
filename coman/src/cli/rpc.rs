@@ -99,7 +99,7 @@ pub struct RpcHandler;
 
 impl ProtocolHandler for RpcHandler {
     async fn accept(&self, connection: iroh::endpoint::Connection) -> Result<(), iroh::protocol::AcceptError> {
-        let endpoint_id = connection.remote_id();
+        let endpoint_id = connection.remote_id()?;
         match connection.accept_bi().await {
             Ok((iroh_send, iroh_recv)) => {
                 println!("Accepted bidirectional stream from {endpoint_id}");

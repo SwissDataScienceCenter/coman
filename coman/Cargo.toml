@@ -10,7 +10,7 @@ build = "build.rs"
 
 [dependencies]
 better-panic = "0.3.0"
-clap = { version = "4.5.20", features = [
+clap = { version = "4.6.1", features = [
   "derive",
   "cargo",
   "wrap_help",
@@ -19,40 +19,41 @@ clap = { version = "4.5.20", features = [
   "unstable-styles",
 ] }
 color-eyre = "0.6.5"
-config = "0.15.19"
+config = "0.15.24"
 crossterm = { version = "0.29.0", features = ["serde", "event-stream"] }
 directories = "6.0.0"
 eyre = "0.6.12"
-futures = "0.3.31"
-human-panic = "2.0.2"
+futures = "0.3.32"
+human-panic = "2.0.8"
 itertools = "0.14.0"
-keyring-lib = { version = "1.0.2", features = [
+keyring-lib = { version = "1.0.3", features = [
   "tokio",
   "derive",
   "vendored",
   "rustls",
 ] }
 lazy_static = "1.5.0"
-libc = "0.2.161"
-open = "5.3.2"
+libc = "0.2.186"
+open = "5.3.5"
 firecrest_client = { workspace = true }
 openidconnect = "4.0.1"
-ratatui = { version = "0.29.0", features = ["serde", "macros"] }
-reqwest = "0.12.23"
-serde = { version = "1.0.211", features = ["derive"] }
-serde_json = "1.0.132"
-signal-hook = "0.3.17"
-strip-ansi-escapes = "0.2.0"
+ratatui = { version = "0.30.2", features = ["serde", "macros"] }
+reqwest = "0.12.28"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+signal-hook = "0.3.18"
+strip-ansi-escapes = "0.2.1"
 strum = { version = "0.26.3", features = ["derive"] }
 strum_macros = "0.27.2"
-tokio = { version = "1.47.1", features = ["full"] }
-tokio-util = "0.7.16"
-toml = "1.0.4"
-tracing = "0.1.40"
-tracing-error = "0.2.0"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter", "serde"] }
-tui-realm-stdlib = "3.0.0"
-tuirealm = { version = "3.1.0", features = [
+tokio = { version = "1.52.3", features = ["full"] }
+tokio-util = "0.7.18"
+toml = "1.1.2"
+tracing = "0.1.44"
+tracing-error = "0.2.1"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "serde"] }
+tui-realm-stdlib = "4.1.0"
+tui-realm-treeview = "4.1.0"
+tuirealm = { version = "4.1.0", features = [
   "derive",
   "crossterm",
   "async-ports",
@@ -60,23 +61,22 @@ tuirealm = { version = "3.1.0", features = [
 tabled = { version = "0.20.0", features = ["macros"] }
 nom = "8.0.0"
 tera = "1.20.1"
-inquire = "0.9.1"
-oci-client = "0.16.0"
-oci-spec = "0.8.4"
-docker_credential = "1.3.2"
-chrono = "0.4.42"
-openssl = { version = "0.10.75", features = ["vendored"] }
-tui-realm-treeview = "3.0.0"
-toml_edit = "0.25.4"
-clap_complete = { version = "4.5.61", features = ["unstable-dynamic"] }
-pid1 = "0.1.5"
+inquire = "0.9.4"
+oci-client = "0.16.1"
+oci-spec = "0.9.0"
+docker_credential = "1.4.0"
+chrono = "0.4.45"
+openssl = { version = "0.10.81", features = ["vendored"] }
+toml_edit = "0.25.12"
+clap_complete = { version = "4.6.5", features = ["unstable-dynamic"] }
+pid1 = "0.1.6"
 rust_supervisor = "0.2.0"
-iroh-ssh = "0.2.9"
+iroh-ssh = "0.2.12"
 whoami = "1.6.1"
 base64 = "0.22.1"
-iroh = "0.95.1"
-rand = "0.9.2"
-regex = "1.12.2"
+iroh = "0.94"
+rand = "0.9.4"
+regex = "1.12.4"
 sha2 = "0.10.9"
 tarpc = { version = "0.37.0", features = [
   "serde-transport",
@@ -85,8 +85,8 @@ tarpc = { version = "0.37.0", features = [
   "tokio1",
 ] }
 tokio-duplex = "1.0.1"
-sysinfo = "0.38.0"
-bytesize = "2.3.1"
+sysinfo = "0.38.4"
+bytesize = "2.4.0"
 self_update = { version = "0.42.0", features = [
   "archive-tar",
   "archive-zip",
@@ -102,4 +102,4 @@ claim = "0.5.0"
 current_dir = "0.1.2"
 injectorpp = "0.4.0"
 rstest = "0.26.1"
-tempfile = "3.24.0"
+tempfile = "3.27.0"

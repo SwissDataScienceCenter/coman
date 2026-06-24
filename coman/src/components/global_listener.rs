@@ -1,6 +1,8 @@
-use tui_realm_stdlib::Phantom;
+use tui_realm_stdlib::components::Phantom;
 use tuirealm::{
-    Component, Event, MockComponent,
+    component::AppComponent,
+    component::Component,
+    event::Event,
     event::{Key, KeyEvent, KeyModifiers},
 };
 
@@ -9,14 +11,14 @@ use crate::app::{
     user_events::{CscsEvent, FileEvent, UserEvent},
 };
 
-#[derive(Default, MockComponent)]
+#[derive(Default, Component)]
 pub struct GlobalListener {
     component: Phantom,
     current_view: View,
 }
 
-impl Component<Msg, UserEvent> for GlobalListener {
-    fn on(&mut self, ev: tuirealm::Event<UserEvent>) -> Option<Msg> {
+impl AppComponent<Msg, UserEvent> for GlobalListener {
+    fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         match ev {
             Event::Keyboard(KeyEvent {
                 code: Key::Char('q'), ..
@@ -40,15 +42,17 @@ impl Component<Msg, UserEvent> for GlobalListener {
                 self.current_view = View::Workloads;
                 Some(Msg::ChangeView(View::Workloads))
             }
-            Event::User(UserEvent::Error(msg)) => Some(Msg::Error(msg)),
-            Event::User(UserEvent::Info(msg)) => Some(Msg::Info(msg)),
+            Event::User(UserEvent::Error(msg)) => Some(Msg::Error(msg.to_owned())),
+            Event::User(UserEvent::Info(msg)) => Some(Msg::Info(msg.to_owned())),
             Event::User(UserEvent::Cscs(CscsEvent::LoggedIn)) => {
                 Some(Msg::Status(StatusMsg::Info("Successfully logged in".to_string())))
             }
             Event::User(UserEvent::Cscs(CscsEvent::SelectSystemList(systems))) => {
-                Some(Msg::SystemSelectPopup(SystemSelectMsg::Opened(systems)))
+                Some(Msg::SystemSelectPopup(SystemSelectMsg::Opened(systems.to_owned())))
             }
-            Event::User(UserEvent::Cscs(CscsEvent::GotJobDetails(details))) => Some(Msg::Job(JobMsg::Details(details))),
+            Event::User(UserEvent::Cscs(CscsEvent::GotJobDetails(details))) => {
+                Some(Msg::Job(JobMsg::Details(details.to_owned())))
+            }
             Event::User(UserEvent::File(FileEvent::DownloadSuccessful)) => {
                 Some(Msg::Status(StatusMsg::Info("File successfully downloaded".to_owned())))
             }

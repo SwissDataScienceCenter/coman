@@ -3,10 +3,16 @@ use std::{iter, path::PathBuf};
 use tokio::sync::mpsc;
 use tui_realm_treeview::{Node, NodeValue, TREE_CMD_CLOSE, TREE_CMD_OPEN, TREE_INITIAL_NODE, Tree, TreeView};
 use tuirealm::{
-    AttrValue, Attribute, Component, Event, MockComponent, State, StateValue,
     command::{Cmd, CmdResult, Direction, Position},
+    component::AppComponent,
+    component::Component,
+    event::Event,
     event::{Key, KeyEvent, KeyModifiers},
-    props::{Alignment, BorderType, Borders, Color, Style},
+    props::AttrValue,
+    props::Attribute,
+    props::{BorderType, Borders, Color, Style},
+    state::State,
+    state::StateValue,
 };
 
 use crate::{
@@ -44,7 +50,7 @@ impl NodeValue for FileNode {
     }
 }
 
-#[derive(MockComponent)]
+#[derive(Component)]
 pub struct FileTree {
     component: TreeView<FileNode>,
     file_tree_tx: mpsc::Sender<BackgroundTask>,
@@ -74,23 +80,23 @@ impl FileTree {
                 .inactive(Style::default().fg(Color::Gray))
                 .indent_size(3)
                 .scroll_step(6)
-                .title(tree.root().id(), Alignment::Left)
-                .highlighted_color(Color::LightYellow)
-                .highlight_symbol("❯")
+                .title(tree.root().id().to_owned())
+                .highlight_style(Style::new().bg(Color::LightYellow))
+                .highlight_str("❯")
                 .with_tree(tree)
                 .initial_node(root_node.id()),
             file_tree_tx,
         }
     }
 }
-impl Component<Msg, UserEvent> for FileTree {
-    fn on(&mut self, ev: Event<UserEvent>) -> Option<Msg> {
+impl AppComponent<Msg, UserEvent> for FileTree {
+    fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         match ev {
             Event::Keyboard(KeyEvent {
                 code: Key::Left,
                 modifiers: KeyModifiers::NONE,
             }) => {
-                let current_id = self.state().unwrap_one().unwrap_string();
+                let current_id = self.state().unwrap_single().unwrap_string();
                 let node = self.component.tree().root().query(&current_id).unwrap();
                 if self.component.tree_state().is_closed(node) {
                     // current node is already closed, so we select and close the parent
@@ -107,7 +113,7 @@ impl Component<Msg, UserEvent> for FileTree {
                 code: Key::Right,
                 modifiers: KeyModifiers::NONE,
             }) => {
-                let current_id = self.state().unwrap_one().unwrap_string();
+                let current_id = self.state().unwrap_single().unwrap_string();
                 let node = self.component.tree().root().query(&current_id).unwrap();
                 match node.value().path_type {
                     PathType::Directory => {
@@ -120,13 +126,13 @@ impl Component<Msg, UserEvent> for FileTree {
                                     .await
                                     .unwrap();
                             });
-                            CmdResult::None
+                            CmdResult::NoChange
                         } else {
                             self.perform(Cmd::Custom(TREE_CMD_OPEN))
                         }
                     }
-                    PathType::File => CmdResult::None,
-                    PathType::Link => CmdResult::None,
+                    PathType::File => CmdResult::NoChange,
+                    PathType::Link => CmdResult::NoChange,
                 }
             }
             Event::Keyboard(KeyEvent {
@@ -155,7 +161,7 @@ impl Component<Msg, UserEvent> for FileTree {
             }) => self.perform(Cmd::GoTo(Position::End)),
             Event::User(UserEvent::File(FileEvent::List(id, subpaths))) => {
                 let tree = self.component.tree_mut();
-                let parent = tree.root_mut().query_mut(&id).unwrap();
+                let parent = tree.root_mut().query_mut(id).unwrap();
                 parent.clear();
                 for entry in subpaths {
                     let id = if entry.name.starts_with("/") {
@@ -163,39 +169,42 @@ impl Component<Msg, UserEvent> for FileTree {
                     } else {
                         format!("{}/{}", id, entry.name.clone())
                     };
-                    parent.add_child(Node::new(id, FileNode::new(entry.name, entry.path_type)));
+                    parent.add_child(Node::new(
+                        id,
+                        FileNode::new(entry.name.clone(), entry.path_type.clone()),
+                    ));
                 }
                 self.perform(Cmd::Custom(TREE_CMD_OPEN));
-                CmdResult::None
+                CmdResult::NoChange
             }
             Event::User(UserEvent::File(FileEvent::DownloadCurrentFile)) => {
-                if let State::One(StateValue::String(id)) = self.state() {
+                if let State::Single(StateValue::String(id)) = self.state() {
                     let path = PathBuf::from(id);
                     return Some(Msg::DownloadPopup(DownloadPopupMsg::Opened(path)));
                 }
-                CmdResult::None
+                CmdResult::NoChange
             }
             Event::User(UserEvent::File(FileEvent::DeleteCurrentFile)) => {
-                if let State::One(StateValue::String(id)) = self.state() {
+                if let State::Single(StateValue::String(id)) = self.state() {
                     let tree_tx = self.file_tree_tx.clone();
                     tokio::spawn(async move {
                         tree_tx.send(BackgroundTask::DeleteFile(id)).await.unwrap();
                     });
                 }
-                CmdResult::None
+                CmdResult::NoChange
             }
             Event::User(UserEvent::File(FileEvent::DeleteSuccessful(id))) => {
                 let mut selected_id = id.clone();
                 let tree = self.component.tree_mut();
-                let parent = tree.root_mut().parent_mut(&id);
+                let parent = tree.root_mut().parent_mut(id);
                 if let Some(parent) = parent {
-                    parent.remove_child(&id);
+                    parent.remove_child(id);
                     selected_id = parent.id().clone();
                 }
                 self.attr(Attribute::Custom(TREE_INITIAL_NODE), AttrValue::String(selected_id));
                 CmdResult::Changed(self.component.state())
             }
-            _ => CmdResult::None,
+            _ => CmdResult::NoChange,
         };
         Some(Msg::None)
     }

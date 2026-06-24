@@ -1,13 +1,16 @@
-use tui_realm_stdlib::Input;
+use tui_realm_stdlib::components::Input;
 use tuirealm::{
-    Component, Event, Frame, MockComponent, State,
     command::{Cmd, CmdResult, Direction, Position},
-    event::{Key, KeyEvent},
-    props::{Alignment, AttrValue, Attribute, BorderType, Borders, Color, InputType, Layout, Props, Style},
+    component::{AppComponent, Component},
+    event::{Event, Key, KeyEvent},
+    props::{AttrValue, Attribute, BorderType, Borders, Color, InputType, Layout, Props, QueryResult, Style, Title},
     ratatui::{
+        Frame,
         layout::{Constraint, Direction as LayoutDirection, Rect},
+        text::Line,
         widgets::Block,
     },
+    state::State,
 };
 
 use crate::app::{
@@ -38,7 +41,7 @@ impl LoginPopup {
         popup.client_id_input.attr(Attribute::Focus, AttrValue::Flag(true));
         popup
             .borders(Borders::default().modifiers(BorderType::Thick).color(Color::Green))
-            .title("Login", Alignment::Left)
+            .title("Login")
             .layout(
                 Layout::default()
                     .constraints(&[Constraint::Length(3), Constraint::Length(3)])
@@ -64,8 +67,8 @@ impl LoginPopup {
         self
     }
 
-    pub fn title<S: Into<String>>(mut self, t: S, a: Alignment) -> Self {
-        self.attr(Attribute::Title, AttrValue::Title((t.into(), a)));
+    pub fn title<S: Into<String>>(mut self, t: S) -> Self {
+        self.attr(Attribute::Title, AttrValue::Title(Title::from(t.into())));
         self
     }
 
@@ -90,30 +93,37 @@ impl LoginPopup {
     }
 }
 
-impl MockComponent for LoginPopup {
+impl Component for LoginPopup {
     fn view(&mut self, render: &mut Frame, area: Rect) {
         // Make a Span
-        if self.props.get_or(Attribute::Display, AttrValue::Flag(true)) == AttrValue::Flag(true) {
+        if self
+            .props
+            .get(Attribute::Display)
+            .unwrap_or(&AttrValue::Flag(true))
+            .clone()
+            .unwrap_flag()
+        {
             // Make block
             let borders = self
                 .props
-                .get_or(Attribute::Borders, AttrValue::Borders(Borders::default()))
+                .get(Attribute::Borders)
+                .unwrap_or(&AttrValue::Borders(Borders::default()))
+                .clone()
                 .unwrap_borders();
             let title = self
                 .props
-                .get_ref(Attribute::Title)
+                .get(Attribute::Title)
                 .and_then(|x| x.as_title())
-                .map_or(("", Alignment::Left), |v| (v.0.as_ref(), v.1));
+                .map_or(Line::from(""), |v| v.content.clone());
             let div = Block::default()
                 .borders(borders.sides)
                 .border_style(borders.style())
                 .border_type(borders.modifiers)
-                .title(title.0)
-                .title_alignment(title.1);
+                .title(title);
             // Render block
             render.render_widget(div, area);
             // Render children
-            if let Some(layout) = self.props.get(Attribute::Layout).map(|x| x.unwrap_layout()) {
+            if let Some(layout) = self.props.get(Attribute::Layout).map(|x| x.clone().unwrap_layout()) {
                 // make chunks
                 let chunks = layout.chunks(area);
                 self.client_id_input.view(render, chunks[0]);
@@ -121,8 +131,8 @@ impl MockComponent for LoginPopup {
             }
         }
     }
-    fn query(&self, attr: Attribute) -> Option<AttrValue> {
-        self.props.get(attr)
+    fn query(&self, attr: Attribute) -> Option<QueryResult<'_>> {
+        self.props.get_for_query(attr)
     }
 
     fn attr(&mut self, attr: Attribute, value: AttrValue) {
@@ -142,8 +152,8 @@ impl MockComponent for LoginPopup {
     }
 }
 
-impl Component<Msg, UserEvent> for LoginPopup {
-    fn on(&mut self, ev: tuirealm::Event<UserEvent>) -> Option<Msg> {
+impl AppComponent<Msg, UserEvent> for LoginPopup {
+    fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let _ = match ev {
             Event::Keyboard(KeyEvent { code: Key::Left, .. }) => self.perform(Cmd::Move(Direction::Left)),
             Event::Keyboard(KeyEvent { code: Key::Right, .. }) => self.perform(Cmd::Move(Direction::Right)),
@@ -155,27 +165,27 @@ impl Component<Msg, UserEvent> for LoginPopup {
             }) => self.perform(Cmd::Delete),
             Event::Keyboard(KeyEvent {
                 code: Key::Char(ch), ..
-            }) => self.perform(Cmd::Type(ch)),
+            }) => self.perform(Cmd::Type(ch.to_owned())),
             Event::Keyboard(KeyEvent { code: Key::Tab, .. }) => {
                 self.focus_next();
-                CmdResult::None
+                CmdResult::NoChange
             }
             Event::Keyboard(KeyEvent { code: Key::Enter, .. }) => {
                 //todo send data
-                let client_id = self.client_id_input.state().unwrap_one().unwrap_string();
-                let client_secret = self.client_secret_input.state().unwrap_one().unwrap_string();
+                let client_id = self.client_id_input.state().unwrap_single().unwrap_string();
+                let client_secret = self.client_secret_input.state().unwrap_single().unwrap_string();
                 return Some(Msg::LoginPopup(LoginPopupMsg::LoginDone(client_id, client_secret)));
             }
             Event::Keyboard(KeyEvent { code: Key::Esc, .. }) => {
                 return Some(Msg::LoginPopup(LoginPopupMsg::Closed));
             }
-            _ => CmdResult::None,
+            _ => CmdResult::NoChange,
         };
         Some(Msg::None)
     }
 }
 
-#[derive(MockComponent)]
+#[derive(Component)]
 struct ClientIdInput {
     component: Input,
 }
@@ -187,13 +197,13 @@ impl Default for ClientIdInput {
                 .borders(Borders::default().modifiers(BorderType::Rounded))
                 .foreground(Color::LightCyan)
                 .input_type(InputType::Text)
-                .title("Client Id", Alignment::Left)
+                .title("Client Id")
                 .invalid_style(Style::default().fg(Color::Red)),
         }
     }
 }
 
-#[derive(MockComponent)]
+#[derive(Component)]
 struct ClientSecretInput {
     component: Input,
 }
@@ -204,7 +214,7 @@ impl Default for ClientSecretInput {
                 .borders(Borders::default().modifiers(BorderType::Rounded))
                 .foreground(Color::LightCyan)
                 .input_type(InputType::Password('*'))
-                .title("Client Secret", Alignment::Left)
+                .title("Client Secret")
                 .invalid_style(Style::default().fg(Color::Red)),
         }
     }

@@ -2,19 +2,20 @@ use bytesize::ByteSize;
 use chrono::{Local, TimeDelta};
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint, Direction as LayoutDirection, Rect},
+    layout::{Constraint, Direction as LayoutDirection, Rect},
     symbols::Marker,
     widgets::GraphType,
 };
-use tui_realm_stdlib::{
-    Chart, Container,
+use tui_realm_stdlib::components::{
+    Chart, ChartDataset, Container,
     props::{CHART_X_BOUNDS, CHART_X_LABELS, CHART_Y_BOUNDS, CHART_Y_LABELS},
 };
 use tuirealm::{
-    AttrValue, Attribute, Component, Event, MockComponent, State,
     command::{Cmd, CmdResult, Direction, Position},
-    event::{Key, KeyEvent},
-    props::{Borders, Color, Dataset, Layout, PropPayload, PropValue, Style},
+    component::{AppComponent, Component},
+    event::{Event, Key, KeyEvent},
+    props::{AttrValue, Attribute, Borders, Color, Layout, PropPayload, PropValue, QueryResult, Style},
+    state::State,
 };
 
 use crate::app::{
@@ -25,7 +26,7 @@ pub const UPDATE_CPU_DATA: &str = "update-cpu-data";
 pub const UPDATE_MEMORY_DATA: &str = "update-memory-data";
 pub const UPDATE_GPU_DATA: &str = "update-gpu-data";
 
-#[derive(MockComponent)]
+#[derive(Component)]
 pub struct ResourceUsage {
     component: Container,
 }
@@ -34,7 +35,7 @@ impl Default for ResourceUsage {
     fn default() -> Self {
         Self {
             component: Container::default()
-                .title("Resource Usage", Alignment::Left)
+                .title("Resource Usage")
                 .layout(
                     Layout::default()
                         .constraints(&[
@@ -54,8 +55,8 @@ impl Default for ResourceUsage {
     }
 }
 
-impl Component<Msg, UserEvent> for ResourceUsage {
-    fn on(&mut self, ev: Event<UserEvent>) -> Option<Msg> {
+impl AppComponent<Msg, UserEvent> for ResourceUsage {
+    fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let _ = match ev {
             Event::Keyboard(KeyEvent { code: Key::Left, .. }) => self.perform(Cmd::Move(Direction::Left)),
             Event::Keyboard(KeyEvent { code: Key::Right, .. }) => self.perform(Cmd::Move(Direction::Right)),
@@ -67,21 +68,21 @@ impl Component<Msg, UserEvent> for ResourceUsage {
             Event::User(UserEvent::Cscs(CscsEvent::GotJobResourceUsage(ru))) => {
                 self.attr(
                     Attribute::Custom(UPDATE_CPU_DATA),
-                    AttrValue::Payload(PropPayload::One(PropValue::F64(ru.cpu as f64))),
+                    AttrValue::Payload(PropPayload::Single(PropValue::F64(ru.cpu as f64))),
                 );
                 self.attr(
                     Attribute::Custom(UPDATE_MEMORY_DATA),
-                    AttrValue::Payload(PropPayload::Tup2((PropValue::U64(ru.rss), PropValue::U64(ru.vsz)))),
+                    AttrValue::Payload(PropPayload::Pair((PropValue::U64(ru.rss), PropValue::U64(ru.vsz)))),
                 );
-                if let Some(gpu) = ru.gpu {
+                if let Some(gpu) = ru.gpu.clone() {
                     self.attr(
                         Attribute::Custom(UPDATE_GPU_DATA),
                         AttrValue::Payload(PropPayload::Vec(gpu.iter().map(|g| PropValue::U64(g.1)).collect())),
                     );
                 }
-                CmdResult::None
+                CmdResult::NoChange
             }
-            _ => CmdResult::None,
+            _ => CmdResult::NoChange,
         };
         Some(Msg::None)
     }
@@ -90,7 +91,7 @@ impl Component<Msg, UserEvent> for ResourceUsage {
 // START CPU
 struct CpuUsage {
     component: Chart,
-    dataset: Dataset,
+    dataset: ChartDataset,
     max_y: f64,
 }
 
@@ -103,7 +104,7 @@ impl Default for CpuUsage {
         Self {
             component: Chart::default()
                 .disabled(false)
-                .title("CPU", Alignment::Left)
+                .title("CPU")
                 .borders(Borders::default())
                 .x_style(Style::default().fg(Color::LightBlue))
                 .x_title("")
@@ -113,7 +114,7 @@ impl Default for CpuUsage {
                 .y_title("")
                 .y_bounds((0.0, 1.0))
                 .y_labels(&["0%", "100%"]),
-            dataset: Dataset::default()
+            dataset: ChartDataset::default()
                 .name("CPU")
                 .graph_type(GraphType::Line)
                 .marker(Marker::Braille)
@@ -123,12 +124,12 @@ impl Default for CpuUsage {
         }
     }
 }
-impl MockComponent for CpuUsage {
+impl Component for CpuUsage {
     fn view(&mut self, frame: &mut Frame, area: Rect) {
         self.component.view(frame, area);
     }
 
-    fn query(&self, attr: Attribute) -> Option<AttrValue> {
+    fn query(&self, attr: Attribute) -> Option<QueryResult<'_>> {
         self.component.query(attr)
     }
 
@@ -140,12 +141,12 @@ impl MockComponent for CpuUsage {
                 // update data
                 let current_time = Local::now();
                 let since_epoch = current_time.timestamp() as f64;
-                let cpu_usage = attr.unwrap_payload().unwrap_one().unwrap_f64();
+                let cpu_usage = attr.unwrap_payload().unwrap_single().unwrap_f64();
                 if cpu_usage > self.max_y {
                     self.max_y = cpu_usage;
                     self.attr(
                         Attribute::Custom(CHART_Y_BOUNDS),
-                        AttrValue::Payload(PropPayload::Tup2((PropValue::F64(0.0), PropValue::F64(self.max_y)))),
+                        AttrValue::Payload(PropPayload::Pair((PropValue::F64(0.0), PropValue::F64(self.max_y)))),
                     );
                 }
                 current_data.push((since_epoch, cpu_usage));
@@ -154,13 +155,14 @@ impl MockComponent for CpuUsage {
                 let start_time = self
                     .query(Attribute::Custom(CHART_X_BOUNDS))
                     .unwrap()
+                    .into_attr()
                     .unwrap_payload()
-                    .unwrap_tup2()
+                    .unwrap_pair()
                     .0
                     .unwrap_f64();
                 self.attr(
                     Attribute::Custom(CHART_X_BOUNDS),
-                    AttrValue::Payload(PropPayload::Tup2((
+                    AttrValue::Payload(PropPayload::Pair((
                         PropValue::F64(start_time),
                         PropValue::F64(since_epoch),
                     ))),
@@ -169,6 +171,7 @@ impl MockComponent for CpuUsage {
                 let labels = self
                     .query(Attribute::Custom(CHART_X_LABELS))
                     .unwrap()
+                    .into_attr()
                     .unwrap_payload()
                     .unwrap_vec();
                 let start_label = labels[0].clone();
@@ -183,6 +186,7 @@ impl MockComponent for CpuUsage {
                 let labels = self
                     .query(Attribute::Custom(CHART_Y_LABELS))
                     .unwrap()
+                    .into_attr()
                     .unwrap_payload()
                     .unwrap_vec();
                 let start_label = labels[0].clone();
@@ -196,7 +200,7 @@ impl MockComponent for CpuUsage {
 
                 self.attr(
                     Attribute::Dataset,
-                    AttrValue::Payload(PropPayload::Vec(vec![PropValue::Dataset(self.dataset.clone())])),
+                    AttrValue::Payload(PropPayload::Any(Box::new(self.dataset.clone()))),
                 );
             }
             _ => self.component.attr(query, attr),
@@ -212,8 +216,8 @@ impl MockComponent for CpuUsage {
     }
 }
 
-impl Component<Msg, UserEvent> for CpuUsage {
-    fn on(&mut self, _ev: Event<UserEvent>) -> Option<Msg> {
+impl AppComponent<Msg, UserEvent> for CpuUsage {
+    fn on(&mut self, _ev: &Event<UserEvent>) -> Option<Msg> {
         Some(Msg::None)
     }
 }
@@ -222,8 +226,8 @@ impl Component<Msg, UserEvent> for CpuUsage {
 
 struct MemoryUsage {
     component: Chart,
-    rss_dataset: Dataset,
-    vsz_dataset: Dataset,
+    rss_dataset: ChartDataset,
+    vsz_dataset: ChartDataset,
     max_y: u64,
 }
 
@@ -236,7 +240,7 @@ impl Default for MemoryUsage {
         Self {
             component: Chart::default()
                 .disabled(false)
-                .title("Memory", Alignment::Left)
+                .title("Memory")
                 .borders(Borders::default())
                 .x_style(Style::default().fg(Color::LightBlue))
                 .x_title("")
@@ -246,13 +250,13 @@ impl Default for MemoryUsage {
                 .y_title("")
                 .y_bounds((0.0, 1.0))
                 .y_labels(&["0", "1"]),
-            rss_dataset: Dataset::default()
+            rss_dataset: ChartDataset::default()
                 .name("RSS")
                 .graph_type(GraphType::Line)
                 .marker(Marker::Braille)
                 .style(Style::default().fg(Color::Cyan))
                 .data(Vec::new()),
-            vsz_dataset: Dataset::default()
+            vsz_dataset: ChartDataset::default()
                 .name("VSZ")
                 .graph_type(GraphType::Line)
                 .marker(Marker::Braille)
@@ -262,12 +266,12 @@ impl Default for MemoryUsage {
         }
     }
 }
-impl MockComponent for MemoryUsage {
+impl Component for MemoryUsage {
     fn view(&mut self, frame: &mut Frame, area: Rect) {
         self.component.view(frame, area);
     }
 
-    fn query(&self, attr: Attribute) -> Option<AttrValue> {
+    fn query(&self, attr: Attribute) -> Option<QueryResult<'_>> {
         self.component.query(attr)
     }
 
@@ -279,14 +283,14 @@ impl MockComponent for MemoryUsage {
                 // update data
                 let current_time = Local::now();
                 let since_epoch = current_time.timestamp() as f64;
-                let usage = attr.unwrap_payload().unwrap_tup2();
+                let usage = attr.unwrap_payload().unwrap_pair();
 
                 let rss_usage = usage.0.unwrap_u64();
                 if rss_usage > self.max_y {
                     self.max_y = rss_usage;
                     self.attr(
                         Attribute::Custom(CHART_Y_BOUNDS),
-                        AttrValue::Payload(PropPayload::Tup2((
+                        AttrValue::Payload(PropPayload::Pair((
                             PropValue::F64(0.0),
                             PropValue::F64(self.max_y as f64),
                         ))),
@@ -301,7 +305,7 @@ impl MockComponent for MemoryUsage {
                     self.max_y = vsz_usage;
                     self.attr(
                         Attribute::Custom(CHART_Y_BOUNDS),
-                        AttrValue::Payload(PropPayload::Tup2((
+                        AttrValue::Payload(PropPayload::Pair((
                             PropValue::F64(0.0),
                             PropValue::F64(self.max_y as f64),
                         ))),
@@ -313,13 +317,14 @@ impl MockComponent for MemoryUsage {
                 let start_time = self
                     .query(Attribute::Custom(CHART_X_BOUNDS))
                     .unwrap()
+                    .into_attr()
                     .unwrap_payload()
-                    .unwrap_tup2()
+                    .unwrap_pair()
                     .0
                     .unwrap_f64();
                 self.attr(
                     Attribute::Custom(CHART_X_BOUNDS),
-                    AttrValue::Payload(PropPayload::Tup2((
+                    AttrValue::Payload(PropPayload::Pair((
                         PropValue::F64(start_time),
                         PropValue::F64(since_epoch),
                     ))),
@@ -328,6 +333,7 @@ impl MockComponent for MemoryUsage {
                 let labels = self
                     .query(Attribute::Custom(CHART_X_LABELS))
                     .unwrap()
+                    .into_attr()
                     .unwrap_payload()
                     .unwrap_vec();
                 let start_label = labels[0].clone();
@@ -342,6 +348,7 @@ impl MockComponent for MemoryUsage {
                 let labels = self
                     .query(Attribute::Custom(CHART_Y_LABELS))
                     .unwrap()
+                    .into_attr()
                     .unwrap_payload()
                     .unwrap_vec();
                 let start_label = labels[0].clone();
@@ -355,10 +362,10 @@ impl MockComponent for MemoryUsage {
 
                 self.attr(
                     Attribute::Dataset,
-                    AttrValue::Payload(PropPayload::Vec(vec![
-                        PropValue::Dataset(self.rss_dataset.clone()),
-                        PropValue::Dataset(self.vsz_dataset.clone()),
-                    ])),
+                    AttrValue::Payload(PropPayload::Any(Box::new(vec![
+                        self.rss_dataset.clone(),
+                        self.vsz_dataset.clone(),
+                    ]))),
                 );
             }
             _ => self.component.attr(query, attr),
@@ -374,8 +381,8 @@ impl MockComponent for MemoryUsage {
     }
 }
 
-impl Component<Msg, UserEvent> for MemoryUsage {
-    fn on(&mut self, _ev: Event<UserEvent>) -> Option<Msg> {
+impl AppComponent<Msg, UserEvent> for MemoryUsage {
+    fn on(&mut self, _ev: &Event<UserEvent>) -> Option<Msg> {
         Some(Msg::None)
     }
 }
@@ -394,7 +401,7 @@ const PALETTE: [Color; 8] = [
 ];
 struct GpuUsage {
     component: Chart,
-    datasets: Vec<Dataset>,
+    datasets: Vec<ChartDataset>,
     max_y: u64,
 }
 
@@ -407,7 +414,7 @@ impl Default for GpuUsage {
         Self {
             component: Chart::default()
                 .disabled(false)
-                .title("GPU", Alignment::Left)
+                .title("GPU")
                 .borders(Borders::default())
                 .x_style(Style::default().fg(Color::LightBlue))
                 .x_title("")
@@ -422,12 +429,12 @@ impl Default for GpuUsage {
         }
     }
 }
-impl MockComponent for GpuUsage {
+impl Component for GpuUsage {
     fn view(&mut self, frame: &mut Frame, area: Rect) {
         self.component.view(frame, area);
     }
 
-    fn query(&self, attr: Attribute) -> Option<AttrValue> {
+    fn query(&self, attr: Attribute) -> Option<QueryResult<'_>> {
         self.component.query(attr)
     }
 
@@ -450,7 +457,7 @@ impl MockComponent for GpuUsage {
                         self.max_y = gpu_usage;
                         self.attr(
                             Attribute::Custom(CHART_Y_BOUNDS),
-                            AttrValue::Payload(PropPayload::Tup2((
+                            AttrValue::Payload(PropPayload::Pair((
                                 PropValue::F64(0.0),
                                 PropValue::F64(self.max_y as f64),
                             ))),
@@ -462,7 +469,7 @@ impl MockComponent for GpuUsage {
                             self.datasets[i] = ds.clone().data(current_data);
                         }
                         None => self.datasets.push(
-                            Dataset::default()
+                            ChartDataset::default()
                                 .name(format!("GPU {i}"))
                                 .graph_type(GraphType::Line)
                                 .marker(Marker::Braille)
@@ -475,13 +482,14 @@ impl MockComponent for GpuUsage {
                 let start_time = self
                     .query(Attribute::Custom(CHART_X_BOUNDS))
                     .unwrap()
+                    .into_attr()
                     .unwrap_payload()
-                    .unwrap_tup2()
+                    .unwrap_pair()
                     .0
                     .unwrap_f64();
                 self.attr(
                     Attribute::Custom(CHART_X_BOUNDS),
-                    AttrValue::Payload(PropPayload::Tup2((
+                    AttrValue::Payload(PropPayload::Pair((
                         PropValue::F64(start_time),
                         PropValue::F64(since_epoch),
                     ))),
@@ -490,6 +498,7 @@ impl MockComponent for GpuUsage {
                 let labels = self
                     .query(Attribute::Custom(CHART_X_LABELS))
                     .unwrap()
+                    .into_attr()
                     .unwrap_payload()
                     .unwrap_vec();
                 let start_label = labels[0].clone();
@@ -504,6 +513,7 @@ impl MockComponent for GpuUsage {
                 let labels = self
                     .query(Attribute::Custom(CHART_Y_LABELS))
                     .unwrap()
+                    .into_attr()
                     .unwrap_payload()
                     .unwrap_vec();
                 let start_label = labels[0].clone();
@@ -517,9 +527,7 @@ impl MockComponent for GpuUsage {
 
                 self.attr(
                     Attribute::Dataset,
-                    AttrValue::Payload(PropPayload::Vec(
-                        self.datasets.iter().map(|d| PropValue::Dataset(d.clone())).collect(),
-                    )),
+                    AttrValue::Payload(PropPayload::Any(Box::new(self.datasets.clone()))),
                 );
             }
             _ => self.component.attr(query, attr),
@@ -535,8 +543,8 @@ impl MockComponent for GpuUsage {
     }
 }
 
-impl Component<Msg, UserEvent> for GpuUsage {
-    fn on(&mut self, _ev: Event<UserEvent>) -> Option<Msg> {
+impl AppComponent<Msg, UserEvent> for GpuUsage {
+    fn on(&mut self, _ev: &Event<UserEvent>) -> Option<Msg> {
         Some(Msg::None)
     }
 }

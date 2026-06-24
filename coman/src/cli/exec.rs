@@ -33,7 +33,7 @@ struct PortForwardHandler {
 
 impl ProtocolHandler for PortForwardHandler {
     async fn accept(&self, connection: iroh::endpoint::Connection) -> Result<(), iroh::protocol::AcceptError> {
-        let endpoint_id = connection.remote_id();
+        let endpoint_id = connection.remote_id()?;
         let port = self.port;
 
         match connection.accept_bi().await {

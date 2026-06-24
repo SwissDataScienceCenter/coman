@@ -1,5 +1,5 @@
-use tui_realm_stdlib::Label;
-use tuirealm::{AttrValue, Attribute, Component, Event, MockComponent};
+use tui_realm_stdlib::components::Label;
+use tuirealm::{component::AppComponent, component::Component, event::Event, props::AttrValue, props::Attribute};
 
 use crate::app::{
     messages::{Msg, View},
@@ -9,7 +9,7 @@ const WORKLOAD_TOOLTIP: &str =
     "q: quit, Esc: close/back, Enter: details, l: logs, f: file view, x: menu, tab: switch view";
 const FILETREE_TOOLTIP: &str = "q: quit, ↑↓: navigate,←→: collapse/expand, w: workload view x: menu";
 
-#[derive(MockComponent)]
+#[derive(Component)]
 pub struct Toolbar {
     component: Label,
     current_view: View,
@@ -24,11 +24,11 @@ impl Toolbar {
     }
 }
 
-impl Component<Msg, UserEvent> for Toolbar {
-    fn on(&mut self, ev: tuirealm::Event<UserEvent>) -> Option<Msg> {
+impl AppComponent<Msg, UserEvent> for Toolbar {
+    fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         match ev {
             Event::User(UserEvent::SwitchedToView(view)) => {
-                self.current_view = view;
+                self.current_view = view.to_owned();
                 match self.current_view {
                     View::Workloads => self.attr(Attribute::Text, AttrValue::String(WORKLOAD_TOOLTIP.to_owned())),
                     View::Files => self.attr(Attribute::Text, AttrValue::String(FILETREE_TOOLTIP.to_owned())),

@@ -1,9 +1,11 @@
-use tui_realm_stdlib::Textarea;
+use tui_realm_stdlib::components::Textarea;
 use tuirealm::{
-    AttrValue, Attribute, Component, Event, MockComponent,
     command::{Cmd, CmdResult, Direction, Position},
+    component::{AppComponent, Component},
+    event::Event,
     event::{Key, KeyEvent},
-    props::{Alignment, BorderType, Borders, Color, PropPayload, PropValue, TextSpan},
+    props::{AttrValue, Attribute, BorderType, Borders, Color, PropPayload, PropValue, Title},
+    ratatui::text::Span,
 };
 
 use crate::app::{
@@ -11,7 +13,7 @@ use crate::app::{
     user_events::{CscsEvent, UserEvent},
 };
 
-#[derive(MockComponent)]
+#[derive(Component)]
 pub struct WorkloadLog {
     component: Textarea,
     stderr: bool,
@@ -22,22 +24,22 @@ impl WorkloadLog {
         Self {
             component: Textarea::default()
                 .borders(Borders::default().modifiers(BorderType::Rounded).color(Color::Yellow))
-                .title("Workload Log (stdout)", Alignment::Center)
+                .title("Workload Log (stdout)")
                 .step(4),
             stderr: false,
         }
     }
 }
-impl Component<Msg, UserEvent> for WorkloadLog {
-    fn on(&mut self, ev: tuirealm::Event<UserEvent>) -> Option<Msg> {
+impl AppComponent<Msg, UserEvent> for WorkloadLog {
+    fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let _ = match ev {
             Event::User(UserEvent::Cscs(CscsEvent::GotJobLog(log))) => {
-                self.attr(
-                    Attribute::Text,
-                    AttrValue::Payload(PropPayload::Vec(
-                        log.lines().map(|l| PropValue::TextSpan(TextSpan::from(l))).collect(),
-                    )),
-                );
+                let l = log.clone();
+                let spans: Vec<PropValue> = l
+                    .lines()
+                    .map(|l| PropValue::TextSpan(Span::from(l.to_owned())))
+                    .collect();
+                self.attr(Attribute::Text, AttrValue::Payload(PropPayload::Vec(spans.clone())));
                 self.perform(Cmd::Change)
             }
             Event::Keyboard(KeyEvent { code: Key::Down, .. }) => self.perform(Cmd::Move(Direction::Down)),
@@ -53,12 +55,12 @@ impl Component<Msg, UserEvent> for WorkloadLog {
                 if self.stderr {
                     self.attr(
                         Attribute::Title,
-                        AttrValue::Title(("Workload Log (stderr)".to_owned(), Alignment::Center)),
+                        AttrValue::Title(Title::from("Workload Log (stderr)".to_owned())),
                     );
                 } else {
                     self.attr(
                         Attribute::Title,
-                        AttrValue::Title(("Workload Log (stdout)".to_owned(), Alignment::Center)),
+                        AttrValue::Title(Title::from("Workload Log (stdout)".to_owned())),
                     );
                 }
                 // empty log view
@@ -68,7 +70,7 @@ impl Component<Msg, UserEvent> for WorkloadLog {
             Event::Keyboard(KeyEvent { code: Key::Esc, .. }) => {
                 return Some(Msg::Job(JobMsg::Close));
             }
-            _ => CmdResult::None,
+            _ => CmdResult::NoChange,
         };
         Some(Msg::None)
     }

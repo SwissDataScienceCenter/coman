@@ -1,8 +1,8 @@
-use tui_realm_stdlib::Paragraph;
+use tui_realm_stdlib::components::Paragraph;
 use tuirealm::{
-    Component, Event,
-    event::{Key, KeyEvent},
-    props::{Alignment, BorderType, Borders, Color, TextSpan},
+    component::{AppComponent, Component},
+    event::{Event, Key, KeyEvent},
+    props::{BorderType, Borders, Color, TextStatic},
 };
 
 use crate::app::{
@@ -10,7 +10,7 @@ use crate::app::{
     user_events::UserEvent,
 };
 
-#[derive(MockComponent)]
+#[derive(Component)]
 pub struct ErrorPopup {
     component: Paragraph,
 }
@@ -20,14 +20,14 @@ impl ErrorPopup {
         Self {
             component: Paragraph::default()
                 .borders(Borders::default().modifiers(BorderType::Thick).color(Color::Red))
-                .title("Error", Alignment::Left)
-                .text(std::convert::Into::<String>::into(msg).lines().map(TextSpan::from)),
+                .title("Error")
+                .text(TextStatic::from(msg.into())),
         }
     }
 }
 
-impl Component<Msg, UserEvent> for ErrorPopup {
-    fn on(&mut self, ev: tuirealm::Event<UserEvent>) -> Option<Msg> {
+impl AppComponent<Msg, UserEvent> for ErrorPopup {
+    fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         match ev {
             Event::Keyboard(KeyEvent { code: Key::Esc, .. }) | Event::Keyboard(KeyEvent { code: Key::Enter, .. }) => {
                 Some(Msg::ErrorPopup(ErrorPopupMsg::Closed))

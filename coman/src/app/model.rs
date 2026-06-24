@@ -1,13 +1,15 @@
 use eyre::{Context, Report};
 use tokio::sync::mpsc;
 use tuirealm::{
-    Application, AttrValue, Attribute, Update,
+    application::Application,
+    props::AttrValue,
+    props::Attribute,
     ratatui::{
         Frame,
         layout::{Constraint, Direction, Layout, Rect},
         widgets::Clear,
     },
-    terminal::{TerminalAdapter, TerminalBridge},
+    terminal::TerminalAdapter,
 };
 
 use crate::{
@@ -49,7 +51,7 @@ where
     /// Determines what view is display
     pub current_view: View,
     /// Used to draw to terminal
-    pub terminal: TerminalBridge<T>,
+    pub terminal: T,
 
     ///Used to allow sending errors from tokio::spawn async jobs
     pub error_tx: mpsc::Sender<String>,
@@ -82,7 +84,7 @@ where
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         app: Application<Id, Msg, UserEvent>,
-        bridge: TerminalBridge<T>,
+        terminal: T,
         error_tx: mpsc::Sender<String>,
         select_system_tx: mpsc::Sender<()>,
         job_log_tx: mpsc::Sender<JobLogAction>,
@@ -95,7 +97,7 @@ where
             app,
             quit: false,
             redraw: true,
-            terminal: bridge,
+            terminal,
             current_view: View::default(),
             error_tx,
             select_system_tx,
@@ -523,11 +525,11 @@ where
 
 // Let's implement Update for model
 
-impl<T> Update<Msg> for Model<T>
+impl<T> Model<T>
 where
     T: TerminalAdapter,
 {
-    fn update(&mut self, msg: Option<Msg>) -> Option<Msg> {
+    pub fn update(&mut self, msg: Option<Msg>) -> Option<Msg> {
         if let Some(msg) = msg {
             // log messages in debug mode
             let msg = match msg {

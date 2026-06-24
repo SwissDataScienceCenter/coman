@@ -1,8 +1,10 @@
-use tui_realm_stdlib::Paragraph;
+use tui_realm_stdlib::components::Paragraph;
 use tuirealm::{
-    Component, Event,
+    component::AppComponent,
+    component::Component,
+    event::Event,
     event::{Key, KeyEvent},
-    props::{Alignment, BorderType, Borders, Color, TextSpan},
+    props::{BorderType, Borders, Color},
 };
 
 use crate::app::{
@@ -10,7 +12,7 @@ use crate::app::{
     user_events::UserEvent,
 };
 
-#[derive(MockComponent)]
+#[derive(Component)]
 pub struct InfoPopup {
     component: Paragraph,
 }
@@ -20,14 +22,14 @@ impl InfoPopup {
         Self {
             component: Paragraph::default()
                 .borders(Borders::default().modifiers(BorderType::Thick).color(Color::Green))
-                .title("Info", Alignment::Left)
-                .text(vec![TextSpan::from(msg)]),
+                .title("Info")
+                .text(msg.into()),
         }
     }
 }
 
-impl Component<Msg, UserEvent> for InfoPopup {
-    fn on(&mut self, ev: tuirealm::Event<UserEvent>) -> Option<Msg> {
+impl AppComponent<Msg, UserEvent> for InfoPopup {
+    fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         match ev {
             Event::Keyboard(KeyEvent { code: Key::Esc, .. }) | Event::Keyboard(KeyEvent { code: Key::Enter, .. }) => {
                 Some(Msg::InfoPopup(InfoPopupMsg::Closed))

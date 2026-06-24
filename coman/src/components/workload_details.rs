@@ -1,13 +1,14 @@
 use tuirealm::{
-    AttrValue, Attribute, Component, Event, MockComponent, Props, State,
     command::{Cmd, CmdResult},
-    event::{Key, KeyEvent, KeyModifiers},
-    props::{BorderType, Borders, Layout},
+    component::{AppComponent, Component},
+    event::{Event, Key, KeyEvent, KeyModifiers},
+    props::{AttrValue, Attribute, BorderType, Borders, Layout, Props, QueryResult},
     ratatui::{
         layout::{Constraint, Direction},
         style::{Color, Style},
         widgets::{Block, Paragraph},
     },
+    state::State,
 };
 
 use crate::{
@@ -32,24 +33,30 @@ impl WorkloadDetails {
     }
 }
 
-impl MockComponent for WorkloadDetails {
-    fn query(&self, attr: Attribute) -> Option<AttrValue> {
-        self.props.get(attr)
+impl Component for WorkloadDetails {
+    fn query(&self, attr: Attribute) -> Option<QueryResult<'_>> {
+        self.props.get_for_query(attr)
     }
 
     fn attr(&mut self, attr: Attribute, value: AttrValue) {
         self.props.set(attr, value);
     }
 
-    fn state(&self) -> tuirealm::State {
+    fn state(&self) -> State {
         State::None
     }
 
     fn perform(&mut self, _cmd: Cmd) -> CmdResult {
-        CmdResult::None
+        CmdResult::NoChange
     }
     fn view(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) {
-        if self.props.get_or(Attribute::Display, AttrValue::Flag(true)) == AttrValue::Flag(true) {
+        if self
+            .props
+            .get(Attribute::Display)
+            .unwrap_or(&AttrValue::Flag(true))
+            .clone()
+            .unwrap_flag()
+        {
             let borders = Borders::default().modifiers(BorderType::Rounded);
             let div = Block::default()
                 .borders(borders.sides)
@@ -107,8 +114,8 @@ impl MockComponent for WorkloadDetails {
     }
 }
 
-impl Component<Msg, UserEvent> for WorkloadDetails {
-    fn on(&mut self, ev: Event<UserEvent>) -> Option<Msg> {
+impl AppComponent<Msg, UserEvent> for WorkloadDetails {
+    fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let _ = match ev {
             Event::Keyboard(KeyEvent {
                 code: Key::Char('l'),
@@ -119,7 +126,7 @@ impl Component<Msg, UserEvent> for WorkloadDetails {
             Event::Keyboard(KeyEvent { code: Key::Esc, .. }) => {
                 return Some(Msg::Job(JobMsg::Close));
             }
-            _ => CmdResult::None,
+            _ => CmdResult::NoChange,
         };
         Some(Msg::None)
     }

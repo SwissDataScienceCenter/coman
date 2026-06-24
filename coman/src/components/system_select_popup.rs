@@ -1,9 +1,14 @@
-use tui_realm_stdlib::List;
+use tui_realm_stdlib::components::List;
 use tuirealm::{
-    Component, Event, MockComponent, State, StateValue,
     command::{Cmd, CmdResult, Direction, Position},
+    component::AppComponent,
+    component::Component,
+    event::Event,
     event::{Key, KeyEvent},
-    props::{Alignment, BorderType, Borders, Color, TableBuilder, TextSpan},
+    props::{BorderType, Borders, Color},
+    ratatui::{style::Style, text::Line},
+    state::State,
+    state::StateValue,
 };
 
 use crate::{
@@ -14,7 +19,7 @@ use crate::{
     cscs::api_client::types::System,
 };
 
-#[derive(MockComponent)]
+#[derive(Component)]
 pub struct SystemSelectPopup {
     component: List,
     systems: Vec<System>,
@@ -22,27 +27,27 @@ pub struct SystemSelectPopup {
 
 impl SystemSelectPopup {
     pub fn new(systems: Vec<System>) -> Self {
-        let mut rows = TableBuilder::default();
+        let mut rows = vec![];
         for system in systems.clone() {
-            rows.add_col(TextSpan::from(system.name).fg(Color::Cyan)).add_row();
+            rows.push(Line::styled(system.name, Style::new().fg(Color::Cyan)));
         }
         Self {
             component: List::default()
                 .borders(Borders::default().modifiers(BorderType::Thick).color(Color::Green))
-                .title("Select System", Alignment::Left)
+                .title("Select System")
                 .scroll(true)
-                .highlighted_color(Color::LightYellow)
-                .highlighted_str("-")
+                .highlight_style(Style::new().bg(Color::LightYellow))
+                .highlight_str("-")
                 .rewind(true)
                 .step(4)
-                .rows(rows.build()),
+                .rows(rows),
             systems,
         }
     }
 }
 
-impl Component<Msg, UserEvent> for SystemSelectPopup {
-    fn on(&mut self, ev: Event<UserEvent>) -> Option<Msg> {
+impl AppComponent<Msg, UserEvent> for SystemSelectPopup {
+    fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let _ = match ev {
             Event::Keyboard(KeyEvent { code: Key::Down, .. }) => self.perform(Cmd::Move(Direction::Down)),
             Event::Keyboard(KeyEvent {
@@ -61,7 +66,7 @@ impl Component<Msg, UserEvent> for SystemSelectPopup {
                 return Some(Msg::SystemSelectPopup(SystemSelectMsg::Closed));
             }
             Event::Keyboard(KeyEvent { code: Key::Enter, .. }) => {
-                let msg = if let State::One(StateValue::Usize(index)) = self.state() {
+                let msg = if let State::Single(StateValue::Usize(index)) = self.state() {
                     let selected_system = self.systems[index].clone();
                     Some(Msg::SystemSelectPopup(SystemSelectMsg::SystemSelected(
                         selected_system.name,
@@ -72,7 +77,7 @@ impl Component<Msg, UserEvent> for SystemSelectPopup {
                 return msg;
             }
 
-            _ => CmdResult::None,
+            _ => CmdResult::NoChange,
         };
         Some(Msg::None)
     }
