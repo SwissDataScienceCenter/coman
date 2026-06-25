@@ -10,7 +10,7 @@ use tuirealm::{
     event::{Key, KeyEvent, KeyModifiers},
     listener::EventListenerCfg,
     subscription::{EventClause, Sub, SubClause},
-    terminal::CrosstermTerminalAdapter,
+    terminal::{CrosstermTerminalAdapter, TerminalAdapter},
 };
 
 use crate::{
@@ -185,7 +185,10 @@ async fn main() -> Result<()> {
 
 fn run_tui(tick_rate: f64) -> Result<()> {
     //we initialize the terminal early so the panic handler that restores the terminal is correctly set up
-    let adapter = CrosstermTerminalAdapter::new()?;
+    let mut adapter = CrosstermTerminalAdapter::new()?;
+    adapter.enable_raw_mode()?;
+    adapter.enter_alternate_screen()?;
+    adapter.enable_mouse_capture()?;
     let handle = Handle::current();
 
     let (select_system_tx, select_system_rx) = mpsc::channel(100);
@@ -370,7 +373,7 @@ fn run_tui(tick_rate: f64) -> Result<()> {
         // Redraw
         if model.redraw {
             model.view();
-            model.redraw = false;
+            // model.redraw = false;
         }
     }
 
